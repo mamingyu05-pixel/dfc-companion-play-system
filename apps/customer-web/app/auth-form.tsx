@@ -40,10 +40,11 @@ export function CustomerAuthForm() {
     setIsSubmitting(true);
 
     const endpoint = mode === "register" ? "/api/auth/register/customer" : "/api/auth/login";
+    const normalizedEmail = email.trim().toLowerCase();
     const payload =
       mode === "register"
-        ? { email, password, displayName }
-        : { email, password, portal: "customer" };
+        ? { email: normalizedEmail, password, displayName: displayName.trim() }
+        : { email: normalizedEmail, password, portal: "customer" };
 
     try {
       const response = await fetch(endpoint, {

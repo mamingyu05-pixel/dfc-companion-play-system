@@ -19,6 +19,13 @@ export class AuthService {
       throw new BadRequestException("email, password and displayName are required");
     }
 
+    const email = normalizeEmail(body.email);
+    const displayName = body.displayName.trim();
+
+    if (!email || !displayName) {
+      throw new BadRequestException("email, password and displayName are required");
+    }
+
     if (body.password.length < 8) {
       throw new BadRequestException("Password must be at least 8 characters");
     }
@@ -26,9 +33,9 @@ export class AuthService {
     const passwordHash = await createPasswordHash(body.password);
 
     const user = await this.createCustomerUser({
-      email: body.email.toLowerCase(),
+      email,
       passwordHash,
-      displayName: body.displayName
+      displayName
     });
 
     return {
@@ -70,8 +77,10 @@ export class AuthService {
       throw new BadRequestException("Invalid portal");
     }
 
+    const email = normalizeEmail(body.email);
+
     const user = await this.prisma.user.findUnique({
-      where: { email: body.email.toLowerCase() },
+      where: { email },
       select: {
         id: true,
         email: true,
@@ -105,6 +114,89 @@ export class AuthService {
     };
   }
 
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        displayName: true,
+        wallet: {
+          select: {
+            availableBalance: true,
+            frozenBalance: true,
+            availableIncome: true,
+            pendingIncome: true
+          }
+        },
+        customerOrders: {
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            orderNo: true,
+            mode: true,
+            status: true,
+            totalAmount: true,
+            companion: { select: { displayName: true } },
+            createdAt: true
+          }
+        },
+        walletTransactions: {
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            type: true,
+            direction: true,
+            amount: true,
+            balanceAfter: true,
+            createdAt: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      throw new UnauthorizedException("User is not active");
+    }
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        displayName: user.displayName
+      },
+      wallet: user.wallet
+        ? {
+            availableBalance: user.wallet.availableBalance.toString(),
+            frozenBalance: user.wallet.frozenBalance.toString(),
+            availableIncome: user.wallet.availableIncome.toString(),
+            pendingIncome: user.wallet.pendingIncome.toString()
+          }
+        : null,
+      recentOrders: user.customerOrders.map((order) => ({
+        id: order.id,
+        orderNo: order.orderNo,
+        mode: order.mode,
+        status: order.status,
+        totalAmount: order.totalAmount.toString(),
+        companionName: order.companion?.displayName ?? "平台待匹配",
+        createdAt: order.createdAt
+      })),
+      walletTransactions: user.walletTransactions.map((transaction) => ({
+        id: transaction.id,
+        type: transaction.type,
+        direction: transaction.direction,
+        amount: transaction.amount.toString(),
+        balanceAfter: transaction.balanceAfter.toString(),
+        createdAt: transaction.createdAt
+      }))
+    };
+  }
+
   private issueToken(payload: JwtPayload) {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
@@ -124,4 +216,8 @@ class ForbiddenPortalException extends UnauthorizedException {
   constructor() {
     super("User role cannot access this portal");
   }
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
 }

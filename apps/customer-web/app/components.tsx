@@ -43,7 +43,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
             href="/recharge"
             className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-3 py-2 text-xs font-semibold text-dfc-text"
           >
-            余额 ¥164.00
+            钱包
           </Link>
         </div>
       </header>
