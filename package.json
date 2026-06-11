@@ -1,0 +1,24 @@
+{
+  "name": "dfc-companion-play-system",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @dfc/database prisma:generate",
+    "db:migrate": "pnpm --filter @dfc/database prisma:migrate",
+    "db:deploy": "pnpm --filter @dfc/database prisma:deploy",
+    "seed:admin": "pnpm --filter @dfc/database seed:admin"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "@types/node": "^22.10.0",
+    "postcss": "^8.4.49",
+    "prettier": "^3.4.2",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
+  }
+}

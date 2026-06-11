@@ -1,0 +1,462 @@
+Delta Force Club（DFC）上线运营准备文本文档
+版本：2026-06-11
+
+一、整套系统是否是多 Agent 负责
+
+是。DFC 按多 Agent 分工推进，但最终仍必须以 Project Manager Agent 统一验收业务闭环。
+
+当前 Agent 分工：
+
+1. Project Manager Agent
+   负责任务拆分、架构审核、业务审核、代码审核、集成测试和上线验收。
+
+2. Database Agent
+   负责 Prisma Schema、Migration、Seed、数据一致性、数据库事务设计。
+
+3. Customer Agent
+   负责客户端 Customer Portal，包括注册、充值、下单、订单、钱包、投诉退款。
+
+4. Companion Agent
+   负责陪玩端 Companion Portal，包括资料、接单、订单、收益、提现。
+
+5. Admin Agent
+   负责管理后台 Admin Portal，包括陪玩管理、充值审核、提现审核、派单、投诉、流水、日志。
+
+6. Order Agent
+   负责订单状态机、派单、接单、开始、完成、取消、退款、投诉关联。
+
+7. Wallet Agent
+   负责客户余额、陪玩收益、充值、提现、钱包流水、防负余额、防重复结算。
+
+8. Discord Agent
+   负责 Discord Bot、订单通知、按钮接单、管理员提醒、事件回写。
+
+9. KOOK Agent
+   负责 KOOK Bot、订单通知、按钮接单、管理员提醒、私信、语音房、角色同步。
+
+10. DevOps Agent
+    负责 Docker 化、部署、HTTPS、备份、监控、日志、自动回滚、零停机更新。
+
+11. QA Agent
+    负责自动化测试、安全测试、权限测试、业务闭环测试、上线前验收。
+
+12. UI/UX Design Agent
+    负责整体视觉风格、三端 UI、移动端适配、电竞风格视觉系统、可复用组件规范和用户流程优化。
+
+
+二、当前系统如何实现 Bot 接单与通知
+
+1. 陪玩平台账号绑定
+
+系统账号统一使用 users 表。
+陪玩账号是 users.role = COMPANION。
+
+新增 user_external_accounts 表，用来绑定：
+
+系统陪玩账号 -> Discord 用户 ID
+系统陪玩账号 -> KOOK 用户 ID
+
+后台绑定接口：
+
+POST /api/admin/companions/:id/external-accounts
+
+示例：
+
+{
+  "platform": "KOOK",
+  "externalUserId": "KOOK用户ID",
+  "displayName": "陪玩KOOK昵称",
+  "actorId": "管理员ID"
+}
+
+作用：
+
+Bot 收到按钮点击后，可以根据 Discord/KOOK 用户 ID 找到系统里的陪玩账号。
+
+
+2. Bot 内部鉴权
+
+服务器 .env 中必须配置：
+
+BOT_INTERNAL_TOKEN=一串很长的随机密钥
+
+Discord Bot 调用 API 时必须带请求头：
+
+x-bot-token: BOT_INTERNAL_TOKEN
+
+否则 API 会拒绝请求。
+
+KOOK Webhook 还需要：
+
+KOOK_VERIFY_TOKEN=KOOK开发者后台提供的verify_token
+
+作用：
+
+防止外部用户伪造 Bot 请求，直接调用接单接口。
+
+
+3. 防重复接单
+
+接单在数据库事务里执行。
+
+接单流程：
+
+1. 检查订单存在。
+2. 检查订单状态必须是 ASSIGNED。
+3. 检查 Discord/KOOK 用户 ID 已绑定陪玩账号。
+4. 检查绑定用户必须是 ACTIVE 的 COMPANION。
+5. 检查订单是否派给该陪玩。
+6. 使用条件更新：
+   where id = 订单ID and status = ASSIGNED
+7. 更新成功数量必须等于 1。
+8. 写入 order_status_logs。
+9. 写入 bot_events。
+
+关键结果：
+
+如果 Discord 和 KOOK 同时点击同一个订单，数据库只允许第一个成功，第二个会失败。
+
+
+4. 派单后双平台通知
+
+管理员派单接口：
+
+PATCH /api/admin/orders/:id/assign
+
+派单流程：
+
+1. 检查订单状态必须是 PAID。
+2. 检查陪玩账号存在且可用。
+3. 订单状态改为 ASSIGNED。
+4. 写入 order_status_logs。
+5. 写入 admin_logs。
+6. 数据库事务提交。
+7. 发送 Discord 订单通知。
+8. 发送 KOOK 订单通知。
+9. 通知成功写入 bot_events.SENT。
+10. 通知失败写入 bot_events.FAILED。
+
+重要规则：
+
+通知失败不会回滚订单。
+原因是派单属于核心业务，Bot 通知失败可以后台补发或人工通知。
+
+
+5. KOOK Webhook
+
+KOOK 开发者后台 Webhook 地址建议配置：
+
+https://你的域名/api/kook/webhook?compress=0
+
+当前系统处理：
+
+1. challenge 校验。
+2. verify_token 校验。
+3. 读取按钮 value。
+4. value 必须是 order.accept.{orderId}。
+5. 提取 KOOK 用户 ID。
+6. 调用接单事务。
+
+建议先使用 compress=0。
+后续如需启用压缩或加密，再增加 zlib/AES 处理。
+
+
+三、真正运营网站需要准备什么
+
+1. 服务器
+
+推荐：
+
+地区：香港
+系统：Ubuntu 24.04
+配置：2核 CPU / 4GB 内存 / 60GB 或 80GB 硬盘
+
+原因：
+
+国内用户访问香港服务器相对稳定。
+香港服务器通常不需要 ICP 备案。
+以后开发加拿大市场也可以先共用这台服务器。
+
+
+2. 域名
+
+准备一个正式域名，例如：
+
+dfcclub.com
+dfcplay.com
+deltaforceclub.com
+
+DNS 解析：
+
+A 记录 @ -> 服务器公网 IP
+A 记录 www -> 服务器公网 IP
+
+
+3. HTTPS
+
+使用 Let’s Encrypt 免费证书。
+项目里已有脚本：
+
+bash scripts/enable-https.sh
+
+
+4. Discord 资料
+
+需要你自己获得：
+
+DISCORD_TOKEN
+DISCORD_GUILD_ID
+DISCORD_ORDER_CHANNEL_ID
+DISCORD_ADMIN_CHANNEL_ID
+DISCORD_RECHARGE_CHANNEL_ID
+DISCORD_WITHDRAWAL_CHANNEL_ID
+DISCORD_COMPLAINT_CHANNEL_ID
+
+
+5. KOOK 资料
+
+需要你自己获得：
+
+KOOK_TOKEN
+KOOK_VERIFY_TOKEN
+KOOK_GUILD_ID
+KOOK_ORDER_CHANNEL_ID
+KOOK_ADMIN_CHANNEL_ID
+KOOK_RECHARGE_CHANNEL_ID
+KOOK_WITHDRAWAL_CHANNEL_ID
+KOOK_COMPLAINT_CHANNEL_ID
+KOOK_VOICE_CATEGORY_ID
+KOOK_CUSTOMER_ROLE_ID
+KOOK_COMPANION_ROLE_ID
+KOOK_ADMIN_ROLE_ID
+KOOK_SUPER_ADMIN_ROLE_ID
+
+
+6. 生产环境变量
+
+服务器 .env 至少需要：
+
+DOMAIN=你的域名
+LETSENCRYPT_EMAIL=你的邮箱
+POSTGRES_PASSWORD=强数据库密码
+DATABASE_URL=postgresql://dfc:你的数据库密码@postgres:5432/dfc?schema=public
+JWT_SECRET=很长的随机字符串
+BOT_INTERNAL_TOKEN=很长的随机字符串
+ADMIN_EMAIL=管理员邮箱
+ADMIN_PASSWORD=管理员初始强密码
+API_BASE_URL=http://api-server:4000/api
+
+注意：
+
+不要把服务器密码、Discord Token、KOOK Token、JWT_SECRET、数据库密码发到公开聊天。
+不要上传 GitHub。
+不要写进 README。
+
+
+四、上线步骤
+
+第 1 步：购买香港服务器
+
+建议选：
+
+Ubuntu 24.04
+2核 4GB
+60GB/80GB
+
+拿到：
+
+服务器公网 IP
+root 用户
+root 密码或 SSH Key
+
+
+第 2 步：购买域名
+
+建议用阿里云、腾讯云或 Cloudflare。
+买完后拿到：
+
+域名
+DNS 管理权限
+
+
+第 3 步：域名解析
+
+添加：
+
+A 记录 @ -> 服务器公网 IP
+A 记录 www -> 服务器公网 IP
+
+
+第 4 步：SSH 登录服务器
+
+Windows PowerShell：
+
+ssh root@你的服务器IP
+
+第一次输入 yes。
+然后输入服务器密码。
+
+
+第 5 步：上传项目代码
+
+方式一：使用 Git。
+方式二：压缩项目后上传服务器。
+
+推荐后续使用 Git，方便更新。
+
+
+第 6 步：初始化服务器
+
+进入项目目录后执行：
+
+sudo bash scripts/server-bootstrap.sh
+
+该脚本会安装 Docker、Docker Compose、Git、防火墙基础规则。
+
+
+第 7 步：创建生产 .env
+
+执行：
+
+cp .env.production.example .env
+nano .env
+
+填入真实配置。
+
+
+第 8 步：部署
+
+执行：
+
+bash scripts/deploy.sh
+
+
+第 9 步：开启 HTTPS
+
+确保域名已解析到服务器后执行：
+
+bash scripts/enable-https.sh
+
+
+第 10 步：配置 KOOK Webhook
+
+KOOK 开发者后台配置：
+
+https://你的域名/api/kook/webhook?compress=0
+
+把 KOOK Verify Token 填入服务器 .env。
+
+
+第 11 步：创建测试数据
+
+管理员初始化：
+
+pnpm seed:admin
+
+然后后台创建陪玩账号。
+
+
+第 12 步：绑定陪玩平台账号
+
+每个陪玩都需要绑定：
+
+Discord 用户 ID
+KOOK 用户 ID
+
+至少国内陪玩必须绑定 KOOK 用户 ID。
+
+
+第 13 步：跑完整业务闭环
+
+必须按顺序测试：
+
+1. 管理员创建陪玩。
+2. 管理员绑定陪玩 KOOK/Discord。
+3. 客户注册。
+4. 客户提交充值申请。
+5. 管理员审核充值。
+6. 客户余额增加。
+7. 客户下单。
+8. 测试指定陪玩下单。
+9. 测试平台代选下单。
+10. 管理员为平台代选订单人工挑人。
+11. 客户申请试音。
+12. 管理员或 Bot 创建 KOOK/Discord 临时语音房。
+13. 陪玩进入语音频道试音。
+14. 确认试音不改变订单为进行中。
+15. 管理员派单。
+16. Discord 和 KOOK 收到通知。
+17. 陪玩点击接单。
+18. 测试 Discord 和 KOOK 同时点击，只能成功一次。
+19. 订单开始。
+20. 订单完成。
+21. 平台抽成正确。
+22. 陪玩收益增加。
+23. 陪玩申请提现。
+24. 管理员审核提现。
+25. 管理员人工打款并确认完成。
+26. 检查 wallet_transactions。
+27. 检查 order_status_logs。
+28. 检查 admin_logs。
+29. 检查 bot_events。
+
+
+五、真正运营前必须准备的非技术内容
+
+1. 用户协议
+2. 隐私政策
+3. 退款规则
+4. 投诉处理规则
+5. 陪玩入驻规则
+6. 价格表
+7. 平台抽成规则
+8. 人工充值收款账户
+9. 人工提现打款流程
+10. 客服联系方式
+11. 财务流水核对表
+12. 管理员操作规范
+13. 陪玩违规处理规则
+14. 数据备份制度
+
+
+六、合规提醒
+
+1. 如果服务器放中国大陆，通常需要 ICP 备案。
+2. 香港服务器一般不需要 ICP 备案，但国内访问质量仍受网络影响。
+3. 加拿大市场涉及个人信息处理，至少需要隐私政策和数据用途说明。
+4. 第一阶段使用人工充值和人工提现，不做自动支付和自动提现。
+5. 涉及真实资金前，必须先跑通完整沙盒闭环。
+
+
+七、上线前最低验收标准
+
+以下任一项未通过，不建议正式运营：
+
+1. 客户能注册登录。
+2. 管理员能创建陪玩。
+3. 陪玩能登录。
+4. 客户能提交充值申请。
+5. 管理员能审核充值。
+6. 客户余额准确增加。
+7. 客户能下单。
+8. 客户能选择指定陪玩或平台代选。
+9. 陪玩列表能展示语音信息和试音入口。
+10. 试音语音房可创建，且不会触发订单开始和收益结算。
+11. 下单金额由后端计算。
+12. 管理员能派单。
+13. Discord 和 KOOK 都能收到通知。
+14. 陪玩能接单。
+15. 双平台重复接单只能成功一次。
+16. 订单能开始和完成。
+17. 平台抽成正确。
+18. 陪玩收益正确。
+19. 陪玩能提现。
+20. 管理员能审核提现。
+21. 所有资金变化都有 wallet_transactions。
+22. 所有订单状态变化都有 order_status_logs。
+23. 所有管理员操作都有 admin_logs。
+24. 所有 Bot 事件都有 bot_events。
+25. 数据库能备份。
+26. HTTPS 正常。
+27. 管理员账号已修改默认密码。
+28. Token 和密码没有提交到代码仓库。

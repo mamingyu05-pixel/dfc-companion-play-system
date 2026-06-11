@@ -1,0 +1,17 @@
+{
+  "name": "@dfc/discord-bot",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"discord-bot tests pending\""
+  },
+  "dependencies": {
+    "@dfc/shared": "workspace:*",
+    "discord.js": "^14.17.3",
+    "tsx": "^4.19.2"
+  }
+}

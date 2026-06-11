@@ -1,0 +1,399 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  COMPANION
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  BANNED
+}
+
+enum GameCode {
+  DELTA_FORCE
+}
+
+enum DeltaForceRank {
+  UNRANKED
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+  ASCENDANT
+  IMMORTAL
+  TOP
+}
+
+enum CompanionProfileStatus {
+  PENDING_REVIEW
+  LISTED
+  UNLISTED
+  BANNED
+}
+
+enum OnlineStatus {
+  ONLINE
+  BUSY
+  OFFLINE
+}
+
+enum VoicePreference {
+  REQUIRED
+  OPTIONAL
+  TEXT_ONLY
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  ASSIGNED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  REFUND_REQUESTED
+  REFUNDED
+  DISPUTED
+}
+
+enum OrderAssignmentType {
+  DIRECT_COMPANION
+  PLATFORM_MATCH
+}
+
+enum WalletTransactionType {
+  RECHARGE_APPROVED
+  ORDER_PAYMENT
+  ORDER_REFUND
+  ORDER_SETTLEMENT
+  WITHDRAWAL_FREEZE
+  WITHDRAWAL_COMPLETED
+  WITHDRAWAL_REJECTED
+  ADMIN_ADJUSTMENT
+}
+
+enum TransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum BotEventType {
+  ORDER_NOTIFICATION_SENT
+  ORDER_ACCEPT_CLICKED
+  RECHARGE_NOTIFICATION_SENT
+  WITHDRAWAL_NOTIFICATION_SENT
+  COMPLAINT_NOTIFICATION_SENT
+  ADMIN_ALERT_SENT
+}
+
+enum BotPlatform {
+  DISCORD
+  KOOK
+}
+
+enum BotEventStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id                         String              @id @default(cuid())
+  email                      String              @unique
+  passwordHash               String
+  role                       UserRole
+  status                     UserStatus          @default(ACTIVE)
+  displayName                String
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+
+  wallet                     Wallet?
+  companionProfile           CompanionProfile?
+  customerOrders             Order[]             @relation("OrderCustomer")
+  companionOrders            Order[]             @relation("OrderCompanion")
+  assignedOrders             Order[]             @relation("OrderAssigner")
+  orderStatusLogs            OrderStatusLog[]    @relation("OrderStatusActor")
+  walletTransactions         WalletTransaction[] @relation("WalletTransactionUser")
+  operatedWalletTransactions WalletTransaction[] @relation("WalletTransactionOperator")
+  rechargeRequests           RechargeRequest[]   @relation("RechargeCustomer")
+  rechargeReviews            RechargeRequest[]   @relation("RechargeReviewer")
+  withdrawalRequests         WithdrawalRequest[] @relation("WithdrawalCompanion")
+  withdrawalReviews          WithdrawalRequest[] @relation("WithdrawalReviewer")
+  complaintsFiled            Complaint[]         @relation("ComplaintReporter")
+  complaintsResolved         Complaint[]         @relation("ComplaintResolver")
+  adminLogs                  AdminLog[]          @relation("AdminLogActor")
+  targetAdminLogs            AdminLog[]          @relation("AdminLogTarget")
+  botEvents                  BotEvent[]          @relation("BotEventActor")
+  externalAccounts           UserExternalAccount[]
+
+  @@map("users")
+}
+
+model UserExternalAccount {
+  id             String      @id @default(cuid())
+  userId         String
+  platform       BotPlatform
+  externalUserId String
+  displayName    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  user           User        @relation(fields: [userId], references: [id])
+
+  @@unique([platform, externalUserId])
+  @@unique([userId, platform])
+  @@index([userId])
+  @@map("user_external_accounts")
+}
+
+model CompanionProfile {
+  id              String                 @id @default(cuid())
+  userId          String                 @unique
+  nickname        String
+  avatarUrl       String?
+  gender          String?
+  game            GameCode               @default(DELTA_FORCE)
+  deltaForceRank  DeltaForceRank         @default(UNRANKED)
+  skillModes      String[]
+  pricePerHour    Decimal                @db.Decimal(12, 2)
+  onlineStatus    OnlineStatus           @default(OFFLINE)
+  bio             String?
+  voicePreference VoicePreference        @default(OPTIONAL)
+  status          CompanionProfileStatus @default(PENDING_REVIEW)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  user            User                   @relation(fields: [userId], references: [id])
+
+  @@map("companion_profiles")
+}
+
+model Wallet {
+  id               String              @id @default(cuid())
+  userId           String              @unique
+  availableBalance Decimal             @default(0) @db.Decimal(12, 2)
+  frozenBalance    Decimal             @default(0) @db.Decimal(12, 2)
+  availableIncome  Decimal             @default(0) @db.Decimal(12, 2)
+  pendingIncome    Decimal             @default(0) @db.Decimal(12, 2)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  user             User                @relation(fields: [userId], references: [id])
+  transactions     WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model Order {
+  id                String           @id @default(cuid())
+  orderNo           String           @unique
+  customerId        String
+  companionId       String?
+  assignedById      String?
+  assignmentType    OrderAssignmentType @default(DIRECT_COMPANION)
+  game              GameCode         @default(DELTA_FORCE)
+  mode              String
+  hours             Decimal          @db.Decimal(6, 2)
+  unitPrice         Decimal          @db.Decimal(12, 2)
+  totalAmount       Decimal          @db.Decimal(12, 2)
+  platformFee       Decimal          @default(0) @db.Decimal(12, 2)
+  companionIncome   Decimal          @default(0) @db.Decimal(12, 2)
+  status            OrderStatus      @default(PENDING_PAYMENT)
+  notes             String?
+  voiceTrialRequested Boolean         @default(false)
+  voiceRoomId       String?
+  discordMessageId  String?
+  acceptedAt        DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  customer          User             @relation("OrderCustomer", fields: [customerId], references: [id])
+  companion         User?            @relation("OrderCompanion", fields: [companionId], references: [id])
+  assignedBy        User?            @relation("OrderAssigner", fields: [assignedById], references: [id])
+  statusLogs        OrderStatusLog[]
+  complaints        Complaint[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([companionId])
+  @@map("orders")
+}
+
+model OrderStatusLog {
+  id         String      @id @default(cuid())
+  orderId    String
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  actorId    String?
+  reason     String?
+  createdAt  DateTime    @default(now())
+
+  order      Order       @relation(fields: [orderId], references: [id])
+  actor      User?       @relation("OrderStatusActor", fields: [actorId], references: [id])
+
+  @@index([orderId])
+  @@map("order_status_logs")
+}
+
+model WalletTransaction {
+  id             String                @id @default(cuid())
+  walletId       String
+  userId         String
+  operatorId     String?
+  type           WalletTransactionType
+  direction      TransactionDirection
+  amount         Decimal               @db.Decimal(12, 2)
+  balanceAfter   Decimal               @db.Decimal(12, 2)
+  referenceType  String?
+  referenceId    String?
+  note           String?
+  createdAt      DateTime              @default(now())
+
+  wallet         Wallet                @relation(fields: [walletId], references: [id])
+  user           User                  @relation("WalletTransactionUser", fields: [userId], references: [id])
+  operator       User?                 @relation("WalletTransactionOperator", fields: [operatorId], references: [id])
+
+  @@index([userId])
+  @@index([referenceType, referenceId])
+  @@map("wallet_transactions")
+}
+
+model RechargeRequest {
+  id             String       @id @default(cuid())
+  customerId     String
+  amount         Decimal      @db.Decimal(12, 2)
+  screenshotUrl  String
+  note           String?
+  status         ReviewStatus @default(PENDING)
+  reviewedById   String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  customer       User         @relation("RechargeCustomer", fields: [customerId], references: [id])
+  reviewedBy     User?        @relation("RechargeReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status])
+  @@map("recharge_requests")
+}
+
+model WithdrawalRequest {
+  id              String           @id @default(cuid())
+  companionId     String
+  amount          Decimal          @db.Decimal(12, 2)
+  payoutAccount   String
+  note            String?
+  status          WithdrawalStatus @default(PENDING)
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewNote      String?
+  paidAt          DateTime?
+  payoutReference String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  companion       User             @relation("WithdrawalCompanion", fields: [companionId], references: [id])
+  reviewedBy      User?            @relation("WithdrawalReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status])
+  @@map("withdrawal_requests")
+}
+
+model Complaint {
+  id           String          @id @default(cuid())
+  orderId      String
+  reporterId   String
+  resolvedById String?
+  reason       String
+  status       ComplaintStatus @default(OPEN)
+  resolution   String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  order        Order           @relation(fields: [orderId], references: [id])
+  reporter     User            @relation("ComplaintReporter", fields: [reporterId], references: [id])
+  resolvedBy   User?           @relation("ComplaintResolver", fields: [resolvedById], references: [id])
+
+  @@index([status])
+  @@map("complaints")
+}
+
+model AdminLog {
+  id           String   @id @default(cuid())
+  actorId      String
+  targetUserId String?
+  action       String
+  entityType   String
+  entityId     String?
+  detail       Json?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  actor        User     @relation("AdminLogActor", fields: [actorId], references: [id])
+  targetUser   User?    @relation("AdminLogTarget", fields: [targetUserId], references: [id])
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@map("admin_logs")
+}
+
+model BotEvent {
+  id              String       @id @default(cuid())
+  platform        BotPlatform
+  status          BotEventStatus @default(PENDING)
+  type            BotEventType
+  actorId         String?
+  orderId         String?
+  discordGuildId  String?
+  discordChannelId String?
+  discordMessageId String?
+  platformGuildId String?
+  platformChannelId String?
+  platformMessageId String?
+  platformUserId  String?
+  payload         Json?
+  error          String?
+  retryCount     Int          @default(0)
+  createdAt       DateTime     @default(now())
+
+  actor           User?        @relation("BotEventActor", fields: [actorId], references: [id])
+
+  @@index([type])
+  @@index([orderId])
+  @@map("bot_events")
+}

@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@dfc/shared": ["packages/shared/src"],
+      "@dfc/auth": ["packages/auth/src"],
+      "@dfc/config": ["packages/config/src"],
+      "@dfc/database": ["packages/database/src"]
+    }
+  }
+}

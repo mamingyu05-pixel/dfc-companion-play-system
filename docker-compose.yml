@@ -1,0 +1,110 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dfc}
+      POSTGRES_USER: ${POSTGRES_USER:-dfc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dfc_password}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dfc} -d ${POSTGRES_DB:-dfc}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-server:
+    build:
+      context: .
+      dockerfile: apps/api-server/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "4000"
+
+  customer-web:
+    build:
+      context: .
+      dockerfile: apps/customer-web/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      - api-server
+    expose:
+      - "3000"
+
+  companion-web:
+    build:
+      context: .
+      dockerfile: apps/companion-web/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      - api-server
+    expose:
+      - "3001"
+
+  admin-web:
+    build:
+      context: .
+      dockerfile: apps/admin-web/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      - api-server
+    expose:
+      - "3002"
+
+  discord-bot:
+    build:
+      context: .
+      dockerfile: apps/discord-bot/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  kook-bot:
+    build:
+      context: .
+      dockerfile: apps/kook-adapter/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - customer-web
+      - companion-web
+      - admin-web
+      - api-server
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot_www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+
+  certbot:
+    image: certbot/certbot:v2.11.0
+    profiles:
+      - certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+
+volumes:
+  postgres_data:
+  certbot_www:
+  letsencrypt:

@@ -1,0 +1,91 @@
+{
+  "project": "Delta Force Club companion play system",
+  "mode": "audit-first",
+  "rule": "Agents must report findings and checklist status. They must not auto-edit code unless Project Manager Agent approves a scoped implementation task.",
+  "agents": [
+    {
+      "id": "project_manager",
+      "name": "Project Manager Agent",
+      "scope": ["docs", "apps", "packages", "agent_pipeline"],
+      "responsibilities": ["task_breakdown", "architecture_review", "business_review", "code_review", "integration_testing"],
+      "required_outputs": ["risk_summary", "next_tasks", "blocked_items"]
+    },
+    {
+      "id": "database",
+      "name": "Database Agent",
+      "scope": ["packages/database/prisma/schema.prisma", "scripts/init-admin.ts"],
+      "responsibilities": ["prisma_schema", "migration_plan", "seed", "transaction_consistency"],
+      "required_outputs": ["schema_findings", "migration_risks", "transaction_requirements"]
+    },
+    {
+      "id": "customer",
+      "name": "Customer Agent",
+      "scope": ["apps/customer-web", "docs/UI_PAGE_STRUCTURE.md"],
+      "responsibilities": ["customer_portal", "recharge_flow", "order_flow", "wallet_view", "complaint_flow"],
+      "required_outputs": ["page_coverage", "mobile_findings", "conversion_risks"]
+    },
+    {
+      "id": "companion",
+      "name": "Companion Agent",
+      "scope": ["apps/companion-web"],
+      "responsibilities": ["companion_dashboard", "order_acceptance", "income_view", "withdrawal_flow", "profile_flow"],
+      "required_outputs": ["page_coverage", "order_risks", "income_risks"]
+    },
+    {
+      "id": "admin",
+      "name": "Admin Agent",
+      "scope": ["apps/admin-web"],
+      "responsibilities": ["admin_dashboard", "companion_management", "recharge_review", "withdrawal_review", "dispatch", "logs"],
+      "required_outputs": ["page_coverage", "ops_efficiency_findings", "audit_log_risks"]
+    },
+    {
+      "id": "order",
+      "name": "Order Agent",
+      "scope": ["apps/api-server/src/modules/orders", "docs/ORDER_FLOW.md"],
+      "responsibilities": ["order_state_machine", "assignment", "platform_match", "voice_trial", "duplicate_accept_prevention"],
+      "required_outputs": ["state_machine_findings", "concurrency_risks", "test_cases"]
+    },
+    {
+      "id": "wallet",
+      "name": "Wallet Agent",
+      "scope": ["apps/api-server/src/modules/wallet", "docs/WALLET_FLOW.md"],
+      "responsibilities": ["recharge", "withdrawal", "wallet_transactions", "negative_balance_prevention", "settlement"],
+      "required_outputs": ["money_flow_findings", "transaction_risks", "test_cases"]
+    },
+    {
+      "id": "discord",
+      "name": "Discord Agent",
+      "scope": ["apps/discord-bot", "apps/api-server/src/modules/discord", "docs/BOT_FLOW.md"],
+      "responsibilities": ["discord_notifications", "button_accept", "admin_alerts", "event_writeback"],
+      "required_outputs": ["bot_findings", "token_risks", "callback_tests"]
+    },
+    {
+      "id": "kook",
+      "name": "KOOK Agent",
+      "scope": ["apps/kook-adapter", "apps/api-server/src/modules/kook", "docs/BOT_FLOW.md"],
+      "responsibilities": ["kook_notifications", "webhook", "button_accept", "voice_room", "role_sync"],
+      "required_outputs": ["bot_findings", "webhook_risks", "voice_room_tests"]
+    },
+    {
+      "id": "ui_ux_design",
+      "name": "UI/UX Design Agent",
+      "scope": ["docs/UI_UX_DESIGN_AGENT.md", "docs/UI_STYLE_GUIDE.md", "docs/UI_COMPONENTS.md", "apps/customer-web", "apps/companion-web", "apps/admin-web"],
+      "responsibilities": ["visual_system", "responsive_design", "customer_conversion", "admin_efficiency", "component_reuse"],
+      "required_outputs": ["design_findings", "component_gaps", "mobile_risks"]
+    },
+    {
+      "id": "devops",
+      "name": "DevOps Agent",
+      "scope": ["docker-compose.yml", "infra", "scripts", ".env.production.example"],
+      "responsibilities": ["docker", "deployment", "https", "backup", "monitoring", "rollback"],
+      "required_outputs": ["deployment_findings", "backup_risks", "operational_runbook_gaps"]
+    },
+    {
+      "id": "qa",
+      "name": "QA Agent",
+      "scope": ["docs/TEST_CHECKLIST.md", "docs/TEST_REPORT.md", "apps", "packages"],
+      "responsibilities": ["automated_tests", "security_tests", "permission_tests", "business_loop_tests"],
+      "required_outputs": ["test_gap_report", "blocking_issues", "manual_test_plan"]
+    }
+  ]
+}
