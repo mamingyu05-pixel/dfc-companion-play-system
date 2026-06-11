@@ -286,6 +286,7 @@ export function CustomerAuthForm() {
 function toChineseError(message?: string) {
   if (!message) return "请求失败，请检查填写内容";
   if (message.includes("Email is already registered")) return "这个邮箱已经注册过，请直接登录或换一个邮箱";
+  if (message.includes("Display name is already taken")) return "这个昵称已经被使用，请换一个昵称";
   if (message.includes("Invalid email format")) return "邮箱格式不正确，请检查后再提交";
   if (message.includes("Verification code is invalid or expired")) return "验证码不正确或已过期，请重新获取";
   if (message.includes("Verification code has too many failed attempts")) return "验证码错误次数太多，请重新获取";

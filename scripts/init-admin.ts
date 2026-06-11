@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 const SALT_ROUNDS = 12;
+const adminDisplayName = "DFC Super Admin";
+const adminDisplayNameKey = adminDisplayName.toLowerCase();
 
 async function main() {
   const email = process.env.ADMIN_EMAIL ?? "admin@dfc.local";
@@ -16,12 +18,13 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email },
-    update: { passwordHash, role: UserRole.SUPER_ADMIN, displayName: "DFC Super Admin" },
+    update: { passwordHash, role: UserRole.SUPER_ADMIN, displayName: adminDisplayName, displayNameKey: adminDisplayNameKey },
     create: {
       email,
       passwordHash,
       role: UserRole.SUPER_ADMIN,
-      displayName: "DFC Super Admin",
+      displayName: adminDisplayName,
+      displayNameKey: adminDisplayNameKey,
       wallet: { create: {} }
     }
   });

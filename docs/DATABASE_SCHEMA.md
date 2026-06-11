@@ -46,7 +46,11 @@ packages/database/prisma/schema.prisma
 
 ### users
 
-统一账号表。字段包括邮箱、密码哈希、角色、状态、展示名。
+统一账号表。字段包括邮箱、密码哈希、角色、状态、展示名和展示名唯一键。
+
+- `displayName`：页面展示昵称。
+- `displayNameKey`：规范化后的昵称，用于唯一约束。
+- `@@unique([role, displayNameKey])`：同一角色下昵称不能重复，客户用户名重复会被数据库拒绝。
 
 ### email_verification_codes
 

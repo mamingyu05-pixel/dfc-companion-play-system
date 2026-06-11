@@ -12,6 +12,7 @@ import {
 } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/current-user.decorator";
+import { normalizeDisplayNameKey } from "../auth/display-name.util";
 import { isValidEmail, normalizeEmail } from "../auth/email.util";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { createPasswordHash } from "../auth/password.util";
@@ -154,7 +155,8 @@ export class AdminController {
     }
     const email = normalizeEmail(body.email);
     const displayName = body.displayName.trim();
-    if (!isValidEmail(email) || !displayName) {
+    const displayNameKey = normalizeDisplayNameKey(displayName);
+    if (!isValidEmail(email) || !displayName || !displayNameKey) {
       throw new BadRequestException("email, password and displayName are required");
     }
     if (body.password.length < 8) {
@@ -170,7 +172,8 @@ export class AdminController {
           email,
           passwordHash,
           role,
-          displayName
+          displayName,
+          displayNameKey
         },
         select: { id: true, email: true, role: true, status: true, displayName: true }
       });
@@ -189,7 +192,7 @@ export class AdminController {
       return created;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        throw new BadRequestException("Email is already registered");
+        throw new BadRequestException(isDisplayNameUniqueError(error) ? "Display name is already taken" : "Email is already registered");
       }
       throw error;
     }
@@ -433,7 +436,8 @@ export class AdminController {
     }
     const email = normalizeEmail(body.email);
     const nickname = body.nickname.trim();
-    if (!isValidEmail(email) || !nickname) {
+    const displayNameKey = normalizeDisplayNameKey(nickname);
+    if (!isValidEmail(email) || !nickname || !displayNameKey) {
       throw new BadRequestException("email, password and nickname are required");
     }
     if (body.password.length < 8) {
@@ -457,6 +461,7 @@ export class AdminController {
             passwordHash,
             role: UserRole.COMPANION,
             displayName: nickname,
+            displayNameKey,
             wallet: { create: {} },
             companionProfile: {
               create: {
@@ -498,7 +503,7 @@ export class AdminController {
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        throw new BadRequestException("Email is already registered");
+        throw new BadRequestException(isDisplayNameUniqueError(error) ? "Display name is already taken" : "Email is already registered");
       }
       throw error;
     }
@@ -581,4 +586,9 @@ export class AdminController {
       user.id
     );
   }
+}
+
+function isDisplayNameUniqueError(error: Prisma.PrismaClientKnownRequestError) {
+  const target = error.meta?.target;
+  return Array.isArray(target) && target.includes("displayNameKey");
 }

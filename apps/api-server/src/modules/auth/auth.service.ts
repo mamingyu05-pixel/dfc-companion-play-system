@@ -5,6 +5,7 @@ import { createHash, randomInt } from "node:crypto";
 import nodemailer from "nodemailer";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "./auth.types";
+import { normalizeDisplayNameKey } from "./display-name.util";
 import { isValidEmail, normalizeEmail } from "./email.util";
 import { createPasswordHash, verifyPassword } from "./password.util";
 
@@ -89,9 +90,10 @@ export class AuthService {
 
     const email = normalizeEmail(body.email);
     const displayName = body.displayName.trim();
+    const displayNameKey = normalizeDisplayNameKey(displayName);
     const emailCode = body.emailCode.trim();
 
-    if (!email || !displayName || !emailCode) {
+    if (!email || !displayName || !displayNameKey || !emailCode) {
       throw new BadRequestException("email, password, displayName and emailCode are required");
     }
     if (!isValidEmail(email)) {
@@ -109,6 +111,13 @@ export class AuthService {
     if (existing) {
       throw new BadRequestException("Email is already registered");
     }
+    const displayNameTaken = await this.prisma.user.findFirst({
+      where: { role: UserRole.CUSTOMER, displayNameKey },
+      select: { id: true }
+    });
+    if (displayNameTaken) {
+      throw new BadRequestException("Display name is already taken");
+    }
 
     const verificationId = await this.assertCustomerEmailVerification(email, emailCode);
     const passwordHash = await createPasswordHash(body.password);
@@ -117,6 +126,7 @@ export class AuthService {
       email,
       passwordHash,
       displayName,
+      displayNameKey,
       verificationId
     });
 
@@ -126,7 +136,7 @@ export class AuthService {
     };
   }
 
-  private async createCustomerUser(body: { email: string; passwordHash: string; displayName: string; verificationId: string }) {
+  private async createCustomerUser(body: { email: string; passwordHash: string; displayName: string; displayNameKey: string; verificationId: string }) {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const verification = await tx.emailVerificationCode.findUnique({
@@ -148,7 +158,8 @@ export class AuthService {
             email: body.email,
             passwordHash: body.passwordHash,
             role: UserRole.CUSTOMER,
-            displayName: body.displayName
+            displayName: body.displayName,
+            displayNameKey: body.displayNameKey
           },
           select: { id: true, email: true, role: true, displayName: true }
         });
@@ -162,7 +173,7 @@ export class AuthService {
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        throw new BadRequestException("Email is already registered");
+        throw new BadRequestException(isDisplayNameUniqueError(error) ? "Display name is already taken" : "Email is already registered");
       }
       throw error;
     }
@@ -426,4 +437,9 @@ function hashEmailCode(email: string, code: string) {
     throw new InternalServerErrorException("JWT_SECRET is not configured");
   }
   return createHash("sha256").update(`${secret}:${email}:${code}`).digest("hex");
+}
+
+function isDisplayNameUniqueError(error: Prisma.PrismaClientKnownRequestError) {
+  const target = error.meta?.target;
+  return Array.isArray(target) && target.includes("displayNameKey");
 }
