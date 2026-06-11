@@ -47,7 +47,7 @@ export function CustomerAuthForm() {
 
       if (!response.ok) {
         const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
-        throw new Error(message || "请求失败，请检查填写内容");
+        throw new Error(toChineseError(message));
       }
 
       if (data.accessToken) {
@@ -163,6 +163,15 @@ export function CustomerAuthForm() {
       </section>
     </div>
   );
+}
+
+function toChineseError(message?: string) {
+  if (!message) return "请求失败，请检查填写内容";
+  if (message.includes("Email is already registered")) return "这个邮箱已经注册过，请直接登录或换一个邮箱";
+  if (message.includes("Password must be at least 8 characters")) return "密码至少需要 8 位";
+  if (message.includes("Invalid email or password")) return "邮箱或密码不正确";
+  if (message.includes("User role cannot access this portal")) return "这个账号不能进入客户入口";
+  return message;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

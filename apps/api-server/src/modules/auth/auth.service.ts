@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { CompanionProfileStatus, UserRole } from "@prisma/client";
+import { CompanionProfileStatus, Prisma, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "./auth.types";
 import { createPasswordHash, verifyPassword } from "./password.util";
@@ -19,27 +19,46 @@ export class AuthService {
       throw new BadRequestException("email, password and displayName are required");
     }
 
+    if (body.password.length < 8) {
+      throw new BadRequestException("Password must be at least 8 characters");
+    }
+
     const passwordHash = await createPasswordHash(body.password);
 
-    const user = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          email: body.email.toLowerCase(),
-          passwordHash,
-          role: UserRole.CUSTOMER,
-          displayName: body.displayName
-        },
-        select: { id: true, email: true, role: true, displayName: true }
-      });
-
-      await tx.wallet.create({ data: { userId: created.id } });
-      return created;
+    const user = await this.createCustomerUser({
+      email: body.email.toLowerCase(),
+      passwordHash,
+      displayName: body.displayName
     });
 
     return {
       user,
       accessToken: await this.issueToken({ sub: user.id, email: user.email, role: user.role })
     };
+  }
+
+  private async createCustomerUser(body: { email: string; passwordHash: string; displayName: string }) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email: body.email,
+            passwordHash: body.passwordHash,
+            role: UserRole.CUSTOMER,
+            displayName: body.displayName
+          },
+          select: { id: true, email: true, role: true, displayName: true }
+        });
+
+        await tx.wallet.create({ data: { userId: created.id } });
+        return created;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new BadRequestException("Email is already registered");
+      }
+      throw error;
+    }
   }
 
   async login(body: { email: string; password: string; portal: Portal }) {
