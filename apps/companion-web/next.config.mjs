@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  basePath: "/companion"
+  basePath: "/companion",
+  trailingSlash: true
 };
 
 export default nextConfig;
