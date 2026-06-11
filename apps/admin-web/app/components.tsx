@@ -3,17 +3,17 @@ import type { ReactNode } from "react";
 import { AdminAuthGate } from "./auth-gate";
 
 const navItems = [
-  ["Dashboard", "/dashboard"],
-  ["Users", "/users"],
-  ["Companions", "/companions"],
-  ["Add Companion", "/companions/new"],
-  ["Orders", "/orders"],
-  ["Dispatch", "/dispatch"],
-  ["Recharges", "/recharges"],
-  ["Withdrawals", "/withdrawals"],
-  ["Complaints", "/complaints"],
-  ["Finance", "/finance"],
-  ["Logs", "/logs"]
+  ["看板", "/dashboard"],
+  ["用户", "/users"],
+  ["陪玩", "/companions"],
+  ["添加陪玩", "/companions/new"],
+  ["订单", "/orders"],
+  ["派单", "/dispatch"],
+  ["充值", "/recharges"],
+  ["提现", "/withdrawals"],
+  ["投诉", "/complaints"],
+  ["财务", "/finance"],
+  ["日志", "/logs"]
 ] as const;
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -22,16 +22,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <div className="grid min-h-screen lg:grid-cols-[240px_1fr]">
         <aside className="hidden border-r border-dfc-border bg-dfc-surface lg:block">
           <div className="border-b border-dfc-border p-5">
-            <div className="text-lg font-black text-dfc-blue">DFC Admin</div>
-            <div className="mt-1 text-xs text-dfc-muted">Operations console</div>
+            <div className="text-lg font-black text-dfc-blue">May猫饼后台</div>
+            <div className="mt-1 text-xs text-dfc-muted">电竞陪玩运营管理</div>
           </div>
           <nav className="p-3">
             {navItems.map(([label, href]) => (
-              <Link
-                key={href}
-                href={href}
-                className="block rounded-dfc-control px-3 py-2 text-sm text-dfc-subtext hover:bg-dfc-elevated hover:text-dfc-text"
-              >
+              <Link key={href} href={href} className="block rounded-dfc-control px-3 py-2 text-sm text-dfc-subtext hover:bg-dfc-elevated hover:text-dfc-text">
                 {label}
               </Link>
             ))}
@@ -40,12 +36,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <section>
           <header className="sticky top-0 z-20 flex items-center justify-between border-b border-dfc-border bg-dfc-bg/95 px-4 py-3 backdrop-blur md:px-6">
             <div>
-              <div className="text-sm font-semibold">Admin Portal</div>
-              <div className="text-xs text-dfc-muted">Recharge, withdrawal, dispatch, complaints and logs</div>
+              <div className="text-sm font-semibold">管理后台</div>
+              <div className="text-xs text-dfc-muted">充值、提现、派单、投诉、日志</div>
             </div>
-            <span className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-3 py-2 text-xs text-dfc-subtext">
-              SUPER_ADMIN
-            </span>
+            <span className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-3 py-2 text-xs text-dfc-subtext">SUPER_ADMIN</span>
           </header>
           <div className="px-4 py-6 md:px-6">
             <AdminAuthGate>{children}</AdminAuthGate>
@@ -83,9 +77,7 @@ export function DataTable({ columns, rows }: { columns: string[]; rows: Array<Ar
           <thead className="border-b border-dfc-border bg-dfc-elevated text-xs text-dfc-muted">
             <tr>
               {columns.map((column) => (
-                <th key={column} className="px-4 py-3 font-medium">
-                  {column}
-                </th>
+                <th key={column} className="px-4 py-3 font-medium">{column}</th>
               ))}
             </tr>
           </thead>
@@ -94,17 +86,13 @@ export function DataTable({ columns, rows }: { columns: string[]; rows: Array<Ar
               rows.map((row, index) => (
                 <tr key={index} className="border-b border-dfc-border last:border-b-0">
                   {row.map((cell, cellIndex) => (
-                    <td key={cellIndex} className="px-4 py-3 text-dfc-subtext">
-                      {cell}
-                    </td>
+                    <td key={cellIndex} className="px-4 py-3 text-dfc-subtext">{cell}</td>
                   ))}
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-8 text-center text-dfc-muted">
-                  No records
-                </td>
+                <td colSpan={columns.length} className="px-4 py-8 text-center text-dfc-muted">暂无记录</td>
               </tr>
             )}
           </tbody>
@@ -114,13 +102,7 @@ export function DataTable({ columns, rows }: { columns: string[]; rows: Array<Ar
   );
 }
 
-export function StatusBadge({
-  children,
-  tone = "default"
-}: {
-  children: ReactNode;
-  tone?: "default" | "warning" | "danger" | "success";
-}) {
+export function StatusBadge({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "warning" | "danger" | "success" }) {
   const styles = {
     default: "bg-dfc-blue/10 text-dfc-blue",
     warning: "bg-dfc-warning/10 text-dfc-warning",
@@ -130,23 +112,11 @@ export function StatusBadge({
   return <span className={`rounded-dfc-control px-2 py-1 text-xs ${styles[tone]}`}>{children}</span>;
 }
 
-export function ActionButton({
-  children,
-  tone = "primary",
-  onClick
-}: {
-  children: ReactNode;
-  tone?: "primary" | "danger" | "secondary";
-  onClick?: () => void;
-}) {
+export function ActionButton({ children, tone = "primary", onClick }: { children: ReactNode; tone?: "primary" | "danger" | "secondary"; onClick?: () => void }) {
   const styles = {
     primary: "bg-dfc-blue text-slate-950",
     secondary: "border border-dfc-border bg-dfc-surface text-dfc-text",
     danger: "bg-dfc-danger text-white"
   };
-  return (
-    <button type="button" onClick={onClick} className={`rounded-dfc-control px-3 py-2 text-xs font-semibold ${styles[tone]}`}>
-      {children}
-    </button>
-  );
+  return <button type="button" onClick={onClick} className={`rounded-dfc-control px-3 py-2 text-xs font-semibold ${styles[tone]}`}>{children}</button>;
 }

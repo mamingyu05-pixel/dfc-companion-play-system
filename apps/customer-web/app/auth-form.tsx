@@ -80,7 +80,7 @@ export function CustomerAuthForm() {
       <section className="flex flex-col justify-center py-6">
         <div className="max-w-2xl">
           <div className="inline-flex rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-1 text-xs font-semibold text-dfc-blue">
-            May猫饼电竞 · 三角洲行动陪玩
+            May猫饼电竞 · 多游戏陪玩俱乐部
           </div>
           <h1 className="mt-5 text-3xl font-semibold leading-tight text-dfc-text md:text-5xl">
             注册账号，开始预约陪玩

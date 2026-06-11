@@ -49,12 +49,12 @@ export default function UsersPage() {
     const response = await fetch("/api/admin/users", {
       headers: { Authorization: `Bearer ${token}` }
     });
-    if (!response.ok) throw new Error("Failed to load users");
+    if (!response.ok) throw new Error("无法加载用户");
     setUsers((await response.json()) as AdminUser[]);
   }
 
   useEffect(() => {
-    void loadUsers().catch(() => setError("Failed to load real user data"));
+    void loadUsers().catch(() => setError("无法加载真实用户数据"));
   }, []);
 
   async function updateStatus(userId: string, nextStatus: "ACTIVE" | "BANNED") {
@@ -78,7 +78,7 @@ export default function UsersPage() {
       return;
     }
 
-    setStatus(nextStatus === "ACTIVE" ? "User activated" : "User banned");
+    setStatus(nextStatus === "ACTIVE" ? "用户已解封" : "用户已封禁");
     await loadUsers();
   }
 
@@ -86,7 +86,7 @@ export default function UsersPage() {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
     if (!selectedCustomerId) {
-      setError("Please select a customer");
+      setError("请先选择客户");
       return;
     }
 
@@ -107,7 +107,7 @@ export default function UsersPage() {
       return;
     }
 
-    setStatus("Customer balance credited and wallet transaction recorded");
+    setStatus("客户余额已增加，并已写入钱包流水");
     setCreditAmount("");
     setCreditNote("");
     await loadUsers();
@@ -139,7 +139,7 @@ export default function UsersPage() {
       return;
     }
 
-    setStatus("Admin account created");
+    setStatus("管理员账号已创建");
     setAdminEmail("");
     setAdminName("");
     setAdminPassword("");
@@ -165,34 +165,34 @@ export default function UsersPage() {
     user.role,
     <StatusBadge key={`${user.id}-status`} tone={user.status === "ACTIVE" ? "success" : "danger"}>{user.status}</StatusBadge>,
     <div key={`${user.id}-wallet`} className="text-xs leading-5">
-      <div>Balance ¥{formatMoney(user.wallet?.availableBalance ?? "0")}</div>
-      <div>Income ¥{formatMoney(user.wallet?.availableIncome ?? "0")}</div>
+      <div>余额 ¥{formatMoney(user.wallet?.availableBalance ?? "0")}</div>
+      <div>收入 ¥{formatMoney(user.wallet?.availableIncome ?? "0")}</div>
     </div>,
     <div key={`${user.id}-bind`} className="text-xs leading-5">
-      <div>Discord: {user.externalAccounts.some((item) => item.platform === "DISCORD") ? "Bound" : "Unbound"}</div>
-      <div>KOOK: {user.externalAccounts.some((item) => item.platform === "KOOK") ? "Bound" : "Unbound"}</div>
+      <div>Discord：{user.externalAccounts.some((item) => item.platform === "DISCORD") ? "已绑定" : "未绑定"}</div>
+      <div>KOOK：{user.externalAccounts.some((item) => item.platform === "KOOK") ? "已绑定" : "未绑定"}</div>
     </div>,
     user.status === "ACTIVE" ? (
-      <ActionButton key={`${user.id}-ban`} tone="danger" onClick={() => void updateStatus(user.id, "BANNED")}>Ban</ActionButton>
+      <ActionButton key={`${user.id}-ban`} tone="danger" onClick={() => void updateStatus(user.id, "BANNED")}>封禁</ActionButton>
     ) : (
-      <ActionButton key={`${user.id}-activate`} tone="secondary" onClick={() => void updateStatus(user.id, "ACTIVE")}>Activate</ActionButton>
+      <ActionButton key={`${user.id}-activate`} tone="secondary" onClick={() => void updateStatus(user.id, "ACTIVE")}>解封</ActionButton>
     )
   ]);
 
   return (
     <AdminShell>
-      <SectionHeader title="User Management" desc="Search real users, credit customer balance manually and create admin accounts." />
+      <SectionHeader title="用户管理" desc="搜索真实用户，给客户人工加余额，并创建管理员账号。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
       <section className="mb-6 grid gap-4 xl:grid-cols-[1fr_1fr]">
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">Search Users / Manual Balance Credit</h2>
+          <h2 className="text-base font-semibold">搜索用户 / 人工加余额</h2>
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="mt-4 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
-            placeholder="Search name, email, ID, role or status, e.g. 66"
+            placeholder="搜索昵称、邮箱、ID、角色或状态，例如 66"
           />
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <select
@@ -200,7 +200,7 @@ export default function UsersPage() {
               onChange={(event) => setSelectedCustomerId(event.target.value)}
               className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
             >
-              <option value="">Select customer to credit</option>
+              <option value="">选择要加余额的客户</option>
               {customerOptions.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.displayName} / {user.email}
@@ -211,7 +211,7 @@ export default function UsersPage() {
               value={creditAmount}
               onChange={(event) => setCreditAmount(event.target.value)}
               className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
-              placeholder="Amount, e.g. 300"
+              placeholder="金额，例如 300"
               inputMode="decimal"
             />
           </div>
@@ -219,32 +219,32 @@ export default function UsersPage() {
             value={creditNote}
             onChange={(event) => setCreditNote(event.target.value)}
             className="mt-3 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
-            placeholder="Note, e.g. WeChat transfer confirmed"
+            placeholder="备注，例如微信转账已确认"
           />
           <button type="button" onClick={() => void creditCustomerBalance()} className="mt-4 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">
-            Credit Customer Balance
+            给客户增加余额
           </button>
         </div>
 
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">Create Admin Account</h2>
+          <h2 className="text-base font-semibold">创建管理员账号</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <input value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="Admin email" />
-            <input value={adminName} onChange={(event) => setAdminName(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="Admin display name" />
-            <input value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="Initial password, at least 8 chars" type="password" />
+            <input value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="管理员邮箱" />
+            <input value={adminName} onChange={(event) => setAdminName(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="管理员昵称" />
+            <input value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="初始密码，至少 8 位" type="password" />
             <select value={adminRole} onChange={(event) => setAdminRole(event.target.value === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN")} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
               <option value="ADMIN">ADMIN</option>
               <option value="SUPER_ADMIN">SUPER_ADMIN</option>
             </select>
           </div>
           <button type="button" onClick={() => void createAdminAccount()} className="mt-4 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">
-            Create Admin
+            创建管理员
           </button>
-          <p className="mt-3 text-xs text-dfc-muted">Only SUPER_ADMIN can create admin accounts.</p>
+          <p className="mt-3 text-xs text-dfc-muted">只有 SUPER_ADMIN 可以创建管理员账号。</p>
         </div>
       </section>
 
-      <DataTable columns={["ID", "Profile", "Role", "Status", "Wallet", "Bindings", "Action"]} rows={rows} />
+      <DataTable columns={["ID", "资料", "角色", "状态", "钱包", "绑定", "操作"]} rows={rows} />
     </AdminShell>
   );
 }
@@ -259,14 +259,14 @@ function formatMoney(value: string) {
 }
 
 function toFriendlyError(message?: string) {
-  if (!message) return "Operation failed";
-  if (message.includes("Admin cannot ban self")) return "Admin cannot ban own account";
-  if (message.includes("Invalid user status")) return "Invalid user status";
-  if (message.includes("Only SUPER_ADMIN can create admin accounts")) return "Only SUPER_ADMIN can create admin accounts";
-  if (message.includes("Email is already registered")) return "Email is already registered";
-  if (message.includes("Password must be at least 8 characters")) return "Password must be at least 8 characters";
-  if (message.includes("Customer does not exist or is not active")) return "Customer does not exist or is not active";
-  if (message.includes("amount must be a valid amount")) return "Please enter a valid amount";
-  if (message.includes("amount must be greater than 0")) return "Amount must be greater than 0";
+  if (!message) return "操作失败";
+  if (message.includes("Admin cannot ban self")) return "不能封禁自己的管理员账号";
+  if (message.includes("Invalid user status")) return "无效账号状态";
+  if (message.includes("Only SUPER_ADMIN can create admin accounts")) return "只有超级管理员可以创建管理员账号";
+  if (message.includes("Email is already registered")) return "该邮箱已注册";
+  if (message.includes("Password must be at least 8 characters")) return "密码至少 8 位";
+  if (message.includes("Customer does not exist or is not active")) return "客户不存在或不可用";
+  if (message.includes("amount must be a valid amount")) return "请输入正确金额";
+  if (message.includes("amount must be greater than 0")) return "金额必须大于 0";
   return message;
 }

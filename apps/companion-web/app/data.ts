@@ -1,6 +1,7 @@
 export const companionProfile = {
   nickname: "Nova",
-  rank: "烽火钻石",
+  game: "三角洲行动",
+  rank: "高分段",
   price: 68,
   onlineStatus: "在线",
   listedStatus: "已上架",
@@ -10,13 +11,13 @@ export const companionProfile = {
 };
 
 export const availableOrders = [
-  { id: "DFC-240701", mode: "烽火地带", hours: 2, amount: 136, customer: "客户A", status: "已派单" },
-  { id: "DFC-240702", mode: "全面战场", hours: 1.5, amount: 102, customer: "客户B", status: "已派单" }
+  { id: "MAY-240701", mode: "三角洲行动 / 烽火地带", hours: 2, amount: 136, customer: "客户A", status: "已派单" },
+  { id: "MAY-240702", mode: "无畏契约 / 排位", hours: 1.5, amount: 132, customer: "客户B", status: "已派单" }
 ];
 
 export const myOrders = [
-  { id: "DFC-240699", mode: "烽火地带", hours: 2, amount: 136, status: "进行中" },
-  { id: "DFC-240688", mode: "烽火地带", hours: 1, amount: 68, status: "已完成" }
+  { id: "MAY-240699", mode: "三角洲行动 / 烽火地带", hours: 2, amount: 136, status: "进行中" },
+  { id: "MAY-240688", mode: "英雄联盟 / 双排", hours: 1, amount: 68, status: "已完成" }
 ];
 
 export const earnings = [

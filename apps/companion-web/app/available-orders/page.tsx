@@ -24,12 +24,12 @@ export default function AvailableOrdersPage() {
     const response = await fetch("/api/orders/companion/available", {
       headers: { Authorization: `Bearer ${token}` }
     });
-    if (!response.ok) throw new Error("Failed to load orders");
+    if (!response.ok) throw new Error("无法加载订单");
     setOrders((await response.json()) as Order[]);
   }
 
   useEffect(() => {
-    void loadOrders().catch(() => setError("Failed to load available orders"));
+    void loadOrders().catch(() => setError("无法加载可接订单"));
   }, []);
 
   async function acceptOrder(orderId: string) {
@@ -44,16 +44,16 @@ export default function AvailableOrdersPage() {
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
     if (!response.ok) {
       const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(message ?? "Failed to accept order");
+      setError(message ?? "接单失败");
       return;
     }
-    setStatus("Order accepted");
+    setStatus("接单成功");
     await loadOrders();
   }
 
   return (
     <CompanionShell>
-      <SectionHeader title="Available Orders" desc="Only assigned orders for your account, or platform match orders open to listed companions, appear here." />
+      <SectionHeader title="可接订单" desc="这里只显示派给你的订单，或平台人工匹配开放给已上架陪玩的订单。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
       <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -68,12 +68,12 @@ export default function AvailableOrdersPage() {
                 amount: Number(order.totalAmount),
                 status: order.status
               }}
-              action="Accept"
+              action="接单"
               onAction={() => void acceptOrder(order.id)}
             />
           ))
         ) : (
-          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">No available orders.</div>
+          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">暂无可接订单。</div>
         )}
       </div>
     </CompanionShell>

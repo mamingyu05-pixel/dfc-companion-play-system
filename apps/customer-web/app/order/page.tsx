@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { CustomerShell, SectionHeader } from "../components";
+import { games } from "../data";
 
 type CompanionOption = {
   id: string;
   nickname: string;
+  game: string;
   onlineStatus: string;
   deltaForceRank: string;
   skillModes: string[];
@@ -21,11 +23,12 @@ type WalletSummary = {
 };
 
 export default function OrderPage() {
+  const [game, setGame] = useState("DELTA_FORCE");
   const [companions, setCompanions] = useState<CompanionOption[]>([]);
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [assignmentType, setAssignmentType] = useState<"DIRECT" | "MATCH">("DIRECT");
   const [companionId, setCompanionId] = useState("");
-  const [mode, setMode] = useState("Hot Zone");
+  const [mode, setMode] = useState("排位/上分");
   const [hours, setHours] = useState("2");
   const [notes, setNotes] = useState("");
   const [voiceTrialRequested, setVoiceTrialRequested] = useState(true);
@@ -33,14 +36,14 @@ export default function OrderPage() {
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function loadData() {
+  async function loadData(selectedGame = game) {
     const token = localStorage.getItem("dfc_customer_token");
     if (!token) return;
     const [companionsResponse, walletResponse] = await Promise.all([
-      fetch("/api/orders/companions", { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`/api/orders/companions?game=${encodeURIComponent(selectedGame)}`, { headers: { Authorization: `Bearer ${token}` } }),
       fetch("/api/wallet/customer-summary", { headers: { Authorization: `Bearer ${token}` } })
     ]);
-    if (!companionsResponse.ok || !walletResponse.ok) throw new Error("Failed to load order data");
+    if (!companionsResponse.ok || !walletResponse.ok) throw new Error("无法加载下单数据");
     const companionData = (await companionsResponse.json()) as CompanionOption[];
     setCompanions(companionData);
     setCompanionId(companionData[0]?.id ?? "");
@@ -48,9 +51,19 @@ export default function OrderPage() {
   }
 
   useEffect(() => {
-    void loadData().catch(() => setError("Failed to load real order data. Please refresh."));
+    const urlGame = new URLSearchParams(window.location.search).get("game");
+    if (urlGame && games.some((item) => item.code === urlGame)) {
+      setGame(urlGame);
+      return;
+    }
+    void loadData(game).catch(() => setError("无法加载真实下单数据，请刷新页面"));
   }, []);
 
+  useEffect(() => {
+    void loadData(game).catch(() => setError("无法加载真实下单数据，请刷新页面"));
+  }, [game]);
+
+  const selectedGame = games.find((item) => item.code === game);
   const selectedCompanion = companions.find((item) => item.id === companionId);
   const unitPrice = assignmentType === "MATCH" ? 50 : Number(selectedCompanion?.pricePerHour ?? 0);
   const totalAmount = useMemo(() => unitPrice * Number(hours || 0), [hours, unitPrice]);
@@ -77,6 +90,7 @@ export default function OrderPage() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          game,
           mode,
           hours,
           companionId: assignmentType === "DIRECT" ? companionId : undefined,
@@ -89,10 +103,10 @@ export default function OrderPage() {
         const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
         throw new Error(toFriendlyError(message));
       }
-      setStatus(`Order created: ${data.orderNo ?? ""}. It is now waiting for dispatch or acceptance.`);
-      await loadData();
+      setStatus(`下单成功：${data.orderNo ?? ""}。订单已进入待派单/待接单流程。`);
+      await loadData(game);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Order failed");
+      setError(err instanceof Error ? err.message : "下单失败，请稍后重试");
     } finally {
       setIsSubmitting(false);
     }
@@ -100,66 +114,78 @@ export default function OrderPage() {
 
   return (
     <CustomerShell>
-      <SectionHeader title="Create Order" desc="Choose a companion directly or let an admin manually match one for you. Payment is calculated on the backend." />
+      <SectionHeader title="提交订单" desc="先选择游戏，再选择指定陪玩或平台人工匹配。金额由后端计算并冻结余额。" />
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
         <form onSubmit={submit} className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">Order Details</h2>
+          <h2 className="text-base font-semibold">订单信息</h2>
+
+          <label className="mt-4 block">
+            <span className="text-sm text-dfc-subtext">游戏</span>
+            <select value={game} onChange={(event) => setGame(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
+              {games.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.name} / {item.category}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className={`rounded-dfc-control border p-3 ${assignmentType === "DIRECT" ? "border-dfc-blue bg-dfc-blue/10" : "border-dfc-border bg-dfc-bg"}`}>
               <input name="assignmentType" type="radio" checked={assignmentType === "DIRECT"} onChange={() => setAssignmentType("DIRECT")} className="mr-2" />
-              <span className="text-sm font-semibold text-dfc-blue">Choose Companion</span>
-              <p className="mt-1 text-xs leading-5 text-dfc-subtext">Pick a specific companion. Admin dispatch will target this companion.</p>
+              <span className="text-sm font-semibold text-dfc-blue">指定陪玩</span>
+              <p className="mt-1 text-xs leading-5 text-dfc-subtext">选择具体陪玩下单，管理员确认后派给该陪玩。</p>
             </label>
             <label className={`rounded-dfc-control border p-3 ${assignmentType === "MATCH" ? "border-dfc-blue bg-dfc-blue/10" : "border-dfc-border bg-dfc-bg"}`}>
               <input name="assignmentType" type="radio" checked={assignmentType === "MATCH"} onChange={() => setAssignmentType("MATCH")} className="mr-2" />
-              <span className="text-sm font-semibold">Manual Match</span>
-              <p className="mt-1 text-xs leading-5 text-dfc-subtext">If you have not chosen a companion, admin will manually match based on mode, voice and budget.</p>
+              <span className="text-sm font-semibold">平台人工挑人</span>
+              <p className="mt-1 text-xs leading-5 text-dfc-subtext">没选好陪玩时提交需求，管理员按游戏、语音、预算人工匹配。</p>
             </label>
           </div>
 
           {assignmentType === "DIRECT" ? (
             <label className="mt-4 block">
-              <span className="text-sm text-dfc-subtext">Companion</span>
+              <span className="text-sm text-dfc-subtext">陪玩</span>
               <select value={companionId} onChange={(event) => setCompanionId(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
-                {companions.map((companion) => (
-                  <option key={companion.id} value={companion.id}>
-                    {companion.nickname} / {companion.deltaForceRank} / ¥{formatMoney(companion.pricePerHour)}/h
-                  </option>
-                ))}
+                {companions.length ? (
+                  companions.map((companion) => (
+                    <option key={companion.id} value={companion.id}>
+                      {companion.nickname} / {companion.deltaForceRank} / ¥{formatMoney(companion.pricePerHour)}/小时
+                    </option>
+                  ))
+                ) : (
+                  <option value="">当前游戏暂无上架陪玩，请选择平台人工挑人</option>
+                )}
               </select>
             </label>
           ) : null}
 
           <label className="mt-4 block">
-            <span className="text-sm text-dfc-subtext">Game Mode</span>
-            <select value={mode} onChange={(event) => setMode(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
-              <option>Hot Zone</option>
-              <option>Warfare</option>
-            </select>
+            <span className="text-sm text-dfc-subtext">服务模式</span>
+            <input value={mode} onChange={(event) => setMode(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="例如：排位上分、娱乐陪玩、教学复盘、烽火地带" />
           </label>
 
           <label className="mt-4 block">
-            <span className="text-sm text-dfc-subtext">Duration</span>
+            <span className="text-sm text-dfc-subtext">服务时长</span>
             <select value={hours} onChange={(event) => setHours(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
-              <option value="1">1 hour</option>
-              <option value="2">2 hours</option>
-              <option value="3">3 hours</option>
+              <option value="1">1 小时</option>
+              <option value="2">2 小时</option>
+              <option value="3">3 小时</option>
             </select>
           </label>
 
           <label className="mt-4 block">
-            <span className="text-sm text-dfc-subtext">Notes</span>
-            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="mt-2 min-h-28 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="Play style, voice requirement, schedule, rank goal..." />
+            <span className="text-sm text-dfc-subtext">需求备注</span>
+            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="mt-2 min-h-28 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="例如：段位、服务器、语音要求、想打的模式、时间安排" />
           </label>
 
           <label className="mt-4 flex gap-3 rounded-dfc-control border border-dfc-border bg-dfc-bg p-3">
             <input type="checkbox" checked={voiceTrialRequested} onChange={(event) => setVoiceTrialRequested(event.target.checked)} className="mt-1" />
             <span>
-              <span className="block text-sm font-semibold">Request voice trial</span>
+              <span className="block text-sm font-semibold">申请进入语音频道试音</span>
               <span className="mt-1 block text-xs leading-5 text-dfc-subtext">
-                Admin can create a temporary Discord/KOOK voice room after dispatch. Trial is for communication check only.
+                管理员派单后可创建临时 Discord/KOOK 语音房。试音只确认沟通体验，不代表订单开始或收益结算。
               </span>
             </span>
           </label>
@@ -167,24 +193,25 @@ export default function OrderPage() {
           {error ? <Alert tone="danger">{error}</Alert> : null}
           {status ? <Alert tone="success">{status}</Alert> : null}
 
-          <button disabled={isSubmitting || totalAmount <= 0} className="mt-5 w-full rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">
-            {isSubmitting ? "Submitting..." : "Submit Order"}
+          <button disabled={isSubmitting || totalAmount <= 0 || (assignmentType === "DIRECT" && !companionId)} className="mt-5 w-full rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">
+            {isSubmitting ? "提交中..." : "确认下单"}
           </button>
         </form>
 
         <aside className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">Price Summary</h2>
+          <h2 className="text-base font-semibold">价格确认</h2>
           <div className="mt-4 space-y-3 text-sm">
-            <Line label="Unit Price" value={`¥${formatMoney(String(unitPrice))} / hour`} />
-            <Line label="Duration" value={`${hours} hours`} />
-            <Line label="Total" value={`¥${formatMoney(String(totalAmount))}`} strong />
-            <Line label="Balance" value={`¥${formatMoney(String(availableBalance))}`} />
-            <Line label="After Order" value={`¥${formatMoney(String(balanceAfter))}`} />
+            <Line label="游戏" value={selectedGame?.name ?? game} />
+            <Line label="陪玩单价" value={`¥${formatMoney(String(unitPrice))} / 小时`} />
+            <Line label="选择时长" value={`${hours} 小时`} />
+            <Line label="订单总价" value={`¥${formatMoney(String(totalAmount))}`} strong />
+            <Line label="当前余额" value={`¥${formatMoney(String(availableBalance))}`} />
+            <Line label="下单后余额" value={`¥${formatMoney(String(balanceAfter))}`} />
           </div>
           <div className={`mt-4 rounded-dfc-control border px-3 py-2 text-xs ${balanceAfter >= 0 ? "border-dfc-success/40 bg-dfc-success/10 text-dfc-success" : "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger"}`}>
-            {balanceAfter >= 0 ? "Balance is enough. Final amount is calculated by the API." : "Insufficient balance. Please recharge first."}
+            {balanceAfter >= 0 ? "余额充足，可提交订单。最终金额以后端计算为准。" : "余额不足，请先充值。"}
           </div>
-          {balanceAfter < 0 ? <Link href="/recharge" className="mt-3 inline-block text-sm font-semibold text-dfc-blue">Recharge now</Link> : null}
+          {balanceAfter < 0 ? <Link href="/recharge" className="mt-3 inline-block text-sm font-semibold text-dfc-blue">去充值</Link> : null}
         </aside>
       </section>
     </CustomerShell>
@@ -210,11 +237,11 @@ function formatMoney(value: string) {
 }
 
 function toFriendlyError(message?: string) {
-  if (!message) return "Order failed. Please check the order details.";
-  if (message.includes("Insufficient balance")) return "Insufficient balance. Please recharge first.";
-  if (message.includes("Customer wallet does not exist")) return "Customer wallet does not exist. Please contact support.";
-  if (message.includes("Companion is not listed")) return "This companion is not available for orders.";
-  if (message.includes("PLATFORM_MATCH_UNIT_PRICE")) return "Manual match price is not configured. Please contact admin.";
-  if (message.includes("hours must be a valid amount")) return "Please enter a valid duration.";
+  if (!message) return "下单失败，请检查订单信息";
+  if (message.includes("Insufficient balance")) return "余额不足，请先充值";
+  if (message.includes("Customer wallet does not exist")) return "客户钱包不存在，请联系客服";
+  if (message.includes("Companion is not listed")) return "该陪玩未上架或不支持所选游戏";
+  if (message.includes("PLATFORM_MATCH_UNIT_PRICE")) return "平台人工挑人价格未配置，请联系管理员";
+  if (message.includes("hours must be a valid amount")) return "请输入正确的服务时长";
   return message;
 }

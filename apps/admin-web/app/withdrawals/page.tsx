@@ -33,12 +33,12 @@ export default function WithdrawalsPage() {
     const response = await fetch("/api/admin/withdrawals", {
       headers: { Authorization: `Bearer ${token}` }
     });
-    if (!response.ok) throw new Error("Failed to load withdrawals");
+    if (!response.ok) throw new Error("无法加载提现申请");
     setWithdrawals((await response.json()) as Withdrawal[]);
   }
 
   useEffect(() => {
-    void loadWithdrawals().catch(() => setError("Failed to load real withdrawal data"));
+    void loadWithdrawals().catch(() => setError("无法加载真实提现数据"));
   }, []);
 
   async function reviewWithdrawal(id: string, nextStatus: "APPROVED" | "REJECTED" | "PAID") {
@@ -62,35 +62,35 @@ export default function WithdrawalsPage() {
     }
     setReviewNote("");
     setPayoutReference("");
-    setStatus(nextStatus === "PAID" ? "Withdrawal marked as paid" : nextStatus === "APPROVED" ? "Withdrawal approved" : "Withdrawal rejected");
+    setStatus(nextStatus === "PAID" ? "提现已确认打款" : nextStatus === "APPROVED" ? "提现已通过" : "提现已拒绝");
     await loadWithdrawals();
   }
 
   return (
     <AdminShell>
-      <SectionHeader title="Withdrawal Review" desc="Review companion withdrawals. After manual payout, mark the request as PAID to generate wallet records." />
+      <SectionHeader title="提现审核" desc="审核陪玩提现。人工打款后点击确认打款，系统会生成钱包流水。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
       <section className="mb-4 grid gap-3 md:grid-cols-2">
-        <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="Review note, optional" />
-        <input value={payoutReference} onChange={(event) => setPayoutReference(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="Manual payout reference, required before marking PAID" />
+        <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="审核备注，可留空" />
+        <input value={payoutReference} onChange={(event) => setPayoutReference(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="人工打款流水号，确认打款时填写" />
       </section>
       <DataTable
-        columns={["ID", "Companion", "Amount", "Payout Account", "Status", "Action"]}
+        columns={["ID", "陪玩", "金额", "收款账户", "状态", "操作"]}
         rows={withdrawals.map((item) => [
           item.id,
           <div key={`${item.id}-companion`}>
             <div className="font-medium text-dfc-text">{item.companion.displayName}</div>
             <div className="mt-1 text-xs text-dfc-subtext">{item.companion.email}</div>
-            <div className="mt-1 text-xs text-dfc-muted">Available ¥{formatMoney(item.companion.availableIncome)}</div>
+            <div className="mt-1 text-xs text-dfc-muted">可提 ¥{formatMoney(item.companion.availableIncome)}</div>
           </div>,
           `¥${formatMoney(item.amount)}`,
           item.payoutAccount,
           <StatusBadge key={`${item.id}-status`} tone={item.status === "PAID" ? "success" : item.status === "REJECTED" ? "danger" : "warning"}>{item.status}</StatusBadge>,
           <div key={`${item.id}-a`} className="flex flex-wrap gap-2">
-            {item.status === "PENDING" ? <ActionButton onClick={() => void reviewWithdrawal(item.id, "APPROVED")}>Approve</ActionButton> : null}
-            {item.status === "PENDING" ? <ActionButton tone="danger" onClick={() => void reviewWithdrawal(item.id, "REJECTED")}>Reject</ActionButton> : null}
-            {item.status === "APPROVED" ? <ActionButton tone="secondary" onClick={() => void reviewWithdrawal(item.id, "PAID")}>Mark Paid</ActionButton> : null}
+            {item.status === "PENDING" ? <ActionButton onClick={() => void reviewWithdrawal(item.id, "APPROVED")}>通过</ActionButton> : null}
+            {item.status === "PENDING" ? <ActionButton tone="danger" onClick={() => void reviewWithdrawal(item.id, "REJECTED")}>拒绝</ActionButton> : null}
+            {item.status === "APPROVED" ? <ActionButton tone="secondary" onClick={() => void reviewWithdrawal(item.id, "PAID")}>确认打款</ActionButton> : null}
           </div>
         ])}
       />
@@ -108,8 +108,8 @@ function formatMoney(value: string) {
 }
 
 function toFriendlyError(message?: string) {
-  if (!message) return "Operation failed";
-  if (message.includes("Withdrawal must be APPROVED")) return "Withdrawal must be approved before marking paid";
-  if (message.includes("Withdrawal request cannot be reviewed")) return "Current withdrawal status cannot be reviewed";
+  if (!message) return "操作失败";
+  if (message.includes("Withdrawal must be APPROVED")) return "提现必须先通过后才能确认打款";
+  if (message.includes("Withdrawal request cannot be reviewed")) return "当前提现状态不能审核";
   return message;
 }

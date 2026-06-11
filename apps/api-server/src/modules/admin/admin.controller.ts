@@ -3,6 +3,7 @@ import {
   BotPlatform,
   CompanionProfileStatus,
   DeltaForceRank,
+  GameCode,
   OnlineStatus,
   Prisma,
   UserRole,
@@ -53,6 +54,7 @@ export class AdminController {
         companionProfile: {
           select: {
             nickname: true,
+            game: true,
             status: true,
             onlineStatus: true,
             pricePerHour: true
@@ -85,6 +87,7 @@ export class AdminController {
         companionProfile: item.companionProfile
           ? {
               nickname: item.companionProfile.nickname,
+              game: item.companionProfile.game,
               status: item.companionProfile.status,
               onlineStatus: item.companionProfile.onlineStatus,
               pricePerHour: item.companionProfile.pricePerHour.toString()
@@ -389,6 +392,7 @@ export class AdminController {
         displayName: profile.user.displayName,
         userStatus: profile.user.status,
         nickname: profile.nickname,
+        game: profile.game,
         status: profile.status,
         onlineStatus: profile.onlineStatus,
         deltaForceRank: profile.deltaForceRank,
@@ -411,6 +415,7 @@ export class AdminController {
       pricePerHour: string;
       avatarUrl?: string;
       gender?: string;
+      game?: GameCode;
       deltaForceRank?: DeltaForceRank;
       skillModes?: string[];
       bio?: string;
@@ -440,6 +445,7 @@ export class AdminController {
                 nickname: body.nickname,
                 avatarUrl: body.avatarUrl,
                 gender: body.gender,
+                game: body.game ?? GameCode.DELTA_FORCE,
                 deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
                 skillModes: body.skillModes ?? [],
                 pricePerHour,

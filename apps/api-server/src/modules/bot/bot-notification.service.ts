@@ -77,7 +77,7 @@ export class BotNotificationService {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          content: "DFC 新订单待接单",
+          content: "May猫饼新订单待接单",
           embeds: [
             {
               title: `订单 ${payload.orderNo}`,
@@ -138,7 +138,7 @@ export class BotNotificationService {
         modules: [
           {
             type: "header",
-            text: { type: "plain-text", content: "DFC 新订单待接单" }
+            text: { type: "plain-text", content: "May猫饼新订单待接单" }
           },
           {
             type: "section",

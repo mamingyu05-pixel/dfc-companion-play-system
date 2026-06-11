@@ -25,12 +25,12 @@ export default function ComplaintsPage() {
     const response = await fetch("/api/admin/complaints", {
       headers: { Authorization: `Bearer ${token}` }
     });
-    if (!response.ok) throw new Error("Failed to load complaints");
+    if (!response.ok) throw new Error("无法加载投诉");
     setComplaints((await response.json()) as Complaint[]);
   }
 
   useEffect(() => {
-    void loadComplaints().catch(() => setError("Failed to load real complaint data"));
+    void loadComplaints().catch(() => setError("无法加载真实投诉数据"));
   }, []);
 
   async function reviewComplaint(id: string, nextStatus: "IN_REVIEW" | "RESOLVED" | "REJECTED") {
@@ -49,22 +49,22 @@ export default function ComplaintsPage() {
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
     if (!response.ok) {
       const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(message ?? "Failed to update complaint");
+      setError(message ?? "投诉处理失败");
       return;
     }
     setResolution("");
-    setStatus("Complaint status updated");
+    setStatus("投诉状态已更新");
     await loadComplaints();
   }
 
   return (
     <AdminShell>
-      <SectionHeader title="Complaint Handling" desc="Review customer and companion complaints. Refunds remain manual in phase 1." />
+      <SectionHeader title="投诉处理" desc="处理客户和陪玩投诉。第一阶段退款仍由管理员人工处理。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
-      <input value={resolution} onChange={(event) => setResolution(event.target.value)} className="mb-4 w-full max-w-xl rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="Resolution note" />
+      <input value={resolution} onChange={(event) => setResolution(event.target.value)} className="mb-4 w-full max-w-xl rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="处理说明 / 结果" />
       <DataTable
-        columns={["ID", "Order", "Reporter", "Reason", "Status", "Action"]}
+        columns={["ID", "订单", "发起人", "原因", "状态", "操作"]}
         rows={complaints.map((item) => [
           item.id,
           `${item.order.orderNo} / ¥${formatMoney(item.order.totalAmount)} / ${item.order.status}`,
@@ -72,9 +72,9 @@ export default function ComplaintsPage() {
           item.reason,
           <StatusBadge key={`${item.id}-s`} tone={item.status === "RESOLVED" ? "success" : item.status === "REJECTED" ? "danger" : "warning"}>{item.status}</StatusBadge>,
           <div key={`${item.id}-a`} className="flex flex-wrap gap-2">
-            <ActionButton tone="secondary" onClick={() => void reviewComplaint(item.id, "IN_REVIEW")}>Reviewing</ActionButton>
-            <ActionButton onClick={() => void reviewComplaint(item.id, "RESOLVED")}>Resolve</ActionButton>
-            <ActionButton tone="danger" onClick={() => void reviewComplaint(item.id, "REJECTED")}>Reject</ActionButton>
+            <ActionButton tone="secondary" onClick={() => void reviewComplaint(item.id, "IN_REVIEW")}>处理中</ActionButton>
+            <ActionButton onClick={() => void reviewComplaint(item.id, "RESOLVED")}>解决</ActionButton>
+            <ActionButton tone="danger" onClick={() => void reviewComplaint(item.id, "REJECTED")}>拒绝</ActionButton>
           </div>
         ])}
       />

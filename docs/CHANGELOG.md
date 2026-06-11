@@ -5,6 +5,7 @@
 - 建立 DFC Monorepo 工程基线。
 - 新增 Prisma Schema，覆盖用户、陪玩、订单、钱包、充值、提现、投诉、日志和 Bot 事件。
 - 新增三个门户入口：`/customer`、`/companion`、`/admin`。
+- 品牌改为 May猫饼电竞，扩展为多热门游戏陪玩平台，并新增 `GameCode` 扩展迁移。
 - 新增 API Server 模块骨架。
 - 新增 Discord Bot 接单按钮骨架。
 - 新增 KOOK Bot HTTP 适配骨架，支持频道通知、私信、语音频道创建和角色授权接口。

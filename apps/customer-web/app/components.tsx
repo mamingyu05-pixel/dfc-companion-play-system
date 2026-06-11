@@ -5,6 +5,7 @@ import { CustomerAuthGate } from "./auth-gate";
 type Companion = {
   id: string;
   nickname: string;
+  game?: string;
   rank: string;
   modes: string[];
   price: number;
@@ -26,24 +27,24 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
           <Link href="/" className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-dfc border border-dfc-blue bg-dfc-surface text-sm font-black text-dfc-blue shadow-dfc-glow">
-              DFC
+              MAY
             </span>
             <span>
-              <span className="block text-sm font-semibold">Delta Force Club</span>
-              <span className="block text-xs text-dfc-muted">Companion Play</span>
+              <span className="block text-sm font-semibold">May猫饼电竞</span>
+              <span className="block text-xs text-dfc-muted">多游戏陪玩俱乐部</span>
             </span>
           </Link>
           <nav className="hidden items-center gap-2 md:flex">
-            <NavLink href="/">Register/Login</NavLink>
-            <NavLink href="/home">Lobby</NavLink>
-            <NavLink href="/companions">Companions</NavLink>
-            <NavLink href="/order">Order</NavLink>
-            <NavLink href="/recharge">Recharge</NavLink>
-            <NavLink href="/complaints">Complaints</NavLink>
-            <NavLink href="/support">Support</NavLink>
+            <NavLink href="/">注册/登录</NavLink>
+            <NavLink href="/home">大厅</NavLink>
+            <NavLink href="/companions">陪玩</NavLink>
+            <NavLink href="/order">下单</NavLink>
+            <NavLink href="/recharge">充值</NavLink>
+            <NavLink href="/complaints">投诉</NavLink>
+            <NavLink href="/support">客服</NavLink>
           </nav>
           <Link href="/recharge" className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-3 py-2 text-xs font-semibold text-dfc-text">
-            Wallet
+            钱包
           </Link>
         </div>
       </header>
@@ -51,11 +52,11 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <CustomerAuthGate>{children}</CustomerAuthGate>
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-dfc-border bg-dfc-bg md:hidden">
-        <MobileNavLink href="/">Login</MobileNavLink>
-        <MobileNavLink href="/home">Lobby</MobileNavLink>
-        <MobileNavLink href="/companions">Players</MobileNavLink>
-        <MobileNavLink href="/order">Order</MobileNavLink>
-        <MobileNavLink href="/support">Support</MobileNavLink>
+        <MobileNavLink href="/">登录</MobileNavLink>
+        <MobileNavLink href="/home">大厅</MobileNavLink>
+        <MobileNavLink href="/companions">陪玩</MobileNavLink>
+        <MobileNavLink href="/order">下单</MobileNavLink>
+        <MobileNavLink href="/support">客服</MobileNavLink>
       </nav>
     </main>
   );
@@ -92,11 +93,11 @@ export function CompanionCard({ companion }: { companion: Companion }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-base font-semibold">{companion.nickname}</h2>
-            {isRecommended ? <Badge tone="gold">Recommended</Badge> : null}
+            {isRecommended ? <Badge tone="gold">推荐</Badge> : null}
             <StatusBadge status={companion.onlineStatus} />
           </div>
           <p className="mt-1 text-xs text-dfc-subtext">
-            {companion.rank} / {companion.voice}
+            {companion.game ? `${companion.game} / ` : ""}{companion.rank} / {companion.voice}
           </p>
         </div>
       </div>
@@ -104,7 +105,7 @@ export function CompanionCard({ companion }: { companion: Companion }) {
       <p className="mt-4 min-h-11 text-sm leading-6 text-dfc-subtext">{companion.intro}</p>
 
       <div className="mt-4 rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 p-3">
-        <div className="text-xs font-semibold text-dfc-blue">Voice preview</div>
+        <div className="text-xs font-semibold text-dfc-blue">语音展示</div>
         <div className="mt-1 text-sm text-dfc-subtext">{companion.voiceStyle}</div>
         <div className="mt-1 text-xs text-dfc-muted">{companion.trial}</div>
       </div>
@@ -120,26 +121,26 @@ export function CompanionCard({ companion }: { companion: Companion }) {
 
       <div className="mt-5 flex items-end justify-between gap-3">
         <div>
-          <div className="text-xs text-dfc-muted">Rating / Orders</div>
+          <div className="text-xs text-dfc-muted">评分 / 成单</div>
           <div className="mt-1 text-sm text-dfc-subtext">
-            {companion.rating} / {companion.orders}
+            {companion.rating} / {companion.orders} 单
           </div>
         </div>
         <div className="text-right">
-          <div className="text-xs text-dfc-muted">Per hour</div>
+          <div className="text-xs text-dfc-muted">每小时</div>
           <div className="text-xl font-semibold text-dfc-blue">¥{companion.price}</div>
         </div>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2">
         <Link href={`/companions/${companion.id}`} className="rounded-dfc-control border border-dfc-border px-3 py-2 text-center text-sm font-semibold text-dfc-text">
-          Details
+          详情
         </Link>
         <Link href={`/order?companion=${companion.id}&trial=1`} className="rounded-dfc-control border border-dfc-blue/50 px-3 py-2 text-center text-sm font-semibold text-dfc-blue">
-          Trial
+          试音
         </Link>
         <Link href={`/order?companion=${companion.id}`} className="rounded-dfc-control bg-dfc-blue px-3 py-2 text-center text-sm font-semibold text-slate-950">
-          Order
+          下单
         </Link>
       </div>
     </article>
@@ -149,16 +150,16 @@ export function CompanionCard({ companion }: { companion: Companion }) {
 export function PriceSummary() {
   return (
     <aside className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-      <h2 className="text-base font-semibold">Price summary</h2>
+      <h2 className="text-base font-semibold">价格确认</h2>
       <div className="mt-4 space-y-3 text-sm">
-        <Line label="Unit price" value="¥68 / hour" />
-        <Line label="Duration" value="2 hours" />
-        <Line label="Total" value="¥136.00" strong />
-        <Line label="Balance" value="¥164.00" />
-        <Line label="After order" value="¥28.00" />
+        <Line label="陪玩单价" value="¥68 / 小时" />
+        <Line label="选择时长" value="2 小时" />
+        <Line label="订单总价" value="¥136.00" strong />
+        <Line label="当前余额" value="¥164.00" />
+        <Line label="下单后余额" value="¥28.00" />
       </div>
       <div className="mt-4 rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-xs text-dfc-success">
-        Backend will calculate the final payable amount.
+        最终金额以后端计算为准。
       </div>
     </aside>
   );
@@ -174,10 +175,10 @@ export function Badge({ children, tone = "default" }: { children: ReactNode; ton
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const isOnline = status === "ONLINE" || status === "online";
+  const isOnline = status === "ONLINE" || status === "在线";
   return (
     <span className={`rounded-dfc-control px-2 py-1 text-xs ${isOnline ? "bg-dfc-success/10 text-dfc-success" : "bg-dfc-warning/10 text-dfc-warning"}`}>
-      {status}
+      {status === "ONLINE" ? "在线" : status === "BUSY" ? "忙碌" : status === "OFFLINE" ? "离线" : status}
     </span>
   );
 }

@@ -133,6 +133,7 @@ export class AuthService {
         companionProfile: {
           select: {
             nickname: true,
+            game: true,
             onlineStatus: true,
             status: true,
             pricePerHour: true
@@ -212,6 +213,7 @@ export class AuthService {
       companionProfile: user.companionProfile
         ? {
             nickname: user.companionProfile.nickname,
+            game: user.companionProfile.game,
             onlineStatus: user.companionProfile.onlineStatus,
             status: user.companionProfile.status,
             pricePerHour: user.companionProfile.pricePerHour.toString()

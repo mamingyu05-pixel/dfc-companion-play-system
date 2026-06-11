@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { GameCode, UserRole } from "@prisma/client";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -14,8 +14,8 @@ export class OrdersController {
   @Get("companions")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER)
-  listOrderableCompanions() {
-    return this.orders.listOrderableCompanions();
+  listOrderableCompanions(@Query("game") game?: GameCode) {
+    return this.orders.listOrderableCompanions(game);
   }
 
   @Get("my")
@@ -44,7 +44,7 @@ export class OrdersController {
   @Roles(UserRole.CUSTOMER)
   createOrder(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { mode: string; hours: string; companionId?: string; notes?: string; voiceTrialRequested?: boolean }
+    @Body() body: { game?: GameCode; mode: string; hours: string; companionId?: string; notes?: string; voiceTrialRequested?: boolean }
   ) {
     return this.orders.createOrder(user.id, body);
   }

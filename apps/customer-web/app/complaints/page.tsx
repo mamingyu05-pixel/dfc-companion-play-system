@@ -21,7 +21,7 @@ export default function CustomerComplaintsPage() {
       fetch("/api/orders/my", { headers: { Authorization: `Bearer ${token}` } }),
       fetch("/api/complaints/my", { headers: { Authorization: `Bearer ${token}` } })
     ]);
-    if (!ordersResponse.ok || !complaintsResponse.ok) throw new Error("Failed to load complaints");
+    if (!ordersResponse.ok || !complaintsResponse.ok) throw new Error("无法加载投诉数据");
     const orderData = (await ordersResponse.json()) as Order[];
     setOrders(orderData);
     setOrderId((current) => current || orderData[0]?.id || "");
@@ -29,7 +29,7 @@ export default function CustomerComplaintsPage() {
   }
 
   useEffect(() => {
-    void loadData().catch(() => setError("Failed to load real complaint data"));
+    void loadData().catch(() => setError("无法加载真实投诉数据"));
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -37,7 +37,7 @@ export default function CustomerComplaintsPage() {
     const token = localStorage.getItem("dfc_customer_token");
     if (!token) return;
     if (!orderId) {
-      setError("Please select an order first");
+      setError("请先选择订单");
       return;
     }
     setError("");
@@ -53,35 +53,35 @@ export default function CustomerComplaintsPage() {
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
     if (!response.ok) {
       const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(message ?? "Failed to submit complaint");
+      setError(message ?? "提交投诉失败");
       return;
     }
     setReason("");
-    setStatus("Complaint submitted. Admin will handle it manually.");
+    setStatus("投诉已提交，管理员会人工处理。");
     await loadData();
   }
 
   return (
     <CustomerShell>
-      <SectionHeader title="Complaints and Refunds" desc="Submit order-related complaints. Phase 1 refunds are handled manually by admins." />
+      <SectionHeader title="投诉退款" desc="提交订单相关投诉。第一阶段退款由管理员人工处理。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
       <section className="mt-6 grid gap-6 lg:grid-cols-2">
         <form onSubmit={submit} className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">Submit Complaint</h2>
+          <h2 className="text-base font-semibold">提交投诉</h2>
           <select value={orderId} onChange={(event) => setOrderId(event.target.value)} className="mt-4 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
-            <option value="">Select order</option>
+            <option value="">选择订单</option>
             {orders.map((order) => (
               <option key={order.id} value={order.id}>
                 {order.orderNo} / {order.status} / ¥{formatMoney(order.totalAmount)}
               </option>
             ))}
           </select>
-          <textarea required value={reason} onChange={(event) => setReason(event.target.value)} className="mt-4 min-h-28 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="Describe the issue, request and evidence" />
-          <button className="mt-4 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">Submit Complaint</button>
+          <textarea required value={reason} onChange={(event) => setReason(event.target.value)} className="mt-4 min-h-28 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="说明问题、诉求和证据" />
+          <button className="mt-4 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">提交投诉</button>
         </form>
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">My Complaint Records</h2>
+          <h2 className="text-base font-semibold">我的投诉记录</h2>
           <div className="mt-4 space-y-3">
             {complaints.length ? (
               complaints.map((item) => (
@@ -90,11 +90,11 @@ export default function CustomerComplaintsPage() {
                     {item.order.orderNo} / {item.status}
                   </div>
                   <div className="mt-1 text-xs text-dfc-subtext">{item.reason}</div>
-                  {item.resolution ? <div className="mt-2 text-xs text-dfc-blue">Resolution: {item.resolution}</div> : null}
+                  {item.resolution ? <div className="mt-2 text-xs text-dfc-blue">处理结果：{item.resolution}</div> : null}
                 </div>
               ))
             ) : (
-              <div className="text-sm text-dfc-subtext">No complaint records</div>
+              <div className="text-sm text-dfc-subtext">暂无投诉记录</div>
             )}
           </div>
         </div>

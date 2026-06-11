@@ -10,11 +10,37 @@ packages/database/prisma/schema.prisma
 
 - 统一 `users` 表，不建立多账户系统。
 - `role` 区分 `CUSTOMER`、`COMPANION`、`ADMIN`、`SUPER_ADMIN`。
-- 钱包使用同一张 `wallets` 表，客户余额与陪玩收益字段并存。
+- 陪玩和订单都记录 `game`，用于多游戏业务。
+- 钱包使用同一张 `wallets` 表，客户余额和陪玩收益字段并存。
 - 订单状态变化写入 `order_status_logs`。
 - 钱包变动写入 `wallet_transactions`。
 - 管理员操作写入 `admin_logs`。
-- 第一阶段 `game` 固定为 `DELTA_FORCE`。
+
+## GameCode
+
+`GameCode` 首批支持：
+
+- `DELTA_FORCE`
+- `LEAGUE_OF_LEGENDS`
+- `VALORANT`
+- `COUNTER_STRIKE_2`
+- `PUBG`
+- `PUBG_MOBILE`
+- `APEX_LEGENDS`
+- `NARAKA_BLADEPOINT`
+- `HONOR_OF_KINGS`
+- `PEACEKEEPER_ELITE`
+- `DOTA_2`
+- `OVERWATCH_2`
+- `RAINBOW_SIX_SIEGE`
+- `ROCKET_LEAGUE`
+- `EA_SPORTS_FC`
+- `STREET_FIGHTER_6`
+- `CALL_OF_DUTY`
+- `WILD_RIFT`
+- `MOBILE_LEGENDS`
+- `MINECRAFT`
+- `GENSHIN_IMPACT`
 
 ## 核心表
 
@@ -22,51 +48,21 @@ packages/database/prisma/schema.prisma
 
 统一账号表。字段包括邮箱、密码哈希、角色、状态、展示名。
 
-### user_external_accounts
-
-陪玩外部平台账号绑定表。用于把系统陪玩账号与 Discord/KOOK 用户 ID 绑定。
-
-- `platform`: `DISCORD` 或 `KOOK`。
-- `externalUserId`: Discord/KOOK 用户 ID。
-- 同一平台的同一外部用户只能绑定一个系统用户。
-- 同一系统用户在同一平台只能绑定一个外部账号。
-
 ### companion_profiles
 
-陪玩资料表。字段包括昵称、头像、性别、游戏、三角洲段位、擅长模式、价格、在线状态、简介、语音偏好、审核/上架状态。
-
-### wallets
-
-钱包表。
-
-- `available_balance`: 客户可用余额。
-- `frozen_balance`: 客户冻结余额。
-- `available_income`: 陪玩可提现收益。
-- `pending_income`: 陪玩待结算收益。
-- `frozen_income`: 陪玩提现审核/打款期间冻结收益。
+陪玩资料表。字段包括昵称、头像、性别、游戏、段位/水平、擅长模式、价格、在线状态、简介、语音偏好、审核/上架状态。
 
 ### orders
 
-订单表。状态包括：
+订单表。订单记录客户、陪玩、派单人、游戏、模式、时长、单价、总价、平台抽成、陪玩收益和状态。
 
-- `PENDING_PAYMENT`
-- `PAID`
-- `ASSIGNED`
-- `ACCEPTED`
-- `IN_PROGRESS`
-- `COMPLETED`
-- `CANCELLED`
-- `REFUND_REQUESTED`
-- `REFUNDED`
-- `DISPUTED`
+### wallets
 
-### order_status_logs
-
-订单状态日志。任何状态变化必须记录旧状态、新状态、操作者、原因。
-
-### wallet_transactions
-
-钱包流水。任何余额、收益、冻结变化必须记录类型、方向、金额、变动后余额、关联业务对象。
+- `available_balance`：客户可用余额。
+- `frozen_balance`：客户订单冻结余额。
+- `available_income`：陪玩可提现收益。
+- `pending_income`：陪玩待结算收益。
+- `frozen_income`：陪玩提现审核/打款期间冻结收益。
 
 ### recharge_requests
 
@@ -82,19 +78,11 @@ packages/database/prisma/schema.prisma
 
 ### admin_logs
 
-管理员操作日志。覆盖创建陪玩、编辑资料、重置密码、封禁、上架、下架、审核充值、审核提现、派单、处理投诉等动作。
+管理员操作日志。覆盖创建陪玩、上架、下架、封禁、审核充值、审核提现、派单、处理投诉等动作。
 
 ### bot_events
 
 Bot 事件记录。通过 `platform` 区分 `DISCORD` 和 `KOOK`，覆盖通知发送、按钮接单、管理员提醒等事件。
-
-事件状态：
-
-- `PENDING`
-- `SENT`
-- `FAILED`
-
-通知失败必须记录 `error`，便于后台补发或排查。
 
 ## 事务要求
 

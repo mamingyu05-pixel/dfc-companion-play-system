@@ -3,6 +3,7 @@ import {
   BotEventType,
   BotPlatform,
   CompanionProfileStatus,
+  GameCode,
   OrderAssignmentType,
   OrderStatus,
   Prisma,
@@ -21,9 +22,10 @@ export class OrdersService {
     private readonly botNotifications: BotNotificationService
   ) {}
 
-  async listOrderableCompanions() {
+  async listOrderableCompanions(game?: GameCode) {
     const companions = await this.prisma.companionProfile.findMany({
       where: {
+        game,
         status: CompanionProfileStatus.LISTED,
         user: { is: { role: UserRole.COMPANION, status: UserStatus.ACTIVE } }
       },
@@ -38,6 +40,7 @@ export class OrdersService {
       email: profile.user.email,
       displayName: profile.user.displayName,
       nickname: profile.nickname,
+      game: profile.game,
       status: profile.status,
       onlineStatus: profile.onlineStatus,
       deltaForceRank: profile.deltaForceRank,
@@ -117,6 +120,7 @@ export class OrdersService {
     customerId: string,
     body: {
       mode: string;
+      game?: GameCode;
       hours: string;
       companionId?: string;
       notes?: string;
@@ -124,13 +128,14 @@ export class OrdersService {
     }
   ) {
     if (!body.mode) throw new BadRequestException("mode is required");
+    const game = body.game ?? GameCode.DELTA_FORCE;
     const hours = this.positiveDecimal(body.hours, "hours");
     const maxHours = this.positiveDecimal(process.env.ORDER_MAX_HOURS ?? "8", "ORDER_MAX_HOURS");
     if (hours.gt(maxHours)) throw new BadRequestException(`hours cannot be greater than ${maxHours.toString()}`);
 
     const assignmentType = body.companionId ? OrderAssignmentType.DIRECT_COMPANION : OrderAssignmentType.PLATFORM_MATCH;
 
-    const pricing = await this.resolvePricing(body.companionId);
+    const pricing = await this.resolvePricing(body.companionId, game);
     const totalAmount = pricing.unitPrice.mul(hours);
 
     return this.prisma.$transaction(async (tx) => {
@@ -162,6 +167,7 @@ export class OrdersService {
           customerId,
           companionId: body.companionId,
           assignmentType,
+          game,
           mode: body.mode,
           hours,
           unitPrice: pricing.unitPrice,
@@ -569,7 +575,7 @@ export class OrdersService {
     });
   }
 
-  private async resolvePricing(companionId?: string) {
+  private async resolvePricing(companionId: string | undefined, game: GameCode) {
     if (!companionId) {
       const configuredPrice = process.env.PLATFORM_MATCH_UNIT_PRICE;
       if (!configuredPrice) {
@@ -581,6 +587,7 @@ export class OrdersService {
     const companion = await this.prisma.companionProfile.findFirst({
       where: {
         userId: companionId,
+        game,
         status: CompanionProfileStatus.LISTED,
         user: {
           is: {
@@ -592,7 +599,7 @@ export class OrdersService {
       select: { pricePerHour: true }
     });
 
-    if (!companion) throw new BadRequestException("Companion is not listed or does not exist");
+    if (!companion) throw new BadRequestException("Companion is not listed for selected game or does not exist");
     return { unitPrice: companion.pricePerHour };
   }
 
@@ -614,6 +621,7 @@ export class OrdersService {
     companionId: string | null;
     assignedById?: string | null;
     assignmentType: OrderAssignmentType;
+    game: GameCode;
     mode: string;
     hours: Prisma.Decimal;
     unitPrice: Prisma.Decimal;
@@ -638,6 +646,7 @@ export class OrdersService {
       customerId: order.customerId,
       companionId: order.companionId,
       assignmentType: order.assignmentType,
+      game: order.game,
       mode: order.mode,
       hours: order.hours.toString(),
       unitPrice: order.unitPrice.toString(),
@@ -662,6 +671,6 @@ export class OrdersService {
     const now = new Date();
     const stamp = now.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
     const random = Math.random().toString(36).slice(2, 8).toUpperCase();
-    return `DFC${stamp}${random}`;
+    return `MAY${stamp}${random}`;
   }
 }
