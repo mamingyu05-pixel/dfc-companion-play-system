@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { CompanionProfileStatus, Prisma, UserRole } from "@prisma/client";
-import { createHash, randomInt } from "node:crypto";
+import { BotPlatform, CompanionProfileStatus, Prisma, UserRole } from "@prisma/client";
+import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import nodemailer from "nodemailer";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "./auth.types";
@@ -10,11 +10,22 @@ import { isValidEmail, normalizeEmail } from "./email.util";
 import { createPasswordHash, verifyPassword } from "./password.util";
 
 type Portal = "customer" | "companion" | "admin";
+type OAuthPlatform = "discord" | "kook";
+type OAuthProfile = {
+  externalUserId: string;
+  displayName: string;
+};
 
 const CUSTOMER_REGISTER_EMAIL_PURPOSE = "CUSTOMER_REGISTER";
 const EMAIL_CODE_TTL_MINUTES = 10;
 const EMAIL_CODE_RESEND_SECONDS = 60;
 const MAX_EMAIL_CODE_ATTEMPTS = 5;
+const DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/oauth2/authorize";
+const DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/oauth2/token";
+const DISCORD_OAUTH_USER_URL = "https://discord.com/api/users/@me";
+const KOOK_OAUTH_AUTHORIZE_URL = "https://www.kookapp.cn/app/oauth2/authorize";
+const KOOK_OAUTH_TOKEN_URL = "https://www.kookapp.cn/api/oauth2/token";
+const KOOK_OAUTH_USER_URL = "https://www.kookapp.cn/api/v3/user/me";
 
 @Injectable()
 export class AuthService {
@@ -252,6 +263,198 @@ export class AuthService {
     };
   }
 
+  getPublicConfig() {
+    return {
+      support: {
+        discordUrl: process.env.SUPPORT_DISCORD_URL || null,
+        kookUrl: process.env.SUPPORT_KOOK_URL || null
+      }
+    };
+  }
+
+  getCustomerOAuthStartUrl(platform: OAuthPlatform) {
+    const config = this.getOAuthConfig(platform);
+    const url = new URL(config.authorizeUrl);
+    url.searchParams.set("client_id", config.clientId);
+    url.searchParams.set("redirect_uri", config.redirectUri);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", config.scope);
+    url.searchParams.set("state", signOAuthState(platform));
+    return url.toString();
+  }
+
+  async completeCustomerOAuth(platform: OAuthPlatform, body: { code?: string; state?: string; error?: string }) {
+    const customerWebUrl = getCustomerWebUrl();
+    if (body.error) {
+      return `${customerWebUrl}/oauth-callback?error=${encodeURIComponent("第三方授权被取消或失败")}`;
+    }
+    if (!body.code || !body.state || !verifyOAuthState(body.state, platform)) {
+      return `${customerWebUrl}/oauth-callback?error=${encodeURIComponent("第三方授权状态无效，请重新登录")}`;
+    }
+
+    try {
+      const profile = platform === "discord" ? await this.fetchDiscordProfile(body.code) : await this.fetchKookProfile(body.code);
+      const result = await this.findOrCreateOAuthCustomer(platform, profile);
+      const token = await this.issueToken({ sub: result.user.id, email: result.user.email, role: result.user.role });
+      const redirect = new URL(`${customerWebUrl}/oauth-callback`);
+      redirect.searchParams.set("token", token);
+      redirect.searchParams.set("displayName", result.user.displayName);
+      redirect.searchParams.set("platform", platform);
+      return redirect.toString();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "第三方登录失败，请稍后重试";
+      return `${customerWebUrl}/oauth-callback?error=${encodeURIComponent(message)}`;
+    }
+  }
+
+  private async fetchDiscordProfile(code: string): Promise<OAuthProfile> {
+    const config = this.getOAuthConfig("discord");
+    const token = await this.exchangeOAuthToken(config, code);
+    const response = await fetch(DISCORD_OAUTH_USER_URL, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      throw new BadRequestException("Discord 用户信息获取失败");
+    }
+    const data = (await response.json()) as { id?: string; global_name?: string | null; username?: string };
+    if (!data.id) {
+      throw new BadRequestException("Discord 用户信息无效");
+    }
+    return {
+      externalUserId: data.id,
+      displayName: sanitizeOAuthDisplayName(data.global_name || data.username || `Discord-${data.id.slice(-6)}`)
+    };
+  }
+
+  private async fetchKookProfile(code: string): Promise<OAuthProfile> {
+    const config = this.getOAuthConfig("kook");
+    const token = await this.exchangeOAuthToken(config, code);
+    const response = await fetch(config.userUrl, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      throw new BadRequestException("KOOK 用户信息获取失败");
+    }
+    const body = (await response.json()) as { data?: { id?: string; username?: string; nickname?: string }; id?: string; username?: string; nickname?: string };
+    const data = body.data ?? body;
+    if (!data.id) {
+      throw new BadRequestException("KOOK 用户信息无效");
+    }
+    return {
+      externalUserId: data.id,
+      displayName: sanitizeOAuthDisplayName(data.nickname || data.username || `KOOK-${data.id.slice(-6)}`)
+    };
+  }
+
+  private async exchangeOAuthToken(
+    config: ReturnType<AuthService["getOAuthConfig"]>,
+    code: string
+  ) {
+    const response = await fetch(config.tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: config.redirectUri
+      })
+    });
+    if (!response.ok) {
+      throw new BadRequestException(`${config.label} 授权换取 token 失败`);
+    }
+    const data = (await response.json()) as { access_token?: string };
+    if (!data.access_token) {
+      throw new BadRequestException(`${config.label} 授权响应无效`);
+    }
+    return data.access_token;
+  }
+
+  private async findOrCreateOAuthCustomer(platform: OAuthPlatform, profile: OAuthProfile) {
+    const botPlatform = oauthPlatformToBotPlatform(platform);
+    const existingAccount = await this.prisma.userExternalAccount.findUnique({
+      where: {
+        platform_externalUserId: {
+          platform: botPlatform,
+          externalUserId: profile.externalUserId
+        }
+      },
+      include: { user: true }
+    });
+
+    if (existingAccount) {
+      if (existingAccount.user.role !== UserRole.CUSTOMER) {
+        throw new UnauthorizedException("这个第三方账号已绑定到非客户账号");
+      }
+      if (existingAccount.user.status !== "ACTIVE") {
+        throw new UnauthorizedException("User is not active");
+      }
+      await this.prisma.userExternalAccount.update({
+        where: { id: existingAccount.id },
+        data: { displayName: profile.displayName }
+      });
+      return {
+        user: {
+          id: existingAccount.user.id,
+          email: existingAccount.user.email,
+          role: existingAccount.user.role,
+          displayName: existingAccount.user.displayName
+        }
+      };
+    }
+
+    const displayName = await this.getAvailableCustomerDisplayName(profile.displayName);
+    const displayNameKey = normalizeDisplayNameKey(displayName);
+    const email = buildOAuthEmail(platform, profile.externalUserId);
+    const passwordHash = await createPasswordHash(randomBytes(32).toString("hex"));
+
+    try {
+      const user = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email,
+            passwordHash,
+            role: UserRole.CUSTOMER,
+            displayName,
+            displayNameKey
+          },
+          select: { id: true, email: true, role: true, displayName: true }
+        });
+        await tx.wallet.create({ data: { userId: created.id } });
+        await tx.userExternalAccount.create({
+          data: {
+            userId: created.id,
+            platform: botPlatform,
+            externalUserId: profile.externalUserId,
+            displayName: profile.displayName
+          }
+        });
+        return created;
+      });
+      return { user };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new BadRequestException("第三方账号已经注册，请直接登录");
+      }
+      throw error;
+    }
+  }
+
+  private async getAvailableCustomerDisplayName(displayName: string) {
+    const baseName = sanitizeOAuthDisplayName(displayName);
+    for (let index = 0; index < 50; index += 1) {
+      const candidate = index === 0 ? baseName : `${baseName}-${index + 1}`;
+      const displayNameKey = normalizeDisplayNameKey(candidate);
+      const existing = await this.prisma.user.findFirst({
+        where: { role: UserRole.CUSTOMER, displayNameKey },
+        select: { id: true }
+      });
+      if (!existing) return candidate;
+    }
+    return `${baseName}-${randomInt(1000, 9999)}`;
+  }
+
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -419,6 +622,41 @@ export class AuthService {
       html: `<p>你的 May猫饼电竞注册验证码是：</p><p style="font-size:24px;font-weight:700;letter-spacing:4px;">${code}</p><p>验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。</p>`
     });
   }
+
+  private getOAuthConfig(platform: OAuthPlatform) {
+    const upper = platform.toUpperCase();
+    const clientId = process.env[`${upper}_CLIENT_ID`]?.trim();
+    const clientSecret = process.env[`${upper}_CLIENT_SECRET`]?.trim();
+    const redirectUri = process.env[`${upper}_REDIRECT_URI`]?.trim();
+
+    if (!clientId || !clientSecret || !redirectUri) {
+      throw new InternalServerErrorException(`${upper} OAuth is not configured`);
+    }
+
+    if (platform === "discord") {
+      return {
+        label: "Discord",
+        clientId,
+        clientSecret,
+        redirectUri,
+        authorizeUrl: DISCORD_OAUTH_AUTHORIZE_URL,
+        tokenUrl: DISCORD_OAUTH_TOKEN_URL,
+        userUrl: DISCORD_OAUTH_USER_URL,
+        scope: "identify"
+      };
+    }
+
+    return {
+      label: "KOOK",
+      clientId,
+      clientSecret,
+      redirectUri,
+      authorizeUrl: process.env.KOOK_OAUTH_AUTHORIZE_URL?.trim() || KOOK_OAUTH_AUTHORIZE_URL,
+      tokenUrl: process.env.KOOK_OAUTH_TOKEN_URL?.trim() || KOOK_OAUTH_TOKEN_URL,
+      userUrl: process.env.KOOK_OAUTH_USER_URL?.trim() || KOOK_OAUTH_USER_URL,
+      scope: process.env.KOOK_OAUTH_SCOPE?.trim() || "user"
+    };
+  }
 }
 
 class ForbiddenPortalException extends UnauthorizedException {
@@ -437,6 +675,47 @@ function hashEmailCode(email: string, code: string) {
     throw new InternalServerErrorException("JWT_SECRET is not configured");
   }
   return createHash("sha256").update(`${secret}:${email}:${code}`).digest("hex");
+}
+
+function signOAuthState(platform: OAuthPlatform) {
+  const payload = `${platform}:${Date.now()}:${randomBytes(12).toString("hex")}`;
+  return `${Buffer.from(payload).toString("base64url")}.${signValue(payload)}`;
+}
+
+function verifyOAuthState(state: string, platform: OAuthPlatform) {
+  const [payloadBase64, signature] = state.split(".");
+  if (!payloadBase64 || !signature) return false;
+  const payload = Buffer.from(payloadBase64, "base64url").toString("utf8");
+  const [statePlatform, timestamp] = payload.split(":");
+  if (statePlatform !== platform) return false;
+  if (signValue(payload) !== signature) return false;
+  const createdAt = Number(timestamp);
+  return Number.isFinite(createdAt) && Date.now() - createdAt < 10 * 60 * 1000;
+}
+
+function signValue(value: string) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new InternalServerErrorException("JWT_SECRET is not configured");
+  }
+  return createHmac("sha256", secret).update(value).digest("base64url");
+}
+
+function getCustomerWebUrl() {
+  return (process.env.CUSTOMER_WEB_URL || "http://localhost:3000/customer").replace(/\/$/, "");
+}
+
+function oauthPlatformToBotPlatform(platform: OAuthPlatform) {
+  return platform === "discord" ? BotPlatform.DISCORD : BotPlatform.KOOK;
+}
+
+function buildOAuthEmail(platform: OAuthPlatform, externalUserId: string) {
+  return `${platform}-${externalUserId}@oauth.maycatplay.local`.toLowerCase();
+}
+
+function sanitizeOAuthDisplayName(displayName: string) {
+  const normalized = displayName.normalize("NFKC").trim().replace(/\s+/g, " ");
+  return normalized.slice(0, 32) || `玩家-${randomInt(1000, 9999)}`;
 }
 
 function isDisplayNameUniqueError(error: Prisma.PrismaClientKnownRequestError) {

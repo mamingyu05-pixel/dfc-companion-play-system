@@ -177,6 +177,16 @@ export function CustomerAuthForm() {
           </div>
 
           <form onSubmit={submit} className="mt-5 space-y-4" autoComplete={mode === "register" ? "off" : "on"}>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 注册/登录" />
+            <OAuthButton href="/api/auth/oauth/kook/start" label="KOOK 注册/登录" />
+          </div>
+          <div className="flex items-center gap-3 text-xs text-dfc-muted">
+            <span className="h-px flex-1 bg-dfc-border" />
+            <span>或使用邮箱</span>
+            <span className="h-px flex-1 bg-dfc-border" />
+          </div>
+
           <Field label="邮箱">
             <div className="flex gap-2">
               <input
@@ -308,6 +318,17 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-2 block text-sm font-medium text-dfc-subtext">{label}</span>
       {children}
     </label>
+  );
+}
+
+function OAuthButton({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      className="rounded-dfc-control border border-dfc-border bg-dfc-elevated px-3 py-3 text-center text-sm font-semibold text-dfc-text hover:border-dfc-blue hover:text-dfc-blue"
+    >
+      {label}
+    </a>
   );
 }
 

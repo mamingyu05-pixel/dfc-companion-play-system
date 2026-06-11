@@ -20,8 +20,16 @@ type CustomerMe = {
   }>;
 };
 
+type PublicConfig = {
+  support?: {
+    discordUrl?: string | null;
+    kookUrl?: string | null;
+  };
+};
+
 export default function SupportPage() {
   const [profile, setProfile] = useState<CustomerMe | null>(null);
+  const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
 
   useEffect(() => {
     const token = localStorage.getItem("dfc_customer_token");
@@ -40,6 +48,16 @@ export default function SupportPage() {
         localStorage.removeItem("dfc_customer_user");
         window.location.href = "/customer/";
       });
+  }, []);
+
+  useEffect(() => {
+    void fetch("/api/auth/public-config")
+      .then(async (response) => {
+        if (!response.ok) return {};
+        return (await response.json()) as PublicConfig;
+      })
+      .then(setPublicConfig)
+      .catch(() => setPublicConfig({}));
   }, []);
 
   return (
@@ -68,22 +86,52 @@ export default function SupportPage() {
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
           <h2 className="text-base font-semibold">联系信息</h2>
           <div className="mt-4 rounded-dfc-control border border-dfc-border bg-dfc-bg p-3 text-sm text-dfc-subtext">
-            <div>客服会优先处理已提交充值截图的用户。</div>
-            <div className="mt-2">请复制以下信息发给客服：</div>
+            <div>客服会优先处理已提交充值截图的用户。点击下方按钮会跳转到 KOOK 或 Discord。</div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <SupportLink href={publicConfig.support?.kookUrl ?? undefined} label="KOOK 联系客服" />
+              <SupportLink href={publicConfig.support?.discordUrl ?? undefined} label="Discord 联系客服" />
+            </div>
+            <div className="mt-4">请复制以下信息发给客服：</div>
             <div className="mt-3 rounded-dfc-control border border-dfc-border bg-dfc-surface p-3 text-xs leading-6">
               <div>账号昵称：{profile?.user.displayName ?? "-"}</div>
-              <div>账号邮箱：{profile?.user.email ?? "-"}</div>
+              <div>账号邮箱：{formatAccountEmail(profile?.user.email)}</div>
               <div>客户 ID：{profile?.user.id ?? "-"}</div>
               <div>最近订单：{profile?.recentOrders[0]?.orderNo ?? "暂无"}</div>
             </div>
           </div>
           <p className="mt-4 text-xs leading-5 text-dfc-muted">
-            后续接入 Discord / KOOK OAuth 后，这里会显示一键联系客服、自动同步身份和私信通知。
+            如果按钮显示“未配置”，说明后台还没有填写对应平台的客服链接。
           </p>
         </div>
       </section>
     </CustomerShell>
   );
+}
+
+function SupportLink({ href, label }: { href?: string; label: string }) {
+  if (!href) {
+    return (
+      <span className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-3 py-3 text-center text-sm font-semibold text-dfc-muted">
+        {label}未配置
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="rounded-dfc-control bg-dfc-blue px-3 py-3 text-center text-sm font-semibold text-slate-950"
+    >
+      {label}
+    </a>
+  );
+}
+
+function formatAccountEmail(email?: string) {
+  if (!email) return "-";
+  return email.endsWith("@oauth.maycatplay.local") ? "第三方账号注册" : email;
 }
 
 function SupportItem({ title, desc, href, action }: { title: string; desc: string; href: string; action: string }) {

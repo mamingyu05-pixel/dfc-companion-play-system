@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { AuthenticatedUser } from "./auth.types";
 import { CurrentUser } from "./current-user.decorator";
@@ -21,6 +21,27 @@ export class AuthController {
   @Post("login")
   login(@Body() body: { email: string; password: string; portal: "customer" | "companion" | "admin" }) {
     return this.auth.login(body);
+  }
+
+  @Get("public-config")
+  publicConfig() {
+    return this.auth.getPublicConfig();
+  }
+
+  @Get("oauth/:platform/start")
+  startCustomerOAuth(@Param("platform") platform: "discord" | "kook", @Res() response: { redirect: (url: string) => void }) {
+    response.redirect(this.auth.getCustomerOAuthStartUrl(platform));
+  }
+
+  @Get("oauth/:platform/callback")
+  async completeCustomerOAuth(
+    @Param("platform") platform: "discord" | "kook",
+    @Query("code") code: string,
+    @Query("state") state: string,
+    @Query("error") error: string | undefined,
+    @Res() response: { redirect: (url: string) => void }
+  ) {
+    response.redirect(await this.auth.completeCustomerOAuth(platform, { code, state, error }));
   }
 
   @Get("me")
