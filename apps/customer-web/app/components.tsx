@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CustomerAuthGate } from "./auth-gate";
+import { MaycatLogo } from "./brand";
 
 type Companion = {
   id: string;
@@ -26,10 +27,8 @@ export function CustomerShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-20 border-b border-dfc-border bg-dfc-bg/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
           <Link href="/" className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-dfc border border-dfc-blue bg-dfc-surface text-sm font-black text-dfc-blue shadow-dfc-glow">
-              MAY
-            </span>
-            <span>
+            <MaycatLogo compact />
+            <span className="hidden sm:block">
               <span className="block text-sm font-semibold">May猫饼电竞</span>
               <span className="block text-xs text-dfc-muted">多游戏陪玩俱乐部</span>
             </span>

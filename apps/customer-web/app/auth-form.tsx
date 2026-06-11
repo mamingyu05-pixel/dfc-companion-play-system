@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import { MaycatLogo } from "./brand";
 
 type Mode = "register" | "login";
 
@@ -112,50 +113,77 @@ export function CustomerAuthForm() {
   }
 
   return (
-    <div className="grid min-h-screen gap-6 bg-dfc-bg px-4 py-6 text-dfc-text md:grid-cols-[1fr_420px] md:px-6 lg:px-10">
-      <section className="flex flex-col justify-center py-6">
-        <div className="max-w-2xl">
-          <div className="inline-flex rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-1 text-xs font-semibold text-dfc-blue">
-            May猫饼电竞 · 多游戏陪玩俱乐部
-          </div>
-          <h1 className="mt-5 text-3xl font-semibold leading-tight text-dfc-text md:text-5xl">
-            注册账号，开始预约陪玩
-          </h1>
-          <p className="mt-4 max-w-xl text-sm leading-7 text-dfc-subtext md:text-base">
-            充值人工审核，余额下单，平台派单或指定陪玩。订单、钱包、投诉都会保留后台记录。
-          </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Feature label="人工充值审核" value="资金更清楚" />
-            <Feature label="指定或平台匹配" value="下单更灵活" />
-            <Feature label="语音试音" value="先确认体验" />
-          </div>
-        </div>
-      </section>
+    <div className="relative min-h-screen overflow-hidden bg-dfc-bg px-4 py-5 text-dfc-text md:px-6 lg:px-10">
+      <div className="pointer-events-none absolute inset-0 opacity-30">
+        <div className="absolute inset-x-0 top-0 h-px bg-dfc-blue/60" />
+        <div className="absolute left-8 top-0 h-full w-px bg-dfc-border" />
+        <div className="absolute right-8 top-0 h-full w-px bg-dfc-border" />
+        <div className="absolute inset-x-0 bottom-24 h-px bg-dfc-border" />
+      </div>
 
-      <section className="self-center rounded-dfc border border-dfc-border bg-dfc-surface p-4 shadow-dfc-card md:p-5">
-        <div className="grid grid-cols-2 gap-2 rounded-dfc-control bg-dfc-elevated p-1">
-          <button
-            type="button"
-            onClick={() => setMode("register")}
-            className={`rounded-dfc-control px-3 py-2 text-sm font-semibold ${mode === "register" ? "bg-dfc-blue text-slate-950" : "text-dfc-subtext"}`}
-          >
-            注册
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("login")}
-            className={`rounded-dfc-control px-3 py-2 text-sm font-semibold ${mode === "login" ? "bg-dfc-blue text-slate-950" : "text-dfc-subtext"}`}
-          >
-            登录
-          </button>
-        </div>
+      <div className="relative grid min-h-[calc(100vh-40px)] gap-6 md:grid-cols-[minmax(0,1fr)_420px] lg:gap-10">
+        <section className="flex flex-col justify-center py-6">
+          <div className="max-w-3xl">
+            <MaycatLogo />
+            <div className="mt-8 inline-flex rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-1 text-xs font-semibold text-dfc-blue">
+              多游戏陪玩俱乐部 · 人工审核 · 订单可追踪
+            </div>
+            <h1 className="mt-5 text-4xl font-black leading-tight text-dfc-text md:text-6xl">
+              May猫饼电竞
+            </h1>
+            <p className="mt-3 text-xl font-semibold text-dfc-blue md:text-2xl">
+              找靠谱陪玩，上车前先看资料、试语音、再下单
+            </p>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
+              充值人工审核，余额下单，平台派单或指定陪玩。注册邮箱验证码校验，订单、钱包、投诉都会保留后台记录。
+            </p>
+            <div className="mt-7 grid gap-3 sm:grid-cols-3">
+              <Feature label="人工充值审核" value="每笔入账可追踪" />
+              <Feature label="指定或平台匹配" value="下单更灵活" />
+              <Feature label="语音试音" value="先确认体验" />
+            </div>
+            <div className="mt-7 grid max-w-xl grid-cols-3 divide-x divide-dfc-border rounded-dfc border border-dfc-border bg-dfc-surface">
+              <Metric label="支持游戏" value="20+" />
+              <Metric label="注册验证" value="邮箱" />
+              <Metric label="服务模式" value="人工派单" />
+            </div>
+          </div>
+        </section>
 
-        <form onSubmit={submit} className="mt-5 space-y-4">
+        <section className="self-center rounded-dfc border border-dfc-border bg-dfc-surface p-4 shadow-dfc-card md:p-5">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-black">加入 May猫饼</h2>
+              <p className="mt-1 text-xs text-dfc-muted">客户入口 · 注册后进入个人中心</p>
+            </div>
+            <MaycatLogo compact />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 rounded-dfc-control bg-dfc-elevated p-1">
+            <button
+              type="button"
+              onClick={() => setMode("register")}
+              className={`rounded-dfc-control px-3 py-2 text-sm font-semibold ${mode === "register" ? "bg-dfc-blue text-slate-950" : "text-dfc-subtext"}`}
+            >
+              注册
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("login")}
+              className={`rounded-dfc-control px-3 py-2 text-sm font-semibold ${mode === "login" ? "bg-dfc-blue text-slate-950" : "text-dfc-subtext"}`}
+            >
+              登录
+            </button>
+          </div>
+
+          <form onSubmit={submit} className="mt-5 space-y-4" autoComplete={mode === "register" ? "off" : "on"}>
           <Field label="邮箱">
             <div className="flex gap-2">
               <input
                 required
                 type="email"
+                name={mode === "register" ? "register-email" : "login-email"}
+                autoComplete="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="you@example.com"
@@ -180,6 +208,8 @@ export function CustomerAuthForm() {
                 <input
                   required
                   inputMode="numeric"
+                  name="email-verification-code"
+                  autoComplete="one-time-code"
                   maxLength={6}
                   value={emailCode}
                   onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
@@ -191,6 +221,8 @@ export function CustomerAuthForm() {
               <Field label="昵称">
                 <input
                   required
+                  name="display-name"
+                  autoComplete="nickname"
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
                   placeholder="你的游戏昵称"
@@ -202,6 +234,8 @@ export function CustomerAuthForm() {
 
           <Field label="密码">
             <PasswordInput
+              name={mode === "register" ? "new-password" : "current-password"}
+              autoComplete={mode === "register" ? "new-password" : "current-password"}
               value={password}
               onChange={setPassword}
               showPassword={showPassword}
@@ -213,6 +247,8 @@ export function CustomerAuthForm() {
           {mode === "register" ? (
             <Field label="确认密码">
               <PasswordInput
+                name="confirm-new-password"
+                autoComplete="new-password"
                 value={confirmPassword}
                 onChange={setConfirmPassword}
                 showPassword={showPassword}
@@ -232,16 +268,17 @@ export function CustomerAuthForm() {
           >
             {isSubmitting ? "提交中..." : mode === "register" ? "创建客户账号" : "登录客户入口"}
           </button>
-        </form>
+          </form>
 
-        <div className="mt-4 flex items-center justify-between gap-3 text-xs text-dfc-muted">
-          <span>管理员和陪玩请走独立入口</span>
-          <div className="flex gap-3">
-            <a href="/admin/" className="text-dfc-blue">管理端</a>
-            <a href="/companion/" className="text-dfc-blue">陪玩端</a>
+          <div className="mt-4 flex items-center justify-between gap-3 text-xs text-dfc-muted">
+            <span>管理员和陪玩请走独立入口</span>
+            <div className="flex gap-3">
+              <a href="/admin/" className="text-dfc-blue">管理端</a>
+              <a href="/companion/" className="text-dfc-blue">陪玩端</a>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
@@ -274,12 +311,16 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function PasswordInput({
+  name,
+  autoComplete,
   value,
   onChange,
   showPassword,
   onToggleShow,
   placeholder
 }: {
+  name: string;
+  autoComplete: string;
   value: string;
   onChange: (value: string) => void;
   showPassword: boolean;
@@ -291,6 +332,8 @@ function PasswordInput({
       <input
         required
         minLength={8}
+        name={name}
+        autoComplete={autoComplete}
         type={showPassword ? "text" : "password"}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -314,6 +357,15 @@ function Feature({ label, value }: { label: string; value: string }) {
     <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-3">
       <div className="text-xs text-dfc-muted">{label}</div>
       <div className="mt-1 text-sm font-semibold text-dfc-text">{value}</div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="p-4">
+      <div className="text-lg font-black text-dfc-text">{value}</div>
+      <div className="mt-1 text-xs text-dfc-muted">{label}</div>
     </div>
   );
 }
