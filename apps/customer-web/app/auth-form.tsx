@@ -322,6 +322,7 @@ function toChineseError(message?: string) {
   if (message.includes("Verification code has too many failed attempts")) return "验证码错误次数太多，请重新获取";
   if (message.includes("Please wait before requesting another verification code")) return "验证码刚刚发送过，请稍等 1 分钟再试";
   if (message.includes("Email service is not configured")) return "邮箱发送服务还没配置，请联系管理员";
+  if (message.includes("Database migration is not applied")) return "服务器数据库还没更新，请管理员执行数据库迁移后再注册";
   if (message.includes("Password must be at least 8 characters")) return "密码至少需要 8 位";
   if (message.includes("Invalid email or password")) return "邮箱或密码不正确";
   if (message.includes("User role cannot access this portal")) return "这个账号不能进入客户入口";

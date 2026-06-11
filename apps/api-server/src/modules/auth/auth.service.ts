@@ -97,56 +97,60 @@ export class AuthService {
   }
 
   async registerCustomer(body: { email: string; password: string; displayName: string; emailCode: string }) {
-    if (!body.email || !body.password || !body.displayName || !body.emailCode) {
-      throw new BadRequestException("email, password, displayName and emailCode are required");
+    try {
+      if (!body.email || !body.password || !body.displayName || !body.emailCode) {
+        throw new BadRequestException("email, password, displayName and emailCode are required");
+      }
+
+      const email = normalizeEmail(body.email);
+      const displayName = body.displayName.trim();
+      const displayNameKey = normalizeDisplayNameKey(displayName);
+      const emailCode = body.emailCode.trim();
+
+      if (!email || !displayName || !displayNameKey || !emailCode) {
+        throw new BadRequestException("email, password, displayName and emailCode are required");
+      }
+      if (!isValidEmail(email)) {
+        throw new BadRequestException("Invalid email format");
+      }
+
+      if (body.password.length < 8) {
+        throw new BadRequestException("Password must be at least 8 characters");
+      }
+
+      const existing = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true }
+      });
+      if (existing) {
+        throw new BadRequestException("Email is already registered");
+      }
+      const displayNameTaken = await this.prisma.user.findFirst({
+        where: { role: UserRole.CUSTOMER, displayNameKey },
+        select: { id: true }
+      });
+      if (displayNameTaken) {
+        throw new BadRequestException("Display name is already taken");
+      }
+
+      const verificationId = await this.assertCustomerEmailVerification(email, emailCode);
+      const passwordHash = await createPasswordHash(body.password);
+
+      const user = await this.createCustomerUser({
+        email,
+        passwordHash,
+        displayName,
+        displayNameKey,
+        verificationId
+      });
+
+      return {
+        user,
+        accessToken: await this.issueToken({ sub: user.id, email: user.email, role: user.role })
+      };
+    } catch (error) {
+      throw mapRegistrationError(error);
     }
-
-    const email = normalizeEmail(body.email);
-    const displayName = body.displayName.trim();
-    const displayNameKey = normalizeDisplayNameKey(displayName);
-    const emailCode = body.emailCode.trim();
-
-    if (!email || !displayName || !displayNameKey || !emailCode) {
-      throw new BadRequestException("email, password, displayName and emailCode are required");
-    }
-    if (!isValidEmail(email)) {
-      throw new BadRequestException("Invalid email format");
-    }
-
-    if (body.password.length < 8) {
-      throw new BadRequestException("Password must be at least 8 characters");
-    }
-
-    const existing = await this.prisma.user.findUnique({
-      where: { email },
-      select: { id: true }
-    });
-    if (existing) {
-      throw new BadRequestException("Email is already registered");
-    }
-    const displayNameTaken = await this.prisma.user.findFirst({
-      where: { role: UserRole.CUSTOMER, displayNameKey },
-      select: { id: true }
-    });
-    if (displayNameTaken) {
-      throw new BadRequestException("Display name is already taken");
-    }
-
-    const verificationId = await this.assertCustomerEmailVerification(email, emailCode);
-    const passwordHash = await createPasswordHash(body.password);
-
-    const user = await this.createCustomerUser({
-      email,
-      passwordHash,
-      displayName,
-      displayNameKey,
-      verificationId
-    });
-
-    return {
-      user,
-      accessToken: await this.issueToken({ sub: user.id, email: user.email, role: user.role })
-    };
   }
 
   private async createCustomerUser(body: { email: string; passwordHash: string; displayName: string; displayNameKey: string; verificationId: string }) {
@@ -185,7 +189,7 @@ export class AuthService {
         return created;
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      if (isPrismaErrorCode(error, "P2002")) {
         throw new BadRequestException(isDisplayNameUniqueError(error) ? "Display name is already taken" : "Email is already registered");
       }
       throw error;
@@ -454,7 +458,7 @@ export class AuthService {
       });
       return { user };
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      if (isPrismaErrorCode(error, "P2002")) {
         throw new BadRequestException("第三方账号已经注册，请直接登录");
       }
       throw error;
@@ -758,7 +762,26 @@ function sanitizeOAuthDisplayName(displayName: string) {
   return normalized.slice(0, 32) || `玩家-${randomInt(1000, 9999)}`;
 }
 
-function isDisplayNameUniqueError(error: Prisma.PrismaClientKnownRequestError) {
-  const target = error.meta?.target;
+function mapRegistrationError(error: unknown) {
+  if (error instanceof BadRequestException || error instanceof UnauthorizedException || error instanceof InternalServerErrorException) {
+    return error;
+  }
+  if (isPrismaErrorCode(error, "P2002")) {
+    return new BadRequestException(isDisplayNameUniqueError(error) ? "Display name is already taken" : "Email is already registered");
+  }
+  if (isPrismaErrorCode(error, "P2021") || isPrismaErrorCode(error, "P2022")) {
+    return new InternalServerErrorException("Database migration is not applied");
+  }
+  return error;
+}
+
+function isPrismaErrorCode(error: unknown, code: string) {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === code;
+}
+
+function isDisplayNameUniqueError(error: unknown) {
+  if (typeof error !== "object" || error === null || !("meta" in error)) return false;
+  const meta = (error as { meta?: { target?: unknown } }).meta;
+  const target = meta?.target;
   return Array.isArray(target) && target.includes("displayNameKey");
 }
