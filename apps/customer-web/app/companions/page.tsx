@@ -1,9 +1,38 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { CompanionCard, CustomerShell, SectionHeader } from "../components";
-import { companions, games } from "../data";
+import { games } from "../data";
 
 const filters = ["全部", "在线优先", "可语音", "推荐", "新手友好", "高分段"];
 
+type ApiCompanion = {
+  id: string;
+  nickname: string;
+  avatarUrl?: string | null;
+  game: string;
+  onlineStatus: string;
+  deltaForceRank: string;
+  skillModes: string[];
+  pricePerHour: string;
+  voicePreference: string;
+  bio?: string | null;
+};
+
 export default function CompanionsPage() {
+  const [companions, setCompanions] = useState<ApiCompanion[]>([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    void fetch("/api/orders/public/companions")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("无法加载陪玩列表");
+        return (await response.json()) as ApiCompanion[];
+      })
+      .then(setCompanions)
+      .catch(() => setError("暂时无法加载真实陪玩列表，请稍后刷新。"));
+  }, []);
+
   return (
     <CustomerShell>
       <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -41,10 +70,47 @@ export default function CompanionsPage() {
       </section>
 
       <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {error ? <div className="rounded-dfc border border-dfc-danger/40 bg-dfc-danger/10 p-4 text-sm text-dfc-danger md:col-span-2 xl:col-span-3">{error}</div> : null}
+        {!error && !companions.length ? (
+          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext md:col-span-2 xl:col-span-3">
+            暂无已上架陪玩。请先让管理员在后台审核上架。
+          </div>
+        ) : null}
         {companions.map((companion) => (
-          <CompanionCard key={companion.id} companion={companion} />
+          <CompanionCard key={companion.id} companion={toCardCompanion(companion)} />
         ))}
       </section>
     </CustomerShell>
   );
+}
+
+function toCardCompanion(companion: ApiCompanion) {
+  return {
+    id: companion.id,
+    nickname: companion.nickname,
+    avatarUrl: companion.avatarUrl,
+    game: gameName(companion.game),
+    rank: companion.deltaForceRank,
+    modes: companion.skillModes.length ? companion.skillModes : ["平台派单"],
+    price: Number(companion.pricePerHour),
+    onlineStatus: companion.onlineStatus,
+    voice: toVoice(companion.voicePreference),
+    voiceStyle: companion.voicePreference === "TEXT_ONLY" ? "文字沟通" : "支持语音沟通",
+    trial: companion.voicePreference === "TEXT_ONLY" ? "暂不支持试音" : "支持进语音频道试音",
+    tags: companion.onlineStatus === "ONLINE" ? ["在线", "可下单"] : ["已上架"],
+    intro: companion.bio || "该陪玩资料已通过后台上架，具体服务内容以下单沟通为准。",
+    rating: "新陪玩",
+    orders: 0,
+    accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue"
+  };
+}
+
+function gameName(code: string) {
+  return games.find((game) => game.code === code)?.name ?? code;
+}
+
+function toVoice(value: string) {
+  if (value === "REQUIRED") return "必须语音";
+  if (value === "TEXT_ONLY") return "仅文字";
+  return "可语音";
 }

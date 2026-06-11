@@ -40,6 +40,7 @@ export class OrdersService {
       email: profile.user.email,
       displayName: profile.user.displayName,
       nickname: profile.nickname,
+      avatarUrl: profile.avatarUrl,
       game: profile.game,
       status: profile.status,
       onlineStatus: profile.onlineStatus,

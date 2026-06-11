@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CompanionCard, CustomerShell, SectionHeader, StatCard } from "../components";
-import { companions } from "../data";
+import { games } from "../data";
 
 type CustomerProfile = {
   user: {
@@ -37,8 +37,22 @@ type CustomerProfile = {
   }>;
 };
 
+type ApiCompanion = {
+  id: string;
+  nickname: string;
+  avatarUrl?: string | null;
+  game: string;
+  onlineStatus: string;
+  deltaForceRank: string;
+  skillModes: string[];
+  pricePerHour: string;
+  voicePreference: string;
+  bio?: string | null;
+};
+
 export default function CustomerHomePage() {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [companions, setCompanions] = useState<ApiCompanion[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -64,6 +78,16 @@ export default function CustomerHomePage() {
         if (data) setProfile(data);
       })
       .catch(() => setError("无法加载客户资料，请刷新页面或重新登录"));
+  }, []);
+
+  useEffect(() => {
+    void fetch("/api/orders/public/companions")
+      .then(async (response) => {
+        if (!response.ok) return [];
+        return (await response.json()) as ApiCompanion[];
+      })
+      .then((items) => setCompanions(items.slice(0, 3)))
+      .catch(() => setCompanions([]));
   }, []);
 
   if (error) {
@@ -128,9 +152,13 @@ export default function CustomerHomePage() {
           </Link>
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-3">
-          {companions.map((companion) => (
-            <CompanionCard key={companion.id} companion={companion} />
-          ))}
+          {companions.length ? (
+            companions.map((companion) => <CompanionCard key={companion.id} companion={toCardCompanion(companion)} />)
+          ) : (
+            <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext md:col-span-3">
+              暂无已上架陪玩。管理员审核上架后会显示在这里。
+            </div>
+          )}
         </div>
       </section>
 
@@ -185,4 +213,25 @@ export default function CustomerHomePage() {
 
 function formatMoney(value: string) {
   return Number(value).toFixed(2);
+}
+
+function toCardCompanion(companion: ApiCompanion) {
+  return {
+    id: companion.id,
+    nickname: companion.nickname,
+    avatarUrl: companion.avatarUrl,
+    game: games.find((game) => game.code === companion.game)?.name ?? companion.game,
+    rank: companion.deltaForceRank,
+    modes: companion.skillModes.length ? companion.skillModes : ["平台派单"],
+    price: Number(companion.pricePerHour),
+    onlineStatus: companion.onlineStatus,
+    voice: companion.voicePreference === "TEXT_ONLY" ? "仅文字" : "可语音",
+    voiceStyle: companion.voicePreference === "TEXT_ONLY" ? "文字沟通" : "支持语音沟通",
+    trial: companion.voicePreference === "TEXT_ONLY" ? "暂不支持试音" : "支持进语音频道试音",
+    tags: companion.onlineStatus === "ONLINE" ? ["在线", "可下单"] : ["已上架"],
+    intro: companion.bio || "该陪玩资料已通过后台上架，具体服务内容以下单沟通为准。",
+    rating: "新陪玩",
+    orders: 0,
+    accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue"
+  };
 }

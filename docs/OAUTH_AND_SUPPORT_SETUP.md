@@ -8,6 +8,8 @@
 - Discord 注册 / 登录
 - KOOK 注册 / 登录
 
+陪玩也可以使用 Discord / KOOK 申请或登录陪玩端。新陪玩默认进入 `PENDING_REVIEW`，管理员需要在后台审核并上架后，客户列表才会显示。
+
 所有方式都会进入统一的 `users` 表。Discord / KOOK 账号会写入 `user_external_accounts`，不会建立第二套账户系统。
 
 ## 需要你自己获得的东西
@@ -21,6 +23,8 @@
 ```text
 https://maycatplay.com/api/auth/oauth/discord/callback
 ```
+
+同一个 Discord 应用可以同时用于客户和陪玩，回调地址相同，系统会通过 `state` 判断入口。
 
 4. 复制 `Client ID` 和 `Client Secret`。
 5. 准备一个客服入口链接，可以是 Discord 服务器邀请链接、客服频道链接或客服账号资料链接。
@@ -42,6 +46,8 @@ https://maycatplay.com/api/auth/oauth/kook/callback
 
 ```env
 CUSTOMER_WEB_URL=https://maycatplay.com/customer
+COMPANION_WEB_URL=https://maycatplay.com/companion
+DEFAULT_COMPANION_PRICE=50
 
 DISCORD_CLIENT_ID=你的DiscordClientID
 DISCORD_CLIENT_SECRET=你的DiscordClientSecret
@@ -81,6 +87,9 @@ sudo docker compose restart nginx
 4. 后台用户管理应看到新客户。
 5. 后台用户绑定字段应显示 Discord 或 KOOK 已绑定。
 6. 打开客户端客服页，点击 KOOK / Discord 客服按钮应跳转到对应平台。
+7. 打开 `https://maycatplay.com/companion/`，点击 `Discord 申请/登录` 或 `KOOK 申请/登录`。
+8. 授权成功后应进入陪玩工作台，后台陪玩管理应看到该陪玩，状态为待审核。
+9. 管理员上架后，客户陪玩列表才会看到该陪玩和头像。
 
 ## 注意
 

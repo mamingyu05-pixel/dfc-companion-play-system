@@ -29,8 +29,12 @@ export class AuthController {
   }
 
   @Get("oauth/:platform/start")
-  startCustomerOAuth(@Param("platform") platform: "discord" | "kook", @Res() response: { redirect: (url: string) => void }) {
-    response.redirect(this.auth.getCustomerOAuthStartUrl(platform));
+  startOAuth(
+    @Param("platform") platform: "discord" | "kook",
+    @Query("portal") portal: "customer" | "companion" | undefined,
+    @Res() response: { redirect: (url: string) => void }
+  ) {
+    response.redirect(this.auth.getOAuthStartUrl(platform, portal === "companion" ? "companion" : "customer"));
   }
 
   @Get("oauth/:platform/callback")
@@ -41,7 +45,7 @@ export class AuthController {
     @Query("error") error: string | undefined,
     @Res() response: { redirect: (url: string) => void }
   ) {
-    response.redirect(await this.auth.completeCustomerOAuth(platform, { code, state, error }));
+    response.redirect(await this.auth.completeOAuth(platform, { code, state, error }));
   }
 
   @Get("me")

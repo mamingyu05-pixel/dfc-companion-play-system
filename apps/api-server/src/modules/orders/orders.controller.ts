@@ -11,6 +11,11 @@ import { OrdersService } from "./orders.service";
 export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
 
+  @Get("public/companions")
+  listPublicCompanions(@Query("game") game?: GameCode) {
+    return this.orders.listOrderableCompanions(game);
+  }
+
   @Get("companions")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER)

@@ -31,6 +31,7 @@ export default function NewCompanionPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
   const [game, setGame] = useState("DELTA_FORCE");
   const [pricePerHour, setPricePerHour] = useState("68");
   const [deltaForceRank, setDeltaForceRank] = useState("UNRANKED");
@@ -57,6 +58,7 @@ export default function NewCompanionPage() {
         email,
         password,
         nickname,
+        avatarUrl: avatarUrl.trim() || undefined,
         game,
         pricePerHour,
         deltaForceRank,
@@ -76,6 +78,7 @@ export default function NewCompanionPage() {
     setEmail("");
     setPassword("");
     setNickname("");
+    setAvatarUrl("");
     setBio("");
     setStatus("陪玩账号已创建，请到陪玩管理页面审核上架。");
   }
@@ -90,6 +93,7 @@ export default function NewCompanionPage() {
           <Field label="邮箱" value={email} onChange={setEmail} type="email" required />
           <Field label="初始密码" value={password} onChange={setPassword} type="password" required />
           <Field label="昵称" value={nickname} onChange={setNickname} required />
+          <Field label="头像 URL" value={avatarUrl} onChange={setAvatarUrl} />
           <Field label="每小时价格" value={pricePerHour} onChange={setPricePerHour} required />
           <label className="block">
             <span className="text-sm text-dfc-subtext">游戏</span>

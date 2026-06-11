@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CompanionShell, MetricCard, OrderCard, SectionHeader } from "../components";
-import { availableOrders } from "../data";
 
 type CompanionMe = {
   user: {
@@ -35,8 +34,19 @@ type CompanionMe = {
   }>;
 };
 
+type AvailableOrder = {
+  id: string;
+  orderNo: string;
+  mode: string;
+  hours: string;
+  totalAmount: string;
+  status: string;
+  customer?: { displayName: string };
+};
+
 export default function CompanionDashboardPage() {
   const [profile, setProfile] = useState<CompanionMe | null>(null);
+  const [availableOrders, setAvailableOrders] = useState<AvailableOrder[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -52,6 +62,21 @@ export default function CompanionDashboardPage() {
       })
       .then(setProfile)
       .catch(() => setError("无法加载陪玩资料，请重新登录"));
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem("dfc_companion_token");
+    if (!token) return;
+
+    void fetch("/api/orders/companion/available", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(async (response) => {
+        if (!response.ok) return [];
+        return (await response.json()) as AvailableOrder[];
+      })
+      .then((items) => setAvailableOrders(items.slice(0, 3)))
+      .catch(() => setAvailableOrders([]));
   }, []);
 
   if (error) {
@@ -77,7 +102,7 @@ export default function CompanionDashboardPage() {
       <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <SectionHeader
           title={`${profile.companionProfile?.nickname ?? profile.user.displayName} 的陪玩工作台`}
-          desc={`账号：${profile.user.email}。这里只显示当前陪玩账号的资料、收益和订单。`}
+          desc={`账号：${formatAccountEmail(profile.user.email)}。这里只显示当前陪玩账号的资料、收益和订单。`}
         />
         <Link href="/profile" className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-4 py-2 text-sm font-semibold text-dfc-text">
           编辑资料
@@ -93,9 +118,25 @@ export default function CompanionDashboardPage() {
 
       <section className="mt-8 grid gap-4 lg:grid-cols-2">
         <div>
-          <SectionHeader title="可接订单" desc="后续会接入真实派单池；当前仍展示测试订单。" />
+          <SectionHeader title="可接订单" desc="显示派给你的真实订单，或平台人工匹配开放给已上架陪玩的订单。" />
           <div className="mt-4 space-y-4">
-            {availableOrders.map((order) => <OrderCard key={order.id} order={order} action="去接单" />)}
+            {availableOrders.length ? (
+              availableOrders.map((order) => (
+                <OrderCard
+                  key={order.id}
+                  order={{
+                    id: order.orderNo,
+                    mode: `${order.mode}${order.customer ? ` / ${order.customer.displayName}` : ""}`,
+                    hours: Number(order.hours),
+                    amount: Number(order.totalAmount),
+                    status: order.status
+                  }}
+                  action="去接单"
+                />
+              ))
+            ) : (
+              <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">暂无可接订单。</div>
+            )}
           </div>
         </div>
         <div>
@@ -144,4 +185,8 @@ function toOnlineStatus(status?: string) {
   if (status === "BUSY") return "忙碌";
   if (status === "OFFLINE") return "离线";
   return "未设置在线状态";
+}
+
+function formatAccountEmail(email: string) {
+  return email.endsWith("@oauth.maycatplay.local") ? "第三方账号注册" : email;
 }

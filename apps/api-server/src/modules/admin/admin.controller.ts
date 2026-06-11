@@ -390,6 +390,13 @@ export class AdminController {
             email: true,
             displayName: true,
             status: true,
+            externalAccounts: {
+              select: {
+                platform: true,
+                externalUserId: true,
+                displayName: true
+              }
+            },
             wallet: { select: { availableIncome: true, pendingIncome: true } }
           }
         }
@@ -401,12 +408,14 @@ export class AdminController {
         displayName: profile.user.displayName,
         userStatus: profile.user.status,
         nickname: profile.nickname,
+        avatarUrl: profile.avatarUrl,
         game: profile.game,
         status: profile.status,
         onlineStatus: profile.onlineStatus,
         deltaForceRank: profile.deltaForceRank,
         skillModes: profile.skillModes,
         pricePerHour: profile.pricePerHour.toString(),
+        externalAccounts: profile.user.externalAccounts,
         availableIncome: profile.user.wallet?.availableIncome.toString() ?? "0",
         pendingIncome: profile.user.wallet?.pendingIncome.toString() ?? "0"
       }))

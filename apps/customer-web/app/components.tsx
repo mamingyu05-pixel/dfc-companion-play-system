@@ -6,6 +6,7 @@ import { MaycatLogo } from "./brand";
 type Companion = {
   id: string;
   nickname: string;
+  avatarUrl?: string | null;
   game?: string;
   rank: string;
   modes: string[];
@@ -86,9 +87,7 @@ export function CompanionCard({ companion }: { companion: Companion }) {
   return (
     <article className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
       <div className="flex items-start gap-3">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-dfc bg-dfc-elevated text-lg font-black text-dfc-blue">
-          {companion.nickname.slice(0, 1)}
-        </div>
+        <CompanionAvatar nickname={companion.nickname} avatarUrl={companion.avatarUrl} size="sm" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-base font-semibold">{companion.nickname}</h2>
@@ -143,6 +142,21 @@ export function CompanionCard({ companion }: { companion: Companion }) {
         </Link>
       </div>
     </article>
+  );
+}
+
+export function CompanionAvatar({ nickname, avatarUrl, size = "md" }: { nickname: string; avatarUrl?: string | null; size?: "sm" | "md" | "lg" }) {
+  const sizeClass = size === "lg" ? "h-28 w-28 text-3xl" : size === "sm" ? "h-14 w-14 text-lg" : "h-20 w-20 text-2xl";
+  return (
+    <div className={`${sizeClass} overflow-hidden rounded-dfc border border-dfc-border bg-dfc-elevated`}>
+      {avatarUrl ? (
+        <img src={avatarUrl} alt={`${nickname} 头像`} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center font-black text-dfc-blue">
+          {nickname.slice(0, 1)}
+        </div>
+      )}
+    </div>
   );
 }
 

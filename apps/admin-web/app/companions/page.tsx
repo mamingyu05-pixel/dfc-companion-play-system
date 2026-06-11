@@ -7,6 +7,7 @@ type Companion = {
   userId: string;
   email: string;
   nickname: string;
+  avatarUrl?: string | null;
   game: string;
   status: string;
   onlineStatus: string;
@@ -14,6 +15,11 @@ type Companion = {
   pricePerHour: string;
   availableIncome: string;
   pendingIncome: string;
+  externalAccounts: Array<{
+    platform: string;
+    externalUserId: string;
+    displayName?: string | null;
+  }>;
 };
 
 export default function CompanionsPage() {
@@ -64,12 +70,20 @@ export default function CompanionsPage() {
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
       <DataTable
-        columns={["ID", "昵称", "游戏", "邮箱", "段位", "价格", "资料状态", "在线", "收益", "操作"]}
+        columns={["ID", "资料", "游戏", "账号", "段位", "价格", "资料状态", "在线", "收益", "操作"]}
         rows={companions.map((item) => [
           item.userId,
-          item.nickname,
+          <div key={`${item.userId}-profile`} className="flex items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-dfc border border-dfc-border bg-dfc-elevated text-sm font-black text-dfc-blue">
+              {item.avatarUrl ? <img src={item.avatarUrl} alt={`${item.nickname} 头像`} className="h-full w-full object-cover" /> : item.nickname.slice(0, 1)}
+            </div>
+            <div>
+              <div className="font-medium text-dfc-text">{item.nickname}</div>
+              <div className="mt-1 text-xs text-dfc-muted">{platformSummary(item.externalAccounts)}</div>
+            </div>
+          </div>,
           gameName(item.game),
-          item.email,
+          formatAccountEmail(item.email),
           item.deltaForceRank,
           `¥${formatMoney(item.pricePerHour)}`,
           <StatusBadge key={`${item.userId}-s`} tone={item.status === "LISTED" ? "success" : item.status === "BANNED" ? "danger" : "warning"}>{item.status}</StatusBadge>,
@@ -93,6 +107,15 @@ function Alert({ children, tone }: { children: string; tone: "danger" | "success
 
 function formatMoney(value: string) {
   return Number(value || 0).toFixed(2);
+}
+
+function formatAccountEmail(email: string) {
+  return email.endsWith("@oauth.maycatplay.local") ? "第三方注册" : email;
+}
+
+function platformSummary(accounts: Companion["externalAccounts"]) {
+  if (!accounts.length) return "未绑定 KOOK / Discord";
+  return accounts.map((account) => `${account.platform}:${account.displayName || account.externalUserId}`).join(" / ");
 }
 
 function gameName(code: string) {

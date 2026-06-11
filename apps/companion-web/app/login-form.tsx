@@ -43,7 +43,16 @@ export function CompanionLoginForm() {
       <section className="mx-auto mt-10 max-w-md rounded-dfc border border-dfc-border bg-dfc-surface p-5 shadow-dfc-card">
         <div className="mb-5">
           <h1 className="text-2xl font-semibold">陪玩登录</h1>
-          <p className="mt-1 text-sm text-dfc-subtext">使用管理员创建的陪玩账号登录。</p>
+          <p className="mt-1 text-sm text-dfc-subtext">优先使用 KOOK / Discord 申请或登录陪玩账号，管理员审核后才能上架接单。</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <OAuthButton href="/api/auth/oauth/discord/start?portal=companion" label="Discord 申请/登录" />
+          <OAuthButton href="/api/auth/oauth/kook/start?portal=companion" label="KOOK 申请/登录" />
+        </div>
+        <div className="my-5 flex items-center gap-3 text-xs text-dfc-muted">
+          <span className="h-px flex-1 bg-dfc-border" />
+          <span>或使用管理员创建的账号</span>
+          <span className="h-px flex-1 bg-dfc-border" />
         </div>
         <form onSubmit={submit} className="space-y-4">
           <input
@@ -74,6 +83,17 @@ export function CompanionLoginForm() {
         </form>
       </section>
     </main>
+  );
+}
+
+function OAuthButton({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      className="rounded-dfc-control border border-dfc-border bg-dfc-elevated px-3 py-3 text-center text-sm font-semibold text-dfc-text hover:border-dfc-blue hover:text-dfc-blue"
+    >
+      {label}
+    </a>
   );
 }
 

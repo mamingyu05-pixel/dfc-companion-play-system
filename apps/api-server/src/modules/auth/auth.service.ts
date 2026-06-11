@@ -10,10 +10,12 @@ import { isValidEmail, normalizeEmail } from "./email.util";
 import { createPasswordHash, verifyPassword } from "./password.util";
 
 type Portal = "customer" | "companion" | "admin";
+type OAuthPortal = "customer" | "companion";
 type OAuthPlatform = "discord" | "kook";
 type OAuthProfile = {
   externalUserId: string;
   displayName: string;
+  avatarUrl?: string;
 };
 
 const CUSTOMER_REGISTER_EMAIL_PURPOSE = "CUSTOMER_REGISTER";
@@ -272,38 +274,40 @@ export class AuthService {
     };
   }
 
-  getCustomerOAuthStartUrl(platform: OAuthPlatform) {
+  getOAuthStartUrl(platform: OAuthPlatform, portal: OAuthPortal) {
     const config = this.getOAuthConfig(platform);
     const url = new URL(config.authorizeUrl);
     url.searchParams.set("client_id", config.clientId);
     url.searchParams.set("redirect_uri", config.redirectUri);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("scope", config.scope);
-    url.searchParams.set("state", signOAuthState(platform));
+    url.searchParams.set("state", signOAuthState(platform, portal));
     return url.toString();
   }
 
-  async completeCustomerOAuth(platform: OAuthPlatform, body: { code?: string; state?: string; error?: string }) {
-    const customerWebUrl = getCustomerWebUrl();
+  async completeOAuth(platform: OAuthPlatform, body: { code?: string; state?: string; error?: string }) {
+    const state = body.state ? parseOAuthState(body.state) : null;
+    const portal = state?.portal ?? "customer";
+    const webUrl = getPortalWebUrl(portal);
     if (body.error) {
-      return `${customerWebUrl}/oauth-callback?error=${encodeURIComponent("第三方授权被取消或失败")}`;
+      return `${webUrl}/oauth-callback?error=${encodeURIComponent("第三方授权被取消或失败")}`;
     }
-    if (!body.code || !body.state || !verifyOAuthState(body.state, platform)) {
-      return `${customerWebUrl}/oauth-callback?error=${encodeURIComponent("第三方授权状态无效，请重新登录")}`;
+    if (!body.code || !body.state || !state || state.platform !== platform || !verifyOAuthState(body.state, platform, portal)) {
+      return `${webUrl}/oauth-callback?error=${encodeURIComponent("第三方授权状态无效，请重新登录")}`;
     }
 
     try {
       const profile = platform === "discord" ? await this.fetchDiscordProfile(body.code) : await this.fetchKookProfile(body.code);
-      const result = await this.findOrCreateOAuthCustomer(platform, profile);
+      const result = await this.findOrCreateOAuthUser(platform, portal, profile);
       const token = await this.issueToken({ sub: result.user.id, email: result.user.email, role: result.user.role });
-      const redirect = new URL(`${customerWebUrl}/oauth-callback`);
+      const redirect = new URL(`${webUrl}/oauth-callback`);
       redirect.searchParams.set("token", token);
       redirect.searchParams.set("displayName", result.user.displayName);
       redirect.searchParams.set("platform", platform);
       return redirect.toString();
     } catch (error) {
       const message = error instanceof Error ? error.message : "第三方登录失败，请稍后重试";
-      return `${customerWebUrl}/oauth-callback?error=${encodeURIComponent(message)}`;
+      return `${webUrl}/oauth-callback?error=${encodeURIComponent(message)}`;
     }
   }
 
@@ -316,13 +320,14 @@ export class AuthService {
     if (!response.ok) {
       throw new BadRequestException("Discord 用户信息获取失败");
     }
-    const data = (await response.json()) as { id?: string; global_name?: string | null; username?: string };
+    const data = (await response.json()) as { id?: string; global_name?: string | null; username?: string; avatar?: string | null };
     if (!data.id) {
       throw new BadRequestException("Discord 用户信息无效");
     }
     return {
       externalUserId: data.id,
-      displayName: sanitizeOAuthDisplayName(data.global_name || data.username || `Discord-${data.id.slice(-6)}`)
+      displayName: sanitizeOAuthDisplayName(data.global_name || data.username || `Discord-${data.id.slice(-6)}`),
+      avatarUrl: data.avatar ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png?size=256` : undefined
     };
   }
 
@@ -335,14 +340,23 @@ export class AuthService {
     if (!response.ok) {
       throw new BadRequestException("KOOK 用户信息获取失败");
     }
-    const body = (await response.json()) as { data?: { id?: string; username?: string; nickname?: string }; id?: string; username?: string; nickname?: string };
+    const body = (await response.json()) as {
+      data?: { id?: string; username?: string; nickname?: string; avatar?: string; avatarUrl?: string; avatar_url?: string };
+      id?: string;
+      username?: string;
+      nickname?: string;
+      avatar?: string;
+      avatarUrl?: string;
+      avatar_url?: string;
+    };
     const data = body.data ?? body;
     if (!data.id) {
       throw new BadRequestException("KOOK 用户信息无效");
     }
     return {
       externalUserId: data.id,
-      displayName: sanitizeOAuthDisplayName(data.nickname || data.username || `KOOK-${data.id.slice(-6)}`)
+      displayName: sanitizeOAuthDisplayName(data.nickname || data.username || `KOOK-${data.id.slice(-6)}`),
+      avatarUrl: data.avatarUrl || data.avatar_url || data.avatar
     };
   }
 
@@ -371,8 +385,9 @@ export class AuthService {
     return data.access_token;
   }
 
-  private async findOrCreateOAuthCustomer(platform: OAuthPlatform, profile: OAuthProfile) {
+  private async findOrCreateOAuthUser(platform: OAuthPlatform, portal: OAuthPortal, profile: OAuthProfile) {
     const botPlatform = oauthPlatformToBotPlatform(platform);
+    const role = portal === "companion" ? UserRole.COMPANION : UserRole.CUSTOMER;
     const existingAccount = await this.prisma.userExternalAccount.findUnique({
       where: {
         platform_externalUserId: {
@@ -384,8 +399,8 @@ export class AuthService {
     });
 
     if (existingAccount) {
-      if (existingAccount.user.role !== UserRole.CUSTOMER) {
-        throw new UnauthorizedException("这个第三方账号已绑定到非客户账号");
+      if (existingAccount.user.role !== role) {
+        throw new UnauthorizedException("这个第三方账号已绑定到其他入口");
       }
       if (existingAccount.user.status !== "ACTIVE") {
         throw new UnauthorizedException("User is not active");
@@ -404,9 +419,9 @@ export class AuthService {
       };
     }
 
-    const displayName = await this.getAvailableCustomerDisplayName(profile.displayName);
+    const displayName = await this.getAvailableDisplayName(role, profile.displayName);
     const displayNameKey = normalizeDisplayNameKey(displayName);
-    const email = buildOAuthEmail(platform, profile.externalUserId);
+    const email = buildOAuthEmail(platform, role, profile.externalUserId);
     const passwordHash = await createPasswordHash(randomBytes(32).toString("hex"));
 
     try {
@@ -415,13 +430,25 @@ export class AuthService {
           data: {
             email,
             passwordHash,
-            role: UserRole.CUSTOMER,
+            role,
             displayName,
             displayNameKey
           },
           select: { id: true, email: true, role: true, displayName: true }
         });
         await tx.wallet.create({ data: { userId: created.id } });
+        if (role === UserRole.COMPANION) {
+          await tx.companionProfile.create({
+            data: {
+              userId: created.id,
+              nickname: displayName,
+              avatarUrl: profile.avatarUrl,
+              skillModes: [],
+              pricePerHour: new Prisma.Decimal(process.env.DEFAULT_COMPANION_PRICE ?? "50"),
+              bio: `${botPlatform} 注册陪玩，等待管理员审核资料。`
+            }
+          });
+        }
         await tx.userExternalAccount.create({
           data: {
             userId: created.id,
@@ -441,13 +468,13 @@ export class AuthService {
     }
   }
 
-  private async getAvailableCustomerDisplayName(displayName: string) {
+  private async getAvailableDisplayName(role: UserRole, displayName: string) {
     const baseName = sanitizeOAuthDisplayName(displayName);
     for (let index = 0; index < 50; index += 1) {
       const candidate = index === 0 ? baseName : `${baseName}-${index + 1}`;
       const displayNameKey = normalizeDisplayNameKey(candidate);
       const existing = await this.prisma.user.findFirst({
-        where: { role: UserRole.CUSTOMER, displayNameKey },
+        where: { role, displayNameKey },
         select: { id: true }
       });
       if (!existing) return candidate;
@@ -474,6 +501,7 @@ export class AuthService {
         companionProfile: {
           select: {
             nickname: true,
+            avatarUrl: true,
             game: true,
             onlineStatus: true,
             status: true,
@@ -553,8 +581,9 @@ export class AuthService {
       })),
       companionProfile: user.companionProfile
         ? {
-            nickname: user.companionProfile.nickname,
-            game: user.companionProfile.game,
+          nickname: user.companionProfile.nickname,
+          avatarUrl: user.companionProfile.avatarUrl,
+          game: user.companionProfile.game,
             onlineStatus: user.companionProfile.onlineStatus,
             status: user.companionProfile.status,
             pricePerHour: user.companionProfile.pricePerHour.toString()
@@ -677,20 +706,42 @@ function hashEmailCode(email: string, code: string) {
   return createHash("sha256").update(`${secret}:${email}:${code}`).digest("hex");
 }
 
-function signOAuthState(platform: OAuthPlatform) {
-  const payload = `${platform}:${Date.now()}:${randomBytes(12).toString("hex")}`;
+function signOAuthState(platform: OAuthPlatform, portal: OAuthPortal) {
+  const payload = `${platform}:${portal}:${Date.now()}:${randomBytes(12).toString("hex")}`;
   return `${Buffer.from(payload).toString("base64url")}.${signValue(payload)}`;
 }
 
-function verifyOAuthState(state: string, platform: OAuthPlatform) {
+function parseOAuthState(state: string) {
   const [payloadBase64, signature] = state.split(".");
-  if (!payloadBase64 || !signature) return false;
+  if (!payloadBase64 || !signature) return null;
   const payload = Buffer.from(payloadBase64, "base64url").toString("utf8");
-  const [statePlatform, timestamp] = payload.split(":");
-  if (statePlatform !== platform) return false;
-  if (signValue(payload) !== signature) return false;
-  const createdAt = Number(timestamp);
+  if (signValue(payload) !== signature) return null;
+  const [platform, portal, timestamp] = payload.split(":");
+  if (!isOAuthPlatform(platform) || !isOAuthPortal(portal)) return null;
+  return { platform, portal, timestamp: Number(timestamp) };
+}
+
+function verifyOAuthState(state: string, platform: OAuthPlatform, portal: OAuthPortal) {
+  const parsed = parseOAuthState(state);
+  if (!parsed) return false;
+  if (parsed.platform !== platform || parsed.portal !== portal) return false;
+  const createdAt = parsed.timestamp;
   return Number.isFinite(createdAt) && Date.now() - createdAt < 10 * 60 * 1000;
+}
+
+function isOAuthPlatform(value: string): value is OAuthPlatform {
+  return value === "discord" || value === "kook";
+}
+
+function isOAuthPortal(value: string): value is OAuthPortal {
+  return value === "customer" || value === "companion";
+}
+
+function getPortalWebUrl(portal: OAuthPortal) {
+  if (portal === "companion") {
+    return (process.env.COMPANION_WEB_URL || "http://localhost:3001/companion").replace(/\/$/, "");
+  }
+  return (process.env.CUSTOMER_WEB_URL || "http://localhost:3000/customer").replace(/\/$/, "");
 }
 
 function signValue(value: string) {
@@ -701,16 +752,12 @@ function signValue(value: string) {
   return createHmac("sha256", secret).update(value).digest("base64url");
 }
 
-function getCustomerWebUrl() {
-  return (process.env.CUSTOMER_WEB_URL || "http://localhost:3000/customer").replace(/\/$/, "");
-}
-
 function oauthPlatformToBotPlatform(platform: OAuthPlatform) {
   return platform === "discord" ? BotPlatform.DISCORD : BotPlatform.KOOK;
 }
 
-function buildOAuthEmail(platform: OAuthPlatform, externalUserId: string) {
-  return `${platform}-${externalUserId}@oauth.maycatplay.local`.toLowerCase();
+function buildOAuthEmail(platform: OAuthPlatform, role: UserRole, externalUserId: string) {
+  return `${role.toLowerCase()}-${platform}-${externalUserId}@oauth.maycatplay.local`.toLowerCase();
 }
 
 function sanitizeOAuthDisplayName(displayName: string) {
