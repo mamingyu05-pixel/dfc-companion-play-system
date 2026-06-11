@@ -6,7 +6,7 @@ COPY apps/api-server/package.json apps/api-server/package.json
 COPY packages packages
 RUN pnpm install --filter @dfc/api-server... --frozen-lockfile=false
 COPY apps/api-server apps/api-server
-RUN pnpm --filter @dfc/database prisma:generate
+RUN pnpm --filter @dfc/database exec prisma generate --schema prisma/schema.prisma
 RUN pnpm --filter @dfc/api-server build
 
 EXPOSE 4000

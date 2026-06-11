@@ -8,10 +8,10 @@ import {
   UserRole,
   VoicePreference
 } from "@prisma/client";
-import { createPasswordHash } from "@dfc/auth";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { createPasswordHash } from "../auth/password.util";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { OrdersService } from "../orders/orders.service";

@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { CompanionProfileStatus, UserRole } from "@prisma/client";
-import { createPasswordHash, verifyPassword } from "@dfc/auth";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "./auth.types";
+import { createPasswordHash, verifyPassword } from "./password.util";
 
 type Portal = "customer" | "companion" | "admin";
 
