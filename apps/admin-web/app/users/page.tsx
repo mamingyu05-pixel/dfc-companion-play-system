@@ -228,18 +228,59 @@ export default function UsersPage() {
 
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
           <h2 className="text-base font-semibold">创建管理员账号</h2>
+          <div className="pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0" aria-hidden="true">
+            <input name="username" autoComplete="username" tabIndex={-1} />
+            <input name="password" type="password" autoComplete="current-password" tabIndex={-1} />
+          </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <input value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="管理员邮箱" />
-            <input value={adminName} onChange={(event) => setAdminName(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="管理员昵称" />
-            <input value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="初始密码，至少 8 位" type="password" />
-            <select value={adminRole} onChange={(event) => setAdminRole(event.target.value === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN")} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
+            <input
+              name="new-admin-email"
+              autoComplete="off"
+              inputMode="email"
+              value={adminEmail}
+              onChange={(event) => setAdminEmail(event.target.value)}
+              className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+              placeholder="管理员邮箱"
+            />
+            <input
+              name="new-admin-display-name"
+              autoComplete="off"
+              value={adminName}
+              onChange={(event) => setAdminName(event.target.value)}
+              className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+              placeholder="管理员昵称"
+            />
+            <input
+              name="new-admin-initial-password"
+              autoComplete="new-password"
+              value={adminPassword}
+              onChange={(event) => setAdminPassword(event.target.value)}
+              className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+              placeholder="初始密码，至少 8 位"
+              type="password"
+            />
+            <select name="new-admin-role" autoComplete="off" value={adminRole} onChange={(event) => setAdminRole(event.target.value === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN")} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
               <option value="ADMIN">ADMIN</option>
               <option value="SUPER_ADMIN">SUPER_ADMIN</option>
             </select>
           </div>
-          <button type="button" onClick={() => void createAdminAccount()} className="mt-4 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">
-            创建管理员
-          </button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void createAdminAccount()} className="rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">
+              创建管理员
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdminEmail("");
+                setAdminName("");
+                setAdminPassword("");
+                setAdminRole("ADMIN");
+              }}
+              className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-4 py-3 text-sm font-semibold text-dfc-subtext"
+            >
+              清空
+            </button>
+          </div>
           <p className="mt-3 text-xs text-dfc-muted">只有 SUPER_ADMIN 可以创建管理员账号。</p>
         </div>
       </section>
