@@ -56,7 +56,7 @@ export default function ProfilePage() {
 
   return (
     <CompanionShell>
-      <SectionHeader title="我的资料" desc="当前显示数据库里的真实陪玩资料。OAuth 新注册陪玩默认待审核，管理员上架后客户才能看到。" />
+      <SectionHeader title="我的资料" desc="当前显示数据库里的真实陪玩资料。陪玩入驻由客服考核，管理员开通并上架后客户才能看到。" />
       <section className="mt-6 grid gap-4 rounded-dfc border border-dfc-border bg-dfc-surface p-4 md:grid-cols-[160px_1fr]">
         <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-dfc border border-dfc-border bg-dfc-elevated text-3xl font-black text-dfc-blue">
           {profile.companionProfile?.avatarUrl ? (

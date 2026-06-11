@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { MaycatLogo } from "./brand";
 
@@ -17,6 +17,12 @@ type AuthResponse = {
   message?: string | string[];
 };
 
+type PublicConfig = {
+  support?: {
+    wechatId?: string | null;
+  };
+};
+
 export function CustomerAuthForm() {
   const [mode, setMode] = useState<Mode>("register");
   const [email, setEmail] = useState("");
@@ -27,8 +33,19 @@ export function CustomerAuthForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
+
+  useEffect(() => {
+    void fetch("/api/auth/public-config")
+      .then(async (response) => {
+        if (!response.ok) return {};
+        return (await response.json()) as PublicConfig;
+      })
+      .then(setPublicConfig)
+      .catch(() => setPublicConfig({}));
+  }, []);
 
   async function sendEmailCode() {
     setStatus("");
@@ -137,6 +154,9 @@ export function CustomerAuthForm() {
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
               充值人工审核，余额下单，平台派单或指定陪玩。注册邮箱验证码校验，订单、钱包、投诉都会保留后台记录。
             </p>
+            <div className="mt-5 inline-flex rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-2 text-sm text-dfc-subtext">
+              VX 客服：<span className="ml-1 font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span>
+            </div>
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
               <Feature label="人工充值审核" value="每笔入账可追踪" />
               <Feature label="指定或平台匹配" value="下单更灵活" />

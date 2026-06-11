@@ -269,7 +269,8 @@ export class AuthService {
     return {
       support: {
         discordUrl: process.env.SUPPORT_DISCORD_URL || null,
-        kookUrl: process.env.SUPPORT_KOOK_URL || null
+        kookUrl: process.env.SUPPORT_KOOK_URL || null,
+        wechatId: process.env.SUPPORT_WECHAT_ID || null
       }
     };
   }
@@ -419,6 +420,10 @@ export class AuthService {
       };
     }
 
+    if (portal === "companion") {
+      throw new UnauthorizedException("陪玩注册需要先联系客服考核，通过后由管理员开通登录方式");
+    }
+
     const displayName = await this.getAvailableDisplayName(role, profile.displayName);
     const displayNameKey = normalizeDisplayNameKey(displayName);
     const email = buildOAuthEmail(platform, role, profile.externalUserId);
@@ -437,18 +442,6 @@ export class AuthService {
           select: { id: true, email: true, role: true, displayName: true }
         });
         await tx.wallet.create({ data: { userId: created.id } });
-        if (role === UserRole.COMPANION) {
-          await tx.companionProfile.create({
-            data: {
-              userId: created.id,
-              nickname: displayName,
-              avatarUrl: profile.avatarUrl,
-              skillModes: [],
-              pricePerHour: new Prisma.Decimal(process.env.DEFAULT_COMPANION_PRICE ?? "50"),
-              bio: `${botPlatform} 注册陪玩，等待管理员审核资料。`
-            }
-          });
-        }
         await tx.userExternalAccount.create({
           data: {
             userId: created.id,

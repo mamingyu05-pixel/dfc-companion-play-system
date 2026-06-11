@@ -1,14 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+
+type PublicConfig = {
+  support?: {
+    wechatId?: string | null;
+  };
+};
 
 export function CompanionLoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    void fetch("/api/auth/public-config")
+      .then(async (response) => {
+        if (!response.ok) return {};
+        return (await response.json()) as PublicConfig;
+      })
+      .then(setPublicConfig)
+      .catch(() => setPublicConfig({}));
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,11 +60,16 @@ export function CompanionLoginForm() {
       <section className="mx-auto mt-10 max-w-md rounded-dfc border border-dfc-border bg-dfc-surface p-5 shadow-dfc-card">
         <div className="mb-5">
           <h1 className="text-2xl font-semibold">陪玩登录</h1>
-          <p className="mt-1 text-sm text-dfc-subtext">优先使用 KOOK / Discord 申请或登录陪玩账号，管理员审核后才能上架接单。</p>
+          <p className="mt-1 text-sm text-dfc-subtext">陪玩入驻需要先联系客服考核，通过后由管理员开通登录方式。</p>
+        </div>
+        <div className="mb-4 rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-3 text-sm text-dfc-subtext">
+          <div className="font-semibold text-dfc-text">陪玩申请流程</div>
+          <div className="mt-1">添加 VX 客服：<span className="font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span></div>
+          <div className="mt-1 text-xs text-dfc-muted">客服会核验游戏资料、语音、服务时间，通过后给你开通账号或绑定 KOOK / Discord。</div>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <OAuthButton href="/api/auth/oauth/discord/start?portal=companion" label="Discord 申请/登录" />
-          <OAuthButton href="/api/auth/oauth/kook/start?portal=companion" label="KOOK 申请/登录" />
+          <OAuthButton href="/api/auth/oauth/discord/start?portal=companion" label="Discord 已开通登录" />
+          <OAuthButton href="/api/auth/oauth/kook/start?portal=companion" label="KOOK 已开通登录" />
         </div>
         <div className="my-5 flex items-center gap-3 text-xs text-dfc-muted">
           <span className="h-px flex-1 bg-dfc-border" />

@@ -8,7 +8,7 @@
 - Discord 注册 / 登录
 - KOOK 注册 / 登录
 
-陪玩也可以使用 Discord / KOOK 申请或登录陪玩端。新陪玩默认进入 `PENDING_REVIEW`，管理员需要在后台审核并上架后，客户列表才会显示。
+陪玩不能自助注册。陪玩需要先联系 VX 客服考核，通过后由管理员创建账号或绑定 Discord / KOOK，之后才能登录陪玩端。管理员上架后，客户列表才会显示。
 
 所有方式都会进入统一的 `users` 表。Discord / KOOK 账号会写入 `user_external_accounts`，不会建立第二套账户系统。
 
@@ -59,6 +59,7 @@ KOOK_REDIRECT_URI=https://maycatplay.com/api/auth/oauth/kook/callback
 
 SUPPORT_DISCORD_URL=你的Discord客服链接
 SUPPORT_KOOK_URL=你的KOOK客服链接
+SUPPORT_WECHAT_ID=你的微信客服号
 ```
 
 如果 KOOK 后台显示的 OAuth 接口地址和系统默认地址不同，再额外填写：
@@ -87,9 +88,10 @@ sudo docker compose restart nginx
 4. 后台用户管理应看到新客户。
 5. 后台用户绑定字段应显示 Discord 或 KOOK 已绑定。
 6. 打开客户端客服页，点击 KOOK / Discord 客服按钮应跳转到对应平台。
-7. 打开 `https://maycatplay.com/companion/`，点击 `Discord 申请/登录` 或 `KOOK 申请/登录`。
-8. 授权成功后应进入陪玩工作台，后台陪玩管理应看到该陪玩，状态为待审核。
-9. 管理员上架后，客户陪玩列表才会看到该陪玩和头像。
+7. 打开 `https://maycatplay.com/companion/`，页面应显示 VX 客服和考核提示。
+8. 未绑定的 Discord / KOOK 账号点击登录应被拒绝。
+9. 管理员在后台创建陪玩并绑定 Discord / KOOK 后，该陪玩才能用对应平台登录。
+10. 管理员上架后，客户陪玩列表才会看到该陪玩和头像。
 
 ## 注意
 

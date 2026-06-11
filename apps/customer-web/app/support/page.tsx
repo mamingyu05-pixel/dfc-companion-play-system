@@ -24,6 +24,7 @@ type PublicConfig = {
   support?: {
     discordUrl?: string | null;
     kookUrl?: string | null;
+    wechatId?: string | null;
   };
 };
 
@@ -86,7 +87,11 @@ export default function SupportPage() {
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
           <h2 className="text-base font-semibold">联系信息</h2>
           <div className="mt-4 rounded-dfc-control border border-dfc-border bg-dfc-bg p-3 text-sm text-dfc-subtext">
-            <div>客服会优先处理已提交充值截图的用户。点击下方按钮会跳转到 KOOK 或 Discord。</div>
+            <div>客服会优先处理已提交充值截图的用户。也可以添加 VX 客服处理充值、退款、投诉和陪玩入驻。</div>
+            <div className="mt-3 rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-3">
+              <span className="text-dfc-muted">VX 客服：</span>
+              <span className="font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span>
+            </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <SupportLink href={publicConfig.support?.kookUrl ?? undefined} label="KOOK 联系客服" />
               <SupportLink href={publicConfig.support?.discordUrl ?? undefined} label="Discord 联系客服" />
