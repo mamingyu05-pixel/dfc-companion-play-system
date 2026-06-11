@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { AdminAuthGate } from "./auth-gate";
 
 const navItems = [
-  ["看板", "/"],
+  ["看板", "/dashboard"],
   ["用户", "/users"],
   ["陪玩", "/companions"],
   ["添加陪玩", "/companions/new"],
@@ -40,7 +41,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
             </div>
             <span className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-3 py-2 text-xs text-dfc-subtext">SUPER_ADMIN</span>
           </header>
-          <div className="px-4 py-6 md:px-6">{children}</div>
+          <div className="px-4 py-6 md:px-6">
+            <AdminAuthGate>{children}</AdminAuthGate>
+          </div>
         </section>
       </div>
     </main>

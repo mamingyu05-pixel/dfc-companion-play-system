@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { CompanionAuthGate } from "./auth-gate";
 
 export function CompanionShell({ children }: { children: ReactNode }) {
   return (
@@ -16,19 +17,26 @@ export function CompanionShell({ children }: { children: ReactNode }) {
             </span>
           </Link>
           <nav className="hidden items-center gap-2 md:flex">
-            <NavLink href="/">工作台</NavLink>
+            <NavLink href="/dashboard">工作台</NavLink>
             <NavLink href="/available-orders">可接订单</NavLink>
             <NavLink href="/orders">我的订单</NavLink>
             <NavLink href="/earnings">收益</NavLink>
             <NavLink href="/withdrawals">提现</NavLink>
             <NavLink href="/profile">资料</NavLink>
           </nav>
-          <span className="rounded-dfc-control bg-dfc-success/10 px-3 py-2 text-xs font-semibold text-dfc-success">在线</span>
+          <button
+            type="button"
+            className="rounded-dfc-control bg-dfc-success/10 px-3 py-2 text-xs font-semibold text-dfc-success"
+          >
+            在线
+          </button>
         </div>
       </header>
-      <div className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-6 md:pb-10">{children}</div>
+      <div className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-6 md:pb-10">
+        <CompanionAuthGate>{children}</CompanionAuthGate>
+      </div>
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-dfc-border bg-dfc-bg md:hidden">
-        <MobileNavLink href="/">工作台</MobileNavLink>
+        <MobileNavLink href="/dashboard">工作台</MobileNavLink>
         <MobileNavLink href="/available-orders">接单</MobileNavLink>
         <MobileNavLink href="/orders">订单</MobileNavLink>
         <MobileNavLink href="/earnings">收益</MobileNavLink>
