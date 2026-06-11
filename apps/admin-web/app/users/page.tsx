@@ -268,5 +268,7 @@ function toFriendlyError(message?: string) {
   if (message.includes("Customer does not exist or is not active")) return "客户不存在或不可用";
   if (message.includes("amount must be a valid amount")) return "请输入正确金额";
   if (message.includes("amount must be greater than 0")) return "金额必须大于 0";
+  if (message.includes("Database migration is not applied")) return "服务器数据库还没更新，请先执行数据库迁移";
+  if (message.includes("Related account or wallet data is invalid")) return "客户钱包数据异常，请检查该客户账号";
   return message;
 }

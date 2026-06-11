@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import {
   Prisma,
   ReviewStatus,
@@ -159,63 +159,67 @@ export class WalletService {
     operatorId: string,
     body: { amount: string; note?: string }
   ) {
-    const amount = this.positiveDecimal(body.amount, "amount");
+    try {
+      const amount = this.positiveDecimal(body.amount, "amount");
 
-    return this.prisma.$transaction(async (tx) => {
-      const customer = await tx.user.findFirst({
-        where: { id: customerId, role: UserRole.CUSTOMER, status: UserStatus.ACTIVE },
-        include: { wallet: true }
+      return await this.prisma.$transaction(async (tx) => {
+        const customer = await tx.user.findFirst({
+          where: { id: customerId, role: UserRole.CUSTOMER, status: UserStatus.ACTIVE },
+          include: { wallet: true }
+        });
+        if (!customer) throw new BadRequestException("Customer does not exist or is not active");
+
+        const wallet = customer.wallet
+          ? await tx.wallet.update({
+              where: { id: customer.wallet.id },
+              data: { availableBalance: { increment: amount } }
+            })
+          : await tx.wallet.create({
+              data: { userId: customerId, availableBalance: amount }
+            });
+
+        const transaction = await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            userId: customerId,
+            operatorId,
+            type: WalletTransactionType.ADMIN_ADJUSTMENT,
+            direction: TransactionDirection.CREDIT,
+            amount,
+            balanceAfter: wallet.availableBalance,
+            referenceType: "ADMIN_BALANCE_ADJUSTMENT",
+            referenceId: customerId,
+            note: body.note
+          }
+        });
+
+        await tx.adminLog.create({
+          data: {
+            actorId: operatorId,
+            targetUserId: customerId,
+            action: "ADMIN_CREDIT_BALANCE",
+            entityType: "WALLET",
+            entityId: wallet.id,
+            detail: { amount: amount.toString(), balanceAfter: wallet.availableBalance.toString(), note: body.note }
+          }
+        });
+
+        return {
+          wallet: {
+            id: wallet.id,
+            availableBalance: wallet.availableBalance.toString(),
+            frozenBalance: wallet.frozenBalance.toString()
+          },
+          transaction: {
+            id: transaction.id,
+            amount: transaction.amount.toString(),
+            balanceAfter: transaction.balanceAfter.toString()
+          }
+        };
       });
-      if (!customer) throw new BadRequestException("Customer does not exist or is not active");
-
-      const wallet = customer.wallet
-        ? await tx.wallet.update({
-            where: { id: customer.wallet.id },
-            data: { availableBalance: { increment: amount } }
-          })
-        : await tx.wallet.create({
-            data: { userId: customerId, availableBalance: amount }
-          });
-
-      const transaction = await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          userId: customerId,
-          operatorId,
-          type: WalletTransactionType.ADMIN_ADJUSTMENT,
-          direction: TransactionDirection.CREDIT,
-          amount,
-          balanceAfter: wallet.availableBalance,
-          referenceType: "ADMIN_BALANCE_ADJUSTMENT",
-          referenceId: customerId,
-          note: body.note
-        }
-      });
-
-      await tx.adminLog.create({
-        data: {
-          actorId: operatorId,
-          targetUserId: customerId,
-          action: "ADMIN_CREDIT_BALANCE",
-          entityType: "WALLET",
-          entityId: wallet.id,
-          detail: { amount: amount.toString(), balanceAfter: wallet.availableBalance.toString(), note: body.note }
-        }
-      });
-
-      return {
-        wallet: {
-          id: wallet.id,
-          availableBalance: wallet.availableBalance.toString(),
-          frozenBalance: wallet.frozenBalance.toString()
-        },
-        transaction: {
-          id: transaction.id,
-          amount: transaction.amount.toString(),
-          balanceAfter: transaction.balanceAfter.toString()
-        }
-      };
-    });
+    } catch (error) {
+      throw mapWalletOperationError(error);
+    }
   }
 
   async reviewRecharge(
@@ -558,4 +562,21 @@ export class WalletService {
     if (decimal.lte(0)) throw new BadRequestException(`${fieldName} must be greater than 0`);
     return decimal;
   }
+}
+
+function mapWalletOperationError(error: unknown) {
+  if (error instanceof BadRequestException || error instanceof NotFoundException || error instanceof InternalServerErrorException) {
+    return error;
+  }
+  if (isPrismaErrorCode(error, "P2021") || isPrismaErrorCode(error, "P2022")) {
+    return new InternalServerErrorException("Database migration is not applied");
+  }
+  if (isPrismaErrorCode(error, "P2003")) {
+    return new BadRequestException("Related account or wallet data is invalid");
+  }
+  return error;
+}
+
+function isPrismaErrorCode(error: unknown, code: string) {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === code;
 }
