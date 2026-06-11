@@ -18,7 +18,8 @@ jobs:
         with:
           node-version: 22
       - run: pnpm install --frozen-lockfile=false
-      - run: pnpm --filter @dfc/api-server exec prisma generate --schema ../../packages/database/prisma/schema.prisma
+      - run: mkdir -p apps/api-server/prisma && cp packages/database/prisma/schema.prisma apps/api-server/prisma/schema.prisma
+      - run: pnpm --filter @dfc/api-server exec prisma generate --schema prisma/schema.prisma
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm test
