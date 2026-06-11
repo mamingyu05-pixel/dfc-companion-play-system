@@ -17,8 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
       - run: pnpm install --frozen-lockfile=false
+      - run: pnpm --filter @dfc/api-server exec prisma generate --schema ../../packages/database/prisma/schema.prisma
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm test
