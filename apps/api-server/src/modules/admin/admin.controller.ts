@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import {
   BotPlatform,
   CompanionProfileStatus,
@@ -126,6 +126,132 @@ export class AdminController {
     });
 
     return target;
+  }
+
+  @Post("users/:id/balance-adjustments")
+  adjustCustomerBalance(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { amount: string; note?: string }
+  ) {
+    return this.wallet.adminCreditCustomerBalance(id, user.id, body);
+  }
+
+  @Post("admins")
+  async createAdmin(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { email: string; password: string; displayName: string; role?: "ADMIN" | "SUPER_ADMIN" }
+  ) {
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException("Only SUPER_ADMIN can create admin accounts");
+    }
+    if (!body.email || !body.password || !body.displayName) {
+      throw new BadRequestException("email, password and displayName are required");
+    }
+    if (body.password.length < 8) {
+      throw new BadRequestException("Password must be at least 8 characters");
+    }
+
+    const passwordHash = await createPasswordHash(body.password);
+    const role = body.role === "SUPER_ADMIN" ? UserRole.SUPER_ADMIN : UserRole.ADMIN;
+
+    try {
+      const created = await this.prisma.user.create({
+        data: {
+          email: body.email.trim().toLowerCase(),
+          passwordHash,
+          role,
+          displayName: body.displayName.trim()
+        },
+        select: { id: true, email: true, role: true, status: true, displayName: true }
+      });
+
+      await this.prisma.adminLog.create({
+        data: {
+          actorId: user.id,
+          targetUserId: created.id,
+          action: "CREATE_ADMIN",
+          entityType: "USER",
+          entityId: created.id,
+          detail: { email: created.email, role: created.role }
+        }
+      });
+
+      return created;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new BadRequestException("Email is already registered");
+      }
+      throw error;
+    }
+  }
+
+  @Get("recharges")
+  listRechargeRequests() {
+    return this.prisma.rechargeRequest.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            wallet: { select: { availableBalance: true } }
+          }
+        },
+        reviewedBy: { select: { id: true, email: true, displayName: true } }
+      }
+    }).then((requests) =>
+      requests.map((request) => ({
+        id: request.id,
+        amount: request.amount.toString(),
+        screenshotUrl: request.screenshotUrl,
+        note: request.note,
+        status: request.status,
+        reviewNote: request.reviewNote,
+        reviewedAt: request.reviewedAt,
+        createdAt: request.createdAt,
+        customer: {
+          id: request.customer.id,
+          email: request.customer.email,
+          displayName: request.customer.displayName,
+          availableBalance: request.customer.wallet?.availableBalance.toString() ?? "0"
+        },
+        reviewedBy: request.reviewedBy
+          ? {
+              id: request.reviewedBy.id,
+              email: request.reviewedBy.email,
+              displayName: request.reviewedBy.displayName
+            }
+          : null
+      }))
+    );
+  }
+
+  @Get("wallet-transactions")
+  listWalletTransactions() {
+    return this.prisma.walletTransaction.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        user: { select: { id: true, email: true, displayName: true, role: true } },
+        operator: { select: { id: true, email: true, displayName: true } }
+      }
+    }).then((transactions) =>
+      transactions.map((transaction) => ({
+        id: transaction.id,
+        type: transaction.type,
+        direction: transaction.direction,
+        amount: transaction.amount.toString(),
+        balanceAfter: transaction.balanceAfter.toString(),
+        referenceType: transaction.referenceType,
+        referenceId: transaction.referenceId,
+        note: transaction.note,
+        createdAt: transaction.createdAt,
+        user: transaction.user,
+        operator: transaction.operator
+      }))
+    );
   }
 
   @Post("companions")

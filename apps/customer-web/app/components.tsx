@@ -39,6 +39,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
             <NavLink href="/companions">陪玩</NavLink>
             <NavLink href="/order">下单</NavLink>
             <NavLink href="/recharge">充值</NavLink>
+            <NavLink href="/support">客服</NavLink>
           </nav>
           <Link
             href="/recharge"
@@ -55,8 +56,8 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <MobileNavLink href="/">注册</MobileNavLink>
         <MobileNavLink href="/home">大厅</MobileNavLink>
         <MobileNavLink href="/companions">陪玩</MobileNavLink>
-        <MobileNavLink href="/order">下单</MobileNavLink>
         <MobileNavLink href="/recharge">充值</MobileNavLink>
+        <MobileNavLink href="/support">客服</MobileNavLink>
       </nav>
     </main>
   );

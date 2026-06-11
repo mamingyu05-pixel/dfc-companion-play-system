@@ -154,6 +154,70 @@ export class WalletService {
     });
   }
 
+  async adminCreditCustomerBalance(
+    customerId: string,
+    operatorId: string,
+    body: { amount: string; note?: string }
+  ) {
+    const amount = this.positiveDecimal(body.amount, "amount");
+
+    return this.prisma.$transaction(async (tx) => {
+      const customer = await tx.user.findFirst({
+        where: { id: customerId, role: UserRole.CUSTOMER, status: UserStatus.ACTIVE },
+        include: { wallet: true }
+      });
+      if (!customer) throw new BadRequestException("Customer does not exist or is not active");
+
+      const wallet = customer.wallet
+        ? await tx.wallet.update({
+            where: { id: customer.wallet.id },
+            data: { availableBalance: { increment: amount } }
+          })
+        : await tx.wallet.create({
+            data: { userId: customerId, availableBalance: amount }
+          });
+
+      const transaction = await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          userId: customerId,
+          operatorId,
+          type: WalletTransactionType.ADMIN_ADJUSTMENT,
+          direction: TransactionDirection.CREDIT,
+          amount,
+          balanceAfter: wallet.availableBalance,
+          referenceType: "ADMIN_BALANCE_ADJUSTMENT",
+          referenceId: customerId,
+          note: body.note
+        }
+      });
+
+      await tx.adminLog.create({
+        data: {
+          actorId: operatorId,
+          targetUserId: customerId,
+          action: "ADMIN_CREDIT_BALANCE",
+          entityType: "WALLET",
+          entityId: wallet.id,
+          detail: { amount: amount.toString(), balanceAfter: wallet.availableBalance.toString(), note: body.note }
+        }
+      });
+
+      return {
+        wallet: {
+          id: wallet.id,
+          availableBalance: wallet.availableBalance.toString(),
+          frozenBalance: wallet.frozenBalance.toString()
+        },
+        transaction: {
+          id: transaction.id,
+          amount: transaction.amount.toString(),
+          balanceAfter: transaction.balanceAfter.toString()
+        }
+      };
+    });
+  }
+
   async reviewRecharge(
     rechargeRequestId: string,
     reviewerId: string,
