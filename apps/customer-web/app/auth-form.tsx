@@ -21,6 +21,8 @@ export function CustomerAuthForm() {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,6 +31,12 @@ export function CustomerAuthForm() {
     event.preventDefault();
     setStatus("");
     setError("");
+
+    if (mode === "register" && password !== confirmPassword) {
+      setError("两次输入的密码不一致");
+      return;
+    }
+
     setIsSubmitting(true);
 
     const endpoint = mode === "register" ? "/api/auth/register/customer" : "/api/auth/login";
@@ -130,16 +138,26 @@ export function CustomerAuthForm() {
           ) : null}
 
           <Field label="密码">
-            <input
-              required
-              minLength={8}
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={setPassword}
+              showPassword={showPassword}
+              onToggleShow={() => setShowPassword((current) => !current)}
               placeholder="至少 8 位"
-              className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
             />
           </Field>
+
+          {mode === "register" ? (
+            <Field label="确认密码">
+              <PasswordInput
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                showPassword={showPassword}
+                onToggleShow={() => setShowPassword((current) => !current)}
+                placeholder="再次输入密码"
+              />
+            </Field>
+          ) : null}
 
           {error ? <div className="rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
           {status ? <div className="rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
@@ -180,6 +198,42 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-2 block text-sm font-medium text-dfc-subtext">{label}</span>
       {children}
     </label>
+  );
+}
+
+function PasswordInput({
+  value,
+  onChange,
+  showPassword,
+  onToggleShow,
+  placeholder
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  showPassword: boolean;
+  onToggleShow: () => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="flex rounded-dfc-control border border-dfc-border bg-dfc-bg focus-within:border-dfc-blue">
+      <input
+        required
+        minLength={8}
+        type={showPassword ? "text" : "password"}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm text-dfc-text outline-none"
+      />
+      <button
+        type="button"
+        onClick={onToggleShow}
+        className="shrink-0 px-3 text-xs font-semibold text-dfc-blue"
+        aria-label={showPassword ? "隐藏密码" : "显示密码"}
+      >
+        {showPassword ? "隐藏" : "显示"}
+      </button>
+    </div>
   );
 }
 
