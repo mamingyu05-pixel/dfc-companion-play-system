@@ -1,7 +1,8 @@
 import { PrismaClient, UserRole } from "@prisma/client";
-import { createPasswordHash } from "../packages/auth/src/password";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
+const SALT_ROUNDS = 12;
 
 async function main() {
   const email = process.env.ADMIN_EMAIL ?? "admin@dfc.local";
@@ -11,7 +12,7 @@ async function main() {
     throw new Error("ADMIN_PASSWORD is required");
   }
 
-  const passwordHash = await createPasswordHash(password);
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
   await prisma.user.upsert({
     where: { email },

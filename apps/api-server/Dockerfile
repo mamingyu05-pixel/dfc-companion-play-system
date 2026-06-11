@@ -4,6 +4,7 @@ RUN corepack enable
 COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/api-server/package.json apps/api-server/package.json
 COPY packages packages
+COPY scripts scripts
 RUN pnpm install --filter @dfc/api-server... --frozen-lockfile=false
 COPY apps/api-server apps/api-server
 RUN mkdir -p apps/api-server/prisma \
