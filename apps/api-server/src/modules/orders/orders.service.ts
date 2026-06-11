@@ -290,7 +290,7 @@ export class OrdersService {
       }
       if (order.companionId !== actorId) {
         const actor = await tx.user.findUnique({ where: { id: actorId }, select: { role: true } });
-        if (!actor || ![UserRole.ADMIN, UserRole.SUPER_ADMIN].includes(actor.role)) {
+        if (!actor || (actor.role !== UserRole.ADMIN && actor.role !== UserRole.SUPER_ADMIN)) {
           throw new BadRequestException("Only assigned companion or admin can start this order");
         }
       }
