@@ -12,6 +12,7 @@ import {
 } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/current-user.decorator";
+import { isValidEmail, normalizeEmail } from "../auth/email.util";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { createPasswordHash } from "../auth/password.util";
 import { Roles } from "../auth/roles.decorator";
@@ -151,6 +152,11 @@ export class AdminController {
     if (!body.email || !body.password || !body.displayName) {
       throw new BadRequestException("email, password and displayName are required");
     }
+    const email = normalizeEmail(body.email);
+    const displayName = body.displayName.trim();
+    if (!isValidEmail(email) || !displayName) {
+      throw new BadRequestException("email, password and displayName are required");
+    }
     if (body.password.length < 8) {
       throw new BadRequestException("Password must be at least 8 characters");
     }
@@ -161,10 +167,10 @@ export class AdminController {
     try {
       const created = await this.prisma.user.create({
         data: {
-          email: body.email.trim().toLowerCase(),
+          email,
           passwordHash,
           role,
-          displayName: body.displayName.trim()
+          displayName
         },
         select: { id: true, email: true, role: true, status: true, displayName: true }
       });
@@ -422,6 +428,18 @@ export class AdminController {
       voicePreference?: VoicePreference;
     }
   ) {
+    if (!body.email || !body.password || !body.nickname) {
+      throw new BadRequestException("email, password and nickname are required");
+    }
+    const email = normalizeEmail(body.email);
+    const nickname = body.nickname.trim();
+    if (!isValidEmail(email) || !nickname) {
+      throw new BadRequestException("email, password and nickname are required");
+    }
+    if (body.password.length < 8) {
+      throw new BadRequestException("Password must be at least 8 characters");
+    }
+
     const passwordHash = await createPasswordHash(body.password);
     let pricePerHour: Prisma.Decimal;
     try {
@@ -435,14 +453,14 @@ export class AdminController {
       return await this.prisma.$transaction(async (tx) => {
         const companion = await tx.user.create({
           data: {
-            email: body.email.toLowerCase(),
+            email,
             passwordHash,
             role: UserRole.COMPANION,
-            displayName: body.nickname,
+            displayName: nickname,
             wallet: { create: {} },
             companionProfile: {
               create: {
-                nickname: body.nickname,
+                nickname,
                 avatarUrl: body.avatarUrl,
                 gender: body.gender,
                 game: body.game ?? GameCode.DELTA_FORCE,
@@ -472,7 +490,7 @@ export class AdminController {
             action: "CREATE_COMPANION",
             entityType: "USER",
             entityId: companion.id,
-            detail: { nickname: body.nickname, pricePerHour: body.pricePerHour }
+            detail: { nickname, pricePerHour: body.pricePerHour }
           }
         });
 

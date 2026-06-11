@@ -3,6 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import { CompanionProfileStatus, Prisma, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "./auth.types";
+import { isValidEmail, normalizeEmail } from "./email.util";
 import { createPasswordHash, verifyPassword } from "./password.util";
 
 type Portal = "customer" | "companion" | "admin";
@@ -25,9 +26,20 @@ export class AuthService {
     if (!email || !displayName) {
       throw new BadRequestException("email, password and displayName are required");
     }
+    if (!isValidEmail(email)) {
+      throw new BadRequestException("Invalid email format");
+    }
 
     if (body.password.length < 8) {
       throw new BadRequestException("Password must be at least 8 characters");
+    }
+
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true }
+    });
+    if (existing) {
+      throw new BadRequestException("Email is already registered");
     }
 
     const passwordHash = await createPasswordHash(body.password);
@@ -260,8 +272,4 @@ class ForbiddenPortalException extends UnauthorizedException {
   constructor() {
     super("User role cannot access this portal");
   }
-}
-
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
 }

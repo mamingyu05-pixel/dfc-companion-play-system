@@ -40,7 +40,7 @@ export function CustomerAuthForm() {
     setIsSubmitting(true);
 
     const endpoint = mode === "register" ? "/api/auth/register/customer" : "/api/auth/login";
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
     const payload =
       mode === "register"
         ? { email: normalizedEmail, password, displayName: displayName.trim() }
@@ -187,10 +187,15 @@ export function CustomerAuthForm() {
 function toChineseError(message?: string) {
   if (!message) return "请求失败，请检查填写内容";
   if (message.includes("Email is already registered")) return "这个邮箱已经注册过，请直接登录或换一个邮箱";
+  if (message.includes("Invalid email format")) return "邮箱格式不正确，请检查后再提交";
   if (message.includes("Password must be at least 8 characters")) return "密码至少需要 8 位";
   if (message.includes("Invalid email or password")) return "邮箱或密码不正确";
   if (message.includes("User role cannot access this portal")) return "这个账号不能进入客户入口";
   return message;
+}
+
+function normalizeEmail(email: string) {
+  return email.replace(/[\u200B-\u200D\uFEFF]/g, "").trim().toLowerCase();
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
