@@ -26,3 +26,18 @@
 - 新增 `agent_pipeline/` 多 Agent 审计工作流，包含 Agent 定义、运行脚本和报告输出。
 - 新增 Docker Compose、Nginx 配置、环境样例和 CI 骨架。
 - 新增项目计划、数据库、API、订单、钱包、Bot、部署、测试和已知问题文档。
+- 根据 Claude 审核报告新增 `docs/CLAUDE_REVIEW_RESPONSE.md`。
+- 新增 API JWT 登录、客户注册、当前用户注入、RBAC 角色守卫。
+- 管理员接口 `/api/admin/*` 接入 `ADMIN` / `SUPER_ADMIN` 权限保护。
+- 客户下单接口接入真实余额扣减事务，支持指定陪玩和平台人工匹配单价配置。
+- 新增充值申请、充值审核入账、提现申请冻结、提现审核/打款确认事务。
+- 新增订单开始和订单完成结算事务，完成后增加陪玩可提现收益。
+- 派单和 Bot 接单增加陪玩资料 `LISTED` 状态校验。
+- Prisma Schema 新增 `Wallet.frozenIncome`，用于提现冻结。
+- 新增初始 Prisma migration SQL。
+- 环境样例新增 `PLATFORM_MATCH_UNIT_PRICE` 和 `KOOK_ENCRYPT_KEY`。
+- 根据 Claude 第二次复审，订单下单改为客户余额冻结：`availableBalance -> frozenBalance`。
+- 订单完成结算时扣减客户 `frozenBalance`，再增加陪玩 `availableIncome`。
+- `RolesGuard` 增加 `SUPER_ADMIN` 继承 `ADMIN` 权限。
+- 陪玩登录时拒绝 `CompanionProfile.status = BANNED`。
+- 新增 `ORDER_MAX_HOURS` 配置并限制单次下单时长。

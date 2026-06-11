@@ -81,6 +81,11 @@
   - `scripts/enable-https.sh`
   - `scripts/backup-postgres.sh`
   - 三个 Web Dockerfile
+- Claude 审核报告 P0/P1 修复后的静态检查：
+  - `git diff --check` 通过。
+  - 已确认 API 占位返回 `accepted: true` / `next:` 已从 `apps/api-server/src` 清除。
+  - 已确认 `.env.example` 与 `.env.production.example` 包含 `JWT_SECRET`、`BOT_INTERNAL_TOKEN`、`PLATFORM_COMMISSION_RATE`、`PLATFORM_MATCH_UNIT_PRICE`、`ORDER_MAX_HOURS`、`KOOK_VERIFY_TOKEN`、`KOOK_ENCRYPT_KEY`。
+  - 已确认 Bot 通知代码用 UTF-8 读取为正常中文，KOOK 通知使用 `${payload.*}` 模板插值。
 
 ## 待执行
 

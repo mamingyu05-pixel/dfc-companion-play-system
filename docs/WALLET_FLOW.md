@@ -11,6 +11,7 @@
 
 - `available_income`
 - `pending_income`
+- `frozen_income`
 
 ## 充值流程
 
@@ -29,31 +30,32 @@
 
 1. 后端计算订单总价。
 2. 检查 `available_balance >= totalAmount`。
-3. 扣减客户 `available_balance`。
+3. 扣减客户 `available_balance`，同时增加 `frozen_balance`。
 4. 写入 `wallet_transactions`，类型 `ORDER_PAYMENT`。
 5. 创建订单和状态日志。
 
 ## 订单结算
 
-1. 订单完成。
+1. 订单必须处于 `IN_PROGRESS`。
 2. 后端计算：
    - `platformFee = totalAmount * PLATFORM_COMMISSION_RATE`
    - `companionIncome = totalAmount - platformFee`
-3. 增加陪玩收益。
-4. 写入 `ORDER_SETTLEMENT` 流水。
+3. 扣减客户 `frozen_balance`。
+4. 第一阶段直接增加陪玩 `available_income`，暂不设置争议期。
+5. 写入 `ORDER_SETTLEMENT` 流水。
 
 ## 提现流程
 
 1. 陪玩提交提现申请。
 2. 检查 `available_income >= amount`。
 3. 创建 `withdrawal_requests`，状态 `PENDING`。
-4. 管理员审核。
-5. 审核通过时冻结收益：
+4. 提交提现申请时冻结收益：
    - `available_income -= amount`
-   - `frozen_balance += amount`
+   - `frozen_income += amount`
    - 写入 `WITHDRAWAL_FREEZE`
+5. 管理员审核通过后状态改为 `APPROVED`，等待人工打款。
 6. 人工打款后后台确认完成：
-   - `frozen_balance -= amount`
+   - `frozen_income -= amount`
    - 写入 `WITHDRAWAL_COMPLETED`
    - 提现状态改为 `PAID`
 7. 审核拒绝或打款失败时释放冻结金额并写流水。

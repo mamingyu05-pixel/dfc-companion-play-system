@@ -1,32 +1,37 @@
-import { Body, Controller, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { UserRole } from "@prisma/client";
+import { CurrentUser } from "../auth/current-user.decorator";
+import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { Roles } from "../auth/roles.decorator";
+import { RolesGuard } from "../auth/roles.guard";
+import { AuthenticatedUser } from "../auth/auth.types";
+import { OrdersService } from "./orders.service";
 
 @Controller("orders")
 export class OrdersController {
+  constructor(private readonly orders: OrdersService) {}
+
   @Post()
-  createOrder(@Body() body: { mode: string; hours: string; companionId?: string; notes?: string }) {
-    return {
-      accepted: true,
-      next: "Calculate amount server-side, debit customer wallet, create PAID order and order_status_logs",
-      mode: body.mode,
-      hours: body.hours
-    };
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  createOrder(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { mode: string; hours: string; companionId?: string; notes?: string; voiceTrialRequested?: boolean }
+  ) {
+    return this.orders.createOrder(user.id, body);
   }
 
   @Patch(":id/start")
-  startOrder(@Param("id") id: string) {
-    return {
-      accepted: true,
-      next: "Only accepted companion/admin can move ACCEPTED order to IN_PROGRESS",
-      id
-    };
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  startOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.orders.startOrder(id, user.id);
   }
 
   @Patch(":id/complete")
-  completeOrder(@Param("id") id: string) {
-    return {
-      accepted: true,
-      next: "Settle platform fee and companion pending_income using idempotent transaction",
-      id
-    };
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  completeOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.orders.completeOrder(id, user.id);
   }
 }

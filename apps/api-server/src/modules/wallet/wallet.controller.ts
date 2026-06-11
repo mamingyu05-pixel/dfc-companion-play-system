@@ -1,30 +1,39 @@
-import { Body, Controller, Get, Post } from "@nestjs/common";
+import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { UserRole } from "@prisma/client";
+import { AuthenticatedUser } from "../auth/auth.types";
+import { CurrentUser } from "../auth/current-user.decorator";
+import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { Roles } from "../auth/roles.decorator";
+import { RolesGuard } from "../auth/roles.guard";
+import { WalletService } from "./wallet.service";
 
 @Controller("wallet")
 export class WalletController {
+  constructor(private readonly wallet: WalletService) {}
+
   @Get("me")
-  getMyWallet() {
-    return {
-      accepted: true,
-      next: "Return wallet balances and latest wallet_transactions for current JWT user"
-    };
+  @UseGuards(JwtAuthGuard)
+  getMyWallet(@CurrentUser() user: AuthenticatedUser) {
+    return this.wallet.getWallet(user.id);
   }
 
   @Post("recharge-requests")
-  createRechargeRequest(@Body() body: { amount: string; screenshotUrl: string; note?: string }) {
-    return {
-      accepted: true,
-      next: "Create pending recharge request and notify admin Discord channel",
-      amount: body.amount
-    };
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  createRechargeRequest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { amount: string; screenshotUrl: string; note?: string }
+  ) {
+    return this.wallet.createRechargeRequest(user.id, body);
   }
 
   @Post("withdrawal-requests")
-  createWithdrawalRequest(@Body() body: { amount: string; payoutAccount: string; note?: string }) {
-    return {
-      accepted: true,
-      next: "Create pending withdrawal request for COMPANION and notify admin Discord channel",
-      amount: body.amount
-    };
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.COMPANION)
+  createWithdrawalRequest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { amount: string; payoutAccount: string; note?: string }
+  ) {
+    return this.wallet.createWithdrawalRequest(user.id, body);
   }
 }

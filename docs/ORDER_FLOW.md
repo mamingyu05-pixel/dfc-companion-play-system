@@ -25,7 +25,7 @@ DISPUTED
 1. 客户下单，可选择指定陪玩或平台代选。
 2. 后端计算金额。
 3. 检查客户 `available_balance`。
-4. 扣减客户余额。
+4. 扣减客户 `available_balance`，增加客户 `frozen_balance`。
 5. 创建订单，状态为 `PAID`。
 6. 写入 `wallet_transactions`。
 7. 写入 `order_status_logs`。
@@ -36,8 +36,9 @@ DISPUTED
 12. 陪玩或管理员开始订单，状态为 `IN_PROGRESS`。
 13. 订单完成。
 14. 后端计算平台抽成和陪玩收益。
-15. 陪玩 `pending_income` 或 `available_income` 增加。
-16. 写入钱包流水和订单日志。
+15. 扣减客户 `frozen_balance`。
+16. 第一阶段直接增加陪玩 `available_income`，`pending_income` 保留给后续争议期。
+17. 写入钱包流水和订单日志。
 
 ## 指定陪玩与平台代选
 
@@ -85,7 +86,8 @@ DISPUTED
 完成订单必须满足：
 
 - 当前状态为 `IN_PROGRESS`。
-- 未存在同订单 `ORDER_SETTLEMENT` 流水。
+- 使用 `updateMany + status = IN_PROGRESS` 防重复结算。
+- 客户 `frozen_balance` 必须足够覆盖订单金额。
 - 订单结算在同一事务内完成。
 
 ## 日志要求

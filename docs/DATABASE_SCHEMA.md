@@ -43,6 +43,7 @@ packages/database/prisma/schema.prisma
 - `frozen_balance`: 客户冻结余额。
 - `available_income`: 陪玩可提现收益。
 - `pending_income`: 陪玩待结算收益。
+- `frozen_income`: 陪玩提现审核/打款期间冻结收益。
 
 ### orders
 
