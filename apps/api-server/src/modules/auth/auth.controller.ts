@@ -8,8 +8,13 @@ import { JwtAuthGuard } from "./jwt-auth.guard";
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  @Post("email-verification-code")
+  requestCustomerEmailVerification(@Body() body: { email: string }) {
+    return this.auth.requestCustomerEmailVerification(body);
+  }
+
   @Post("register/customer")
-  registerCustomer(@Body() body: { email: string; password: string; displayName: string }) {
+  registerCustomer(@Body() body: { email: string; password: string; displayName: string; emailCode: string }) {
     return this.auth.registerCustomer(body);
   }
 

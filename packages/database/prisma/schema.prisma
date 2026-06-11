@@ -180,6 +180,21 @@ model User {
   @@map("users")
 }
 
+model EmailVerificationCode {
+  id         String    @id @default(cuid())
+  email      String
+  purpose    String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, purpose])
+  @@index([expiresAt])
+  @@map("email_verification_codes")
+}
+
 model UserExternalAccount {
   id             String      @id @default(cuid())
   userId         String

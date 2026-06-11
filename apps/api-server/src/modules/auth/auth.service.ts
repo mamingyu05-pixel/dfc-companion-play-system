@@ -1,12 +1,19 @@
-import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { CompanionProfileStatus, Prisma, UserRole } from "@prisma/client";
+import { createHash, randomInt } from "node:crypto";
+import nodemailer from "nodemailer";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "./auth.types";
 import { isValidEmail, normalizeEmail } from "./email.util";
 import { createPasswordHash, verifyPassword } from "./password.util";
 
 type Portal = "customer" | "companion" | "admin";
+
+const CUSTOMER_REGISTER_EMAIL_PURPOSE = "CUSTOMER_REGISTER";
+const EMAIL_CODE_TTL_MINUTES = 10;
+const EMAIL_CODE_RESEND_SECONDS = 60;
+const MAX_EMAIL_CODE_ATTEMPTS = 5;
 
 @Injectable()
 export class AuthService {
@@ -15,16 +22,77 @@ export class AuthService {
     private readonly jwt: JwtService
   ) {}
 
-  async registerCustomer(body: { email: string; password: string; displayName: string }) {
-    if (!body.email || !body.password || !body.displayName) {
-      throw new BadRequestException("email, password and displayName are required");
+  async requestCustomerEmailVerification(body: { email: string }) {
+    if (!body.email) {
+      throw new BadRequestException("email is required");
+    }
+
+    const email = normalizeEmail(body.email);
+    if (!isValidEmail(email)) {
+      throw new BadRequestException("Invalid email format");
+    }
+
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true }
+    });
+    if (existing) {
+      throw new BadRequestException("Email is already registered");
+    }
+
+    const recent = await this.prisma.emailVerificationCode.findFirst({
+      where: {
+        email,
+        purpose: CUSTOMER_REGISTER_EMAIL_PURPOSE,
+        consumedAt: null,
+        createdAt: { gte: new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000) }
+      },
+      select: { id: true }
+    });
+    if (recent) {
+      throw new BadRequestException("Please wait before requesting another verification code");
+    }
+
+    const code = generateEmailCode();
+    const codeHash = hashEmailCode(email, code);
+    const expiresAt = new Date(Date.now() + EMAIL_CODE_TTL_MINUTES * 60 * 1000);
+
+    const verification = await this.prisma.$transaction(async (tx) => {
+      await tx.emailVerificationCode.deleteMany({
+        where: { email, purpose: CUSTOMER_REGISTER_EMAIL_PURPOSE, consumedAt: null }
+      });
+      return tx.emailVerificationCode.create({
+        data: {
+          email,
+          purpose: CUSTOMER_REGISTER_EMAIL_PURPOSE,
+          codeHash,
+          expiresAt
+        },
+        select: { id: true }
+      });
+    });
+
+    try {
+      await this.sendVerificationEmail(email, code);
+    } catch (error) {
+      await this.prisma.emailVerificationCode.delete({ where: { id: verification.id } }).catch(() => undefined);
+      throw error;
+    }
+
+    return { message: "Verification code sent" };
+  }
+
+  async registerCustomer(body: { email: string; password: string; displayName: string; emailCode: string }) {
+    if (!body.email || !body.password || !body.displayName || !body.emailCode) {
+      throw new BadRequestException("email, password, displayName and emailCode are required");
     }
 
     const email = normalizeEmail(body.email);
     const displayName = body.displayName.trim();
+    const emailCode = body.emailCode.trim();
 
-    if (!email || !displayName) {
-      throw new BadRequestException("email, password and displayName are required");
+    if (!email || !displayName || !emailCode) {
+      throw new BadRequestException("email, password, displayName and emailCode are required");
     }
     if (!isValidEmail(email)) {
       throw new BadRequestException("Invalid email format");
@@ -42,12 +110,14 @@ export class AuthService {
       throw new BadRequestException("Email is already registered");
     }
 
+    const verificationId = await this.assertCustomerEmailVerification(email, emailCode);
     const passwordHash = await createPasswordHash(body.password);
 
     const user = await this.createCustomerUser({
       email,
       passwordHash,
-      displayName
+      displayName,
+      verificationId
     });
 
     return {
@@ -56,9 +126,23 @@ export class AuthService {
     };
   }
 
-  private async createCustomerUser(body: { email: string; passwordHash: string; displayName: string }) {
+  private async createCustomerUser(body: { email: string; passwordHash: string; displayName: string; verificationId: string }) {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const verification = await tx.emailVerificationCode.findUnique({
+          where: { id: body.verificationId }
+        });
+
+        if (
+          !verification ||
+          verification.email !== body.email ||
+          verification.purpose !== CUSTOMER_REGISTER_EMAIL_PURPOSE ||
+          verification.consumedAt ||
+          verification.expiresAt <= new Date()
+        ) {
+          throw new BadRequestException("Verification code is invalid or expired");
+        }
+
         const created = await tx.user.create({
           data: {
             email: body.email,
@@ -70,6 +154,10 @@ export class AuthService {
         });
 
         await tx.wallet.create({ data: { userId: created.id } });
+        await tx.emailVerificationCode.update({
+          where: { id: verification.id },
+          data: { consumedAt: new Date() }
+        });
         return created;
       });
     } catch (error) {
@@ -78,6 +166,33 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  private async assertCustomerEmailVerification(email: string, emailCode: string) {
+    const verification = await this.prisma.emailVerificationCode.findFirst({
+      where: {
+        email,
+        purpose: CUSTOMER_REGISTER_EMAIL_PURPOSE,
+        consumedAt: null
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!verification || verification.expiresAt <= new Date()) {
+      throw new BadRequestException("Verification code is invalid or expired");
+    }
+    if (verification.attempts >= MAX_EMAIL_CODE_ATTEMPTS) {
+      throw new BadRequestException("Verification code has too many failed attempts");
+    }
+    if (verification.codeHash !== hashEmailCode(email, emailCode)) {
+      await this.prisma.emailVerificationCode.update({
+        where: { id: verification.id },
+        data: { attempts: { increment: 1 } }
+      });
+      throw new BadRequestException("Verification code is invalid or expired");
+    }
+
+    return verification.id;
   }
 
   async login(body: { email: string; password: string; portal: Portal }) {
@@ -266,10 +381,49 @@ export class AuthService {
     if (portal === "companion") return role === UserRole.COMPANION;
     return role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN;
   }
+
+  private async sendVerificationEmail(email: string, code: string) {
+    const host = process.env.SMTP_HOST?.trim();
+    const user = process.env.SMTP_USER?.trim();
+    const pass = process.env.SMTP_PASS;
+    const from = process.env.SMTP_FROM?.trim() || user;
+    const port = Number(process.env.SMTP_PORT ?? "587");
+
+    if (!host || !user || !pass || !from || !Number.isFinite(port)) {
+      throw new InternalServerErrorException("Email service is not configured");
+    }
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass }
+    });
+
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject: "May猫饼电竞注册验证码",
+      text: `你的 May猫饼电竞注册验证码是：${code}。验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。`,
+      html: `<p>你的 May猫饼电竞注册验证码是：</p><p style="font-size:24px;font-weight:700;letter-spacing:4px;">${code}</p><p>验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。</p>`
+    });
+  }
 }
 
 class ForbiddenPortalException extends UnauthorizedException {
   constructor() {
     super("User role cannot access this portal");
   }
+}
+
+function generateEmailCode() {
+  return String(randomInt(100000, 1000000));
+}
+
+function hashEmailCode(email: string, code: string) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new InternalServerErrorException("JWT_SECRET is not configured");
+  }
+  return createHash("sha256").update(`${secret}:${email}:${code}`).digest("hex");
 }

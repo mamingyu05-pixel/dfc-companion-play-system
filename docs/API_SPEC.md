@@ -12,9 +12,28 @@ API 前缀：
 
 ## Auth
 
+### POST /api/auth/email-verification-code
+
+客户注册前发送邮箱验证码。
+
+请求：
+
+```json
+{
+  "email": "customer@example.com"
+}
+```
+
+规则：
+
+- 邮箱必须格式正确。
+- 邮箱未注册才允许发送。
+- 同一邮箱 60 秒内不能重复发送。
+- 验证码 10 分钟内有效。
+
 ### POST /api/auth/register/customer
 
-客户注册。
+客户注册。必须先完成邮箱验证码发送。
 
 请求：
 
@@ -22,12 +41,14 @@ API 前缀：
 {
   "email": "customer@example.com",
   "password": "ChangeMe123!",
-  "displayName": "客户A"
+  "displayName": "客户A",
+  "emailCode": "123456"
 }
 ```
 
 处理：
 
+- 校验邮箱验证码。
 - 创建 `CUSTOMER` 用户。
 - 创建钱包。
 - 返回 JWT。

@@ -22,10 +22,42 @@ export function CustomerAuthForm() {
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [emailCode, setEmailCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+
+  async function sendEmailCode() {
+    setStatus("");
+    setError("");
+
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
+      setError("请先填写邮箱");
+      return;
+    }
+
+    setIsSendingCode(true);
+    try {
+      const response = await fetch("/api/auth/email-verification-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail })
+      });
+      const data = (await response.json().catch(() => ({}))) as AuthResponse;
+      if (!response.ok) {
+        const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
+        throw new Error(toChineseError(message));
+      }
+      setStatus("验证码已发送，请去邮箱查看。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "验证码发送失败，请稍后重试");
+    } finally {
+      setIsSendingCode(false);
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,6 +68,10 @@ export function CustomerAuthForm() {
       setError("两次输入的密码不一致");
       return;
     }
+    if (mode === "register" && !emailCode.trim()) {
+      setError("请填写邮箱验证码");
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -43,7 +79,7 @@ export function CustomerAuthForm() {
     const normalizedEmail = normalizeEmail(email);
     const payload =
       mode === "register"
-        ? { email: normalizedEmail, password, displayName: displayName.trim() }
+        ? { email: normalizedEmail, password, displayName: displayName.trim(), emailCode: emailCode.trim() }
         : { email: normalizedEmail, password, portal: "customer" };
 
     try {
@@ -116,26 +152,52 @@ export function CustomerAuthForm() {
 
         <form onSubmit={submit} className="mt-5 space-y-4">
           <Field label="邮箱">
-            <input
-              required
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-              className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
-            />
+            <div className="flex gap-2">
+              <input
+                required
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="min-w-0 flex-1 rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
+              />
+              {mode === "register" ? (
+                <button
+                  type="button"
+                  onClick={sendEmailCode}
+                  disabled={isSendingCode}
+                  className="shrink-0 rounded-dfc-control border border-dfc-blue/40 px-3 text-xs font-semibold text-dfc-blue disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSendingCode ? "发送中" : "发验证码"}
+                </button>
+              ) : null}
+            </div>
           </Field>
 
           {mode === "register" ? (
-            <Field label="昵称">
-              <input
-                required
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                placeholder="你的游戏昵称"
-                className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
-              />
-            </Field>
+            <>
+              <Field label="邮箱验证码">
+                <input
+                  required
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={emailCode}
+                  onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6 位验证码"
+                  className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
+                />
+              </Field>
+
+              <Field label="昵称">
+                <input
+                  required
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder="你的游戏昵称"
+                  className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
+                />
+              </Field>
+            </>
           ) : null}
 
           <Field label="密码">
@@ -188,6 +250,10 @@ function toChineseError(message?: string) {
   if (!message) return "请求失败，请检查填写内容";
   if (message.includes("Email is already registered")) return "这个邮箱已经注册过，请直接登录或换一个邮箱";
   if (message.includes("Invalid email format")) return "邮箱格式不正确，请检查后再提交";
+  if (message.includes("Verification code is invalid or expired")) return "验证码不正确或已过期，请重新获取";
+  if (message.includes("Verification code has too many failed attempts")) return "验证码错误次数太多，请重新获取";
+  if (message.includes("Please wait before requesting another verification code")) return "验证码刚刚发送过，请稍等 1 分钟再试";
+  if (message.includes("Email service is not configured")) return "邮箱发送服务还没配置，请联系管理员";
   if (message.includes("Password must be at least 8 characters")) return "密码至少需要 8 位";
   if (message.includes("Invalid email or password")) return "邮箱或密码不正确";
   if (message.includes("User role cannot access this portal")) return "这个账号不能进入客户入口";

@@ -42,3 +42,5 @@
 - `RolesGuard` 增加 `SUPER_ADMIN` 继承 `ADMIN` 权限。
 - 陪玩登录时拒绝 `CompanionProfile.status = BANNED`。
 - 新增 `ORDER_MAX_HOURS` 配置并限制单次下单时长。
+- 客户注册新增真实邮箱验证码步骤，新增 `email_verification_codes` 表和 SMTP 配置项。
+- 客户注册、后台创建管理员/陪玩账号统一邮箱规范化和重复邮箱拦截。
