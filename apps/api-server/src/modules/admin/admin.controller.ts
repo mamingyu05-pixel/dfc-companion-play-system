@@ -254,6 +254,152 @@ export class AdminController {
     );
   }
 
+  @Get("withdrawals")
+  listWithdrawalRequests() {
+    return this.prisma.withdrawalRequest.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        companion: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            wallet: { select: { availableIncome: true, frozenIncome: true } }
+          }
+        },
+        reviewedBy: { select: { id: true, email: true, displayName: true } }
+      }
+    }).then((requests) =>
+      requests.map((request) => ({
+        id: request.id,
+        amount: request.amount.toString(),
+        payoutAccount: request.payoutAccount,
+        status: request.status,
+        note: request.note,
+        reviewNote: request.reviewNote,
+        payoutReference: request.payoutReference,
+        reviewedAt: request.reviewedAt,
+        paidAt: request.paidAt,
+        createdAt: request.createdAt,
+        companion: {
+          id: request.companion.id,
+          email: request.companion.email,
+          displayName: request.companion.displayName,
+          availableIncome: request.companion.wallet?.availableIncome.toString() ?? "0",
+          frozenIncome: request.companion.wallet?.frozenIncome.toString() ?? "0"
+        },
+        reviewedBy: request.reviewedBy
+          ? {
+              id: request.reviewedBy.id,
+              email: request.reviewedBy.email,
+              displayName: request.reviewedBy.displayName
+            }
+          : null
+      }))
+    );
+  }
+
+  @Get("complaints")
+  listComplaints() {
+    return this.prisma.complaint.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        order: { select: { id: true, orderNo: true, status: true, totalAmount: true } },
+        reporter: { select: { id: true, email: true, displayName: true, role: true } },
+        resolvedBy: { select: { id: true, email: true, displayName: true } }
+      }
+    }).then((complaints) =>
+      complaints.map((complaint) => ({
+        id: complaint.id,
+        reason: complaint.reason,
+        status: complaint.status,
+        resolution: complaint.resolution,
+        createdAt: complaint.createdAt,
+        updatedAt: complaint.updatedAt,
+        order: {
+          id: complaint.order.id,
+          orderNo: complaint.order.orderNo,
+          status: complaint.order.status,
+          totalAmount: complaint.order.totalAmount.toString()
+        },
+        reporter: complaint.reporter,
+        resolvedBy: complaint.resolvedBy
+      }))
+    );
+  }
+
+  @Patch("complaints/:id/review")
+  async reviewComplaint(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { status: "IN_REVIEW" | "RESOLVED" | "REJECTED"; resolution?: string }
+  ) {
+    if (!["IN_REVIEW", "RESOLVED", "REJECTED"].includes(body.status)) {
+      throw new BadRequestException("Invalid complaint status");
+    }
+
+    const complaint = await this.prisma.complaint.update({
+      where: { id },
+      data: {
+        status: body.status,
+        resolution: body.resolution,
+        resolvedById: body.status === "RESOLVED" || body.status === "REJECTED" ? user.id : undefined
+      },
+      include: { order: true, reporter: true }
+    });
+
+    await this.prisma.adminLog.create({
+      data: {
+        actorId: user.id,
+        targetUserId: complaint.reporterId,
+        action: "REVIEW_COMPLAINT",
+        entityType: "COMPLAINT",
+        entityId: id,
+        detail: { status: body.status, resolution: body.resolution, orderNo: complaint.order.orderNo }
+      }
+    });
+
+    return complaint;
+  }
+
+  @Get("orders")
+  listOrders() {
+    return this.orders.listAdminOrders();
+  }
+
+  @Get("companions")
+  listCompanions() {
+    return this.prisma.companionProfile.findMany({
+      orderBy: { updatedAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            status: true,
+            wallet: { select: { availableIncome: true, pendingIncome: true } }
+          }
+        }
+      }
+    }).then((profiles) =>
+      profiles.map((profile) => ({
+        userId: profile.userId,
+        email: profile.user.email,
+        displayName: profile.user.displayName,
+        userStatus: profile.user.status,
+        nickname: profile.nickname,
+        status: profile.status,
+        onlineStatus: profile.onlineStatus,
+        deltaForceRank: profile.deltaForceRank,
+        skillModes: profile.skillModes,
+        pricePerHour: profile.pricePerHour.toString(),
+        availableIncome: profile.user.wallet?.availableIncome.toString() ?? "0",
+        pendingIncome: profile.user.wallet?.pendingIncome.toString() ?? "0"
+      }))
+    );
+  }
+
   @Post("companions")
   async createCompanion(
     @CurrentUser() user: AuthenticatedUser,
@@ -272,54 +418,101 @@ export class AdminController {
     }
   ) {
     const passwordHash = await createPasswordHash(body.password);
-    const pricePerHour = new Prisma.Decimal(body.pricePerHour);
+    let pricePerHour: Prisma.Decimal;
+    try {
+      pricePerHour = new Prisma.Decimal(body.pricePerHour);
+    } catch {
+      throw new BadRequestException("pricePerHour must be a valid amount");
+    }
     if (pricePerHour.lte(0)) throw new BadRequestException("pricePerHour must be greater than 0");
 
-    return this.prisma.$transaction(async (tx) => {
-      const companion = await tx.user.create({
-        data: {
-          email: body.email.toLowerCase(),
-          passwordHash,
-          role: UserRole.COMPANION,
-          displayName: body.nickname,
-          wallet: { create: {} },
-          companionProfile: {
-            create: {
-              nickname: body.nickname,
-              avatarUrl: body.avatarUrl,
-              gender: body.gender,
-              deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
-              skillModes: body.skillModes ?? [],
-              pricePerHour,
-              onlineStatus: OnlineStatus.OFFLINE,
-              bio: body.bio,
-              voicePreference: body.voicePreference ?? VoicePreference.OPTIONAL,
-              status: CompanionProfileStatus.PENDING_REVIEW
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const companion = await tx.user.create({
+          data: {
+            email: body.email.toLowerCase(),
+            passwordHash,
+            role: UserRole.COMPANION,
+            displayName: body.nickname,
+            wallet: { create: {} },
+            companionProfile: {
+              create: {
+                nickname: body.nickname,
+                avatarUrl: body.avatarUrl,
+                gender: body.gender,
+                deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
+                skillModes: body.skillModes ?? [],
+                pricePerHour,
+                onlineStatus: OnlineStatus.OFFLINE,
+                bio: body.bio,
+                voicePreference: body.voicePreference ?? VoicePreference.OPTIONAL,
+                status: CompanionProfileStatus.PENDING_REVIEW
+              }
             }
+          },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            displayName: true,
+            companionProfile: true
           }
-        },
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          displayName: true,
-          companionProfile: true
-        }
-      });
+        });
 
-      await tx.adminLog.create({
-        data: {
-          actorId: user.id,
-          targetUserId: companion.id,
-          action: "CREATE_COMPANION",
-          entityType: "USER",
-          entityId: companion.id,
-          detail: { nickname: body.nickname, pricePerHour: body.pricePerHour }
-        }
-      });
+        await tx.adminLog.create({
+          data: {
+            actorId: user.id,
+            targetUserId: companion.id,
+            action: "CREATE_COMPANION",
+            entityType: "USER",
+            entityId: companion.id,
+            detail: { nickname: body.nickname, pricePerHour: body.pricePerHour }
+          }
+        });
 
-      return companion;
+        return companion;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new BadRequestException("Email is already registered");
+      }
+      throw error;
+    }
+  }
+
+  @Patch("companions/:id/status")
+  async updateCompanionProfileStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { status: "PENDING_REVIEW" | "LISTED" | "UNLISTED" | "BANNED"; note?: string }
+  ) {
+    if (!["PENDING_REVIEW", "LISTED", "UNLISTED", "BANNED"].includes(body.status)) {
+      throw new BadRequestException("Invalid companion profile status");
+    }
+
+    const updated = await this.prisma.companionProfile.update({
+      where: { userId: id },
+      data: { status: body.status as CompanionProfileStatus },
+      include: { user: { select: { id: true, email: true, displayName: true } } }
     });
+
+    await this.prisma.adminLog.create({
+      data: {
+        actorId: user.id,
+        targetUserId: id,
+        action: "UPDATE_COMPANION_STATUS",
+        entityType: "COMPANION_PROFILE",
+        entityId: updated.id,
+        detail: { status: body.status, note: body.note }
+      }
+    });
+
+    return {
+      userId: updated.userId,
+      email: updated.user.email,
+      nickname: updated.nickname,
+      status: updated.status
+    };
   }
 
   @Patch("recharges/:id/review")

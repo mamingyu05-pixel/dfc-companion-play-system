@@ -12,23 +12,20 @@ export function CompanionShell({ children }: { children: ReactNode }) {
               DFC
             </span>
             <span>
-              <span className="block text-sm font-semibold">陪玩工作台</span>
-              <span className="block text-xs text-dfc-muted">接单 · 订单 · 收益</span>
+              <span className="block text-sm font-semibold">Companion Portal</span>
+              <span className="block text-xs text-dfc-muted">Accept, serve and withdraw</span>
             </span>
           </Link>
           <nav className="hidden items-center gap-2 md:flex">
-            <NavLink href="/dashboard">工作台</NavLink>
-            <NavLink href="/available-orders">可接订单</NavLink>
-            <NavLink href="/orders">我的订单</NavLink>
-            <NavLink href="/earnings">收益</NavLink>
-            <NavLink href="/withdrawals">提现</NavLink>
-            <NavLink href="/profile">资料</NavLink>
+            <NavLink href="/dashboard">Dashboard</NavLink>
+            <NavLink href="/available-orders">Available</NavLink>
+            <NavLink href="/orders">My Orders</NavLink>
+            <NavLink href="/earnings">Earnings</NavLink>
+            <NavLink href="/withdrawals">Withdraw</NavLink>
+            <NavLink href="/profile">Profile</NavLink>
           </nav>
-          <button
-            type="button"
-            className="rounded-dfc-control bg-dfc-success/10 px-3 py-2 text-xs font-semibold text-dfc-success"
-          >
-            在线
+          <button type="button" className="rounded-dfc-control bg-dfc-success/10 px-3 py-2 text-xs font-semibold text-dfc-success">
+            Online
           </button>
         </div>
       </header>
@@ -36,10 +33,10 @@ export function CompanionShell({ children }: { children: ReactNode }) {
         <CompanionAuthGate>{children}</CompanionAuthGate>
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-dfc-border bg-dfc-bg md:hidden">
-        <MobileNavLink href="/dashboard">工作台</MobileNavLink>
-        <MobileNavLink href="/available-orders">接单</MobileNavLink>
-        <MobileNavLink href="/orders">订单</MobileNavLink>
-        <MobileNavLink href="/earnings">收益</MobileNavLink>
+        <MobileNavLink href="/dashboard">Home</MobileNavLink>
+        <MobileNavLink href="/available-orders">Accept</MobileNavLink>
+        <MobileNavLink href="/orders">Orders</MobileNavLink>
+        <MobileNavLink href="/earnings">Income</MobileNavLink>
       </nav>
     </main>
   );
@@ -64,22 +61,36 @@ export function MetricCard({ label, value, hint }: { label: string; value: strin
   );
 }
 
-export function OrderCard({ order, action }: { order: { id: string; mode: string; hours: number; amount: number; status: string }; action?: string }) {
+export function OrderCard({
+  order,
+  action,
+  onAction
+}: {
+  order: { id: string; mode: string; hours: number; amount: number; status: string };
+  action?: string;
+  onAction?: () => void;
+}) {
   return (
     <article className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">{order.id}</h2>
-          <p className="mt-1 text-sm text-dfc-subtext">{order.mode} · {order.hours} 小时</p>
+          <p className="mt-1 text-sm text-dfc-subtext">
+            {order.mode} / {order.hours} hours
+          </p>
         </div>
         <StatusBadge>{order.status}</StatusBadge>
       </div>
       <div className="mt-4 flex items-end justify-between">
         <div>
-          <div className="text-xs text-dfc-muted">订单金额</div>
-          <div className="mt-1 text-xl font-semibold text-dfc-blue">¥{order.amount}</div>
+          <div className="text-xs text-dfc-muted">Order amount</div>
+          <div className="mt-1 text-xl font-semibold text-dfc-blue">¥{order.amount.toFixed(2)}</div>
         </div>
-        {action ? <button className="rounded-dfc-control bg-dfc-blue px-4 py-2 text-sm font-semibold text-slate-950">{action}</button> : null}
+        {action ? (
+          <button type="button" onClick={onAction} className="rounded-dfc-control bg-dfc-blue px-4 py-2 text-sm font-semibold text-slate-950">
+            {action}
+          </button>
+        ) : null}
       </div>
     </article>
   );
@@ -90,9 +101,17 @@ export function StatusBadge({ children }: { children: ReactNode }) {
 }
 
 function NavLink({ href, children }: { href: string; children: ReactNode }) {
-  return <Link href={href} className="rounded-dfc-control px-3 py-2 text-sm text-dfc-subtext hover:bg-dfc-surface hover:text-dfc-text">{children}</Link>;
+  return (
+    <Link href={href} className="rounded-dfc-control px-3 py-2 text-sm text-dfc-subtext hover:bg-dfc-surface hover:text-dfc-text">
+      {children}
+    </Link>
+  );
 }
 
 function MobileNavLink({ href, children }: { href: string; children: ReactNode }) {
-  return <Link href={href} className="py-3 text-center text-xs font-medium text-dfc-subtext">{children}</Link>;
+  return (
+    <Link href={href} className="py-3 text-center text-xs font-medium text-dfc-subtext">
+      {children}
+    </Link>
+  );
 }

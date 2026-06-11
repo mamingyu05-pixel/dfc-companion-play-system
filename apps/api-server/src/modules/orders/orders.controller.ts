@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -10,6 +10,34 @@ import { OrdersService } from "./orders.service";
 @Controller("orders")
 export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
+
+  @Get("companions")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  listOrderableCompanions() {
+    return this.orders.listOrderableCompanions();
+  }
+
+  @Get("my")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  listMyOrders(@CurrentUser() user: AuthenticatedUser) {
+    return this.orders.listCustomerOrders(user.id);
+  }
+
+  @Get("companion/available")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.COMPANION)
+  listAvailableOrders(@CurrentUser() user: AuthenticatedUser) {
+    return this.orders.listAvailableOrdersForCompanion(user.id);
+  }
+
+  @Get("companion/my")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.COMPANION)
+  listCompanionOrders(@CurrentUser() user: AuthenticatedUser) {
+    return this.orders.listCompanionOrders(user.id);
+  }
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -28,9 +56,16 @@ export class OrdersController {
     return this.orders.startOrder(id, user.id);
   }
 
+  @Patch(":id/accept")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.COMPANION)
+  acceptOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.orders.acceptOrderFromWeb(id, user.id);
+  }
+
   @Patch(":id/complete")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   completeOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.orders.completeOrder(id, user.id);
   }

@@ -3,60 +3,87 @@
 import { useEffect, useState } from "react";
 import { CompanionShell, OrderCard, SectionHeader } from "../components";
 
-type CompanionOrder = {
+type Order = {
+  id: string;
   orderNo: string;
   mode: string;
-  status: string;
   hours: string;
   totalAmount: string;
-  companionIncome: string;
-  customerName: string;
+  status: string;
+  customer?: { displayName: string; email: string };
 };
 
-export default function MyOrdersPage() {
-  const [orders, setOrders] = useState<CompanionOrder[]>([]);
+export default function CompanionOrdersPage() {
+  const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
 
-  useEffect(() => {
+  async function loadOrders() {
     const token = localStorage.getItem("dfc_companion_token");
     if (!token) return;
-
-    void fetch("/api/auth/me", {
+    const response = await fetch("/api/orders/companion/my", {
       headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("无法加载订单");
-        const data = (await response.json()) as { companionOrders?: CompanionOrder[] };
-        setOrders(data.companionOrders ?? []);
-      })
-      .catch(() => setError("无法加载我的订单，请刷新页面"));
+    });
+    if (!response.ok) throw new Error("Failed to load orders");
+    setOrders((await response.json()) as Order[]);
+  }
+
+  useEffect(() => {
+    void loadOrders().catch(() => setError("Failed to load your orders"));
   }, []);
+
+  async function updateOrder(orderId: string, action: "start" | "complete") {
+    const token = localStorage.getItem("dfc_companion_token");
+    if (!token) return;
+    setError("");
+    setStatus("");
+    const response = await fetch(`/api/orders/${orderId}/${action}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    if (!response.ok) {
+      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      setError(message ?? `Failed to ${action} order`);
+      return;
+    }
+    setStatus(action === "start" ? "Order started" : "Order completed and settled");
+    await loadOrders();
+  }
 
   return (
     <CompanionShell>
-      <SectionHeader title="我的订单" desc="这里只显示当前陪玩账号的已接订单、进行中订单和历史订单。" />
-      {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
-      <section className="mt-6 grid gap-4 md:grid-cols-2">
+      <SectionHeader title="My Orders" desc="Start accepted orders after entering voice/game service. Complete orders only after service is finished." />
+      {error ? <Alert tone="danger">{error}</Alert> : null}
+      {status ? <Alert tone="success">{status}</Alert> : null}
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
         {orders.length ? (
-          orders.map((order) => (
-            <OrderCard
-              key={order.orderNo}
-              order={{
-                id: order.orderNo,
-                mode: `${order.customerName} · ${order.mode}`,
-                hours: Number(order.hours),
-                amount: Number(order.companionIncome || order.totalAmount),
-                status: order.status
-              }}
-              action={order.status === "IN_PROGRESS" ? "完成订单" : undefined}
-            />
-          ))
+          orders.map((order) => {
+            const nextAction = order.status === "ACCEPTED" ? "Start" : order.status === "IN_PROGRESS" ? "Complete" : undefined;
+            return (
+              <OrderCard
+                key={order.id}
+                order={{
+                  id: order.orderNo,
+                  mode: `${order.mode}${order.customer ? ` / ${order.customer.displayName}` : ""}`,
+                  hours: Number(order.hours),
+                  amount: Number(order.totalAmount),
+                  status: order.status
+                }}
+                action={nextAction}
+                onAction={nextAction === "Start" ? () => void updateOrder(order.id, "start") : nextAction === "Complete" ? () => void updateOrder(order.id, "complete") : undefined}
+              />
+            );
+          })
         ) : (
-          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">
-            当前账号还没有订单。
-          </div>
+          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">No orders yet.</div>
         )}
-      </section>
+      </div>
     </CompanionShell>
   );
+}
+
+function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
+  const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
+  return <div className={`mt-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
 }

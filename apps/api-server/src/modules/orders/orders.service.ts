@@ -21,6 +21,98 @@ export class OrdersService {
     private readonly botNotifications: BotNotificationService
   ) {}
 
+  async listOrderableCompanions() {
+    const companions = await this.prisma.companionProfile.findMany({
+      where: {
+        status: CompanionProfileStatus.LISTED,
+        user: { is: { role: UserRole.COMPANION, status: UserStatus.ACTIVE } }
+      },
+      orderBy: [{ onlineStatus: "asc" }, { updatedAt: "desc" }],
+      include: {
+        user: { select: { id: true, email: true, displayName: true } }
+      }
+    });
+
+    return companions.map((profile) => ({
+      id: profile.userId,
+      email: profile.user.email,
+      displayName: profile.user.displayName,
+      nickname: profile.nickname,
+      status: profile.status,
+      onlineStatus: profile.onlineStatus,
+      deltaForceRank: profile.deltaForceRank,
+      skillModes: profile.skillModes,
+      pricePerHour: profile.pricePerHour.toString(),
+      voicePreference: profile.voicePreference,
+      bio: profile.bio
+    }));
+  }
+
+  async listCustomerOrders(customerId: string) {
+    const orders = await this.prisma.order.findMany({
+      where: { customerId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        companion: { select: { id: true, email: true, displayName: true } },
+        statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
+      }
+    });
+    return orders.map((order) => this.serializeOrder(order));
+  }
+
+  async listCompanionOrders(companionId: string) {
+    const orders = await this.prisma.order.findMany({
+      where: { companionId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        customer: { select: { id: true, email: true, displayName: true } },
+        companion: { select: { id: true, email: true, displayName: true } },
+        statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
+      }
+    });
+    return orders.map((order) => this.serializeOrder(order));
+  }
+
+  async listAvailableOrdersForCompanion(companionId: string) {
+    const companion = await this.prisma.user.findFirst({
+      where: {
+        id: companionId,
+        role: UserRole.COMPANION,
+        status: UserStatus.ACTIVE,
+        companionProfile: { is: { status: CompanionProfileStatus.LISTED } }
+      }
+    });
+    if (!companion) throw new BadRequestException("Companion is not listed, active or does not exist");
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.ASSIGNED,
+        OR: [{ companionId }, { companionId: null }]
+      },
+      orderBy: { createdAt: "asc" },
+      include: {
+        customer: { select: { id: true, email: true, displayName: true } },
+        companion: { select: { id: true, email: true, displayName: true } },
+        statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
+      }
+    });
+    return orders.map((order) => this.serializeOrder(order));
+  }
+
+  async listAdminOrders() {
+    const orders = await this.prisma.order.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        customer: { select: { id: true, email: true, displayName: true } },
+        companion: { select: { id: true, email: true, displayName: true } },
+        assignedBy: { select: { id: true, email: true, displayName: true } },
+        statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
+      }
+    });
+    return orders.map((order) => this.serializeOrder(order));
+  }
+
   async createOrder(
     customerId: string,
     body: {
@@ -277,6 +369,64 @@ export class OrdersService {
     });
   }
 
+  async acceptOrderFromWeb(orderId: string, companionId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const companion = await tx.user.findFirst({
+        where: {
+          id: companionId,
+          role: UserRole.COMPANION,
+          status: UserStatus.ACTIVE,
+          companionProfile: { is: { status: CompanionProfileStatus.LISTED } }
+        }
+      });
+      if (!companion) throw new BadRequestException("Companion is not listed, active or does not exist");
+
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: { id: true, status: true, companionId: true }
+      });
+      if (!order) throw new NotFoundException("Order not found");
+      if (order.status !== OrderStatus.ASSIGNED) {
+        throw new BadRequestException(`Order cannot be accepted from status ${order.status}`);
+      }
+      if (order.companionId && order.companionId !== companionId) {
+        throw new BadRequestException("Order is assigned to another companion");
+      }
+
+      const updated = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          status: OrderStatus.ASSIGNED,
+          OR: [{ companionId }, { companionId: null }]
+        },
+        data: {
+          companionId,
+          status: OrderStatus.ACCEPTED,
+          acceptedAt: new Date()
+        }
+      });
+      if (updated.count !== 1) throw new BadRequestException("Order was already accepted or changed");
+
+      await tx.orderStatusLog.create({
+        data: {
+          orderId,
+          fromStatus: OrderStatus.ASSIGNED,
+          toStatus: OrderStatus.ACCEPTED,
+          actorId: companionId,
+          reason: "WEB_COMPANION_ACCEPT"
+        }
+      });
+
+      return tx.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: {
+          customer: { select: { id: true, email: true, displayName: true } },
+          companion: { select: { id: true, email: true, displayName: true } }
+        }
+      });
+    });
+  }
+
   async startOrder(orderId: string, actorId: string) {
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
@@ -329,6 +479,12 @@ export class OrdersService {
         throw new BadRequestException(`Only IN_PROGRESS orders can complete. Current status: ${order.status}`);
       }
       if (!order.companionId) throw new BadRequestException("Order has no companion");
+      if (order.companionId !== actorId) {
+        const actor = await tx.user.findUnique({ where: { id: actorId }, select: { role: true } });
+        if (!actor || (actor.role !== UserRole.ADMIN && actor.role !== UserRole.SUPER_ADMIN)) {
+          throw new BadRequestException("Only assigned companion or admin can complete this order");
+        }
+      }
 
       const platformFee = order.totalAmount.mul(platformRate);
       const companionIncome = order.totalAmount.sub(platformFee);
@@ -441,9 +597,65 @@ export class OrdersService {
   }
 
   private positiveDecimal(value: string, fieldName: string) {
-    const decimal = new Prisma.Decimal(value);
+    let decimal: Prisma.Decimal;
+    try {
+      decimal = new Prisma.Decimal(value);
+    } catch {
+      throw new BadRequestException(`${fieldName} must be a valid amount`);
+    }
     if (decimal.lte(0)) throw new BadRequestException(`${fieldName} must be greater than 0`);
     return decimal;
+  }
+
+  private serializeOrder(order: {
+    id: string;
+    orderNo: string;
+    customerId: string;
+    companionId: string | null;
+    assignedById?: string | null;
+    assignmentType: OrderAssignmentType;
+    mode: string;
+    hours: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+    totalAmount: Prisma.Decimal;
+    platformFee: Prisma.Decimal;
+    companionIncome: Prisma.Decimal;
+    status: OrderStatus;
+    notes: string | null;
+    voiceTrialRequested: boolean;
+    createdAt: Date;
+    acceptedAt: Date | null;
+    startedAt: Date | null;
+    completedAt: Date | null;
+    customer?: { id: string; email: string; displayName: string };
+    companion?: { id: string; email: string; displayName: string } | null;
+    assignedBy?: { id: string; email: string; displayName: string } | null;
+    statusLogs?: Array<{ id: string; fromStatus: OrderStatus | null; toStatus: OrderStatus; reason: string | null; createdAt: Date }>;
+  }) {
+    return {
+      id: order.id,
+      orderNo: order.orderNo,
+      customerId: order.customerId,
+      companionId: order.companionId,
+      assignmentType: order.assignmentType,
+      mode: order.mode,
+      hours: order.hours.toString(),
+      unitPrice: order.unitPrice.toString(),
+      totalAmount: order.totalAmount.toString(),
+      platformFee: order.platformFee.toString(),
+      companionIncome: order.companionIncome.toString(),
+      status: order.status,
+      notes: order.notes,
+      voiceTrialRequested: order.voiceTrialRequested,
+      createdAt: order.createdAt,
+      acceptedAt: order.acceptedAt,
+      startedAt: order.startedAt,
+      completedAt: order.completedAt,
+      customer: order.customer,
+      companion: order.companion,
+      assignedBy: order.assignedBy,
+      statusLogs: order.statusLogs ?? []
+    };
   }
 
   private generateOrderNo() {
