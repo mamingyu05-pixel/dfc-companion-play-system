@@ -102,11 +102,19 @@ export function StatusBadge({ children, tone = "default" }: { children: ReactNod
   return <span className={`rounded-dfc-control px-2 py-1 text-xs ${styles[tone]}`}>{children}</span>;
 }
 
-export function ActionButton({ children, tone = "primary" }: { children: ReactNode; tone?: "primary" | "danger" | "secondary" }) {
+export function ActionButton({
+  children,
+  tone = "primary",
+  onClick
+}: {
+  children: ReactNode;
+  tone?: "primary" | "danger" | "secondary";
+  onClick?: () => void;
+}) {
   const styles = {
     primary: "bg-dfc-blue text-slate-950",
     secondary: "border border-dfc-border bg-dfc-surface text-dfc-text",
     danger: "bg-dfc-danger text-white"
   };
-  return <button className={`rounded-dfc-control px-3 py-2 text-xs font-semibold ${styles[tone]}`}>{children}</button>;
+  return <button onClick={onClick} className={`rounded-dfc-control px-3 py-2 text-xs font-semibold ${styles[tone]}`}>{children}</button>;
 }

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import {
   BotPlatform,
   CompanionProfileStatus,
@@ -6,6 +6,7 @@ import {
   OnlineStatus,
   Prisma,
   UserRole,
+  UserStatus,
   VoicePreference
 } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -29,6 +30,103 @@ export class AdminController {
     private readonly wallet: WalletService,
     private readonly externalAccounts: CompanionExternalAccountsService
   ) {}
+
+  @Get("users")
+  listUsers() {
+    return this.prisma.user.findMany({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        displayName: true,
+        createdAt: true,
+        wallet: {
+          select: {
+            availableBalance: true,
+            frozenBalance: true,
+            availableIncome: true,
+            pendingIncome: true
+          }
+        },
+        companionProfile: {
+          select: {
+            nickname: true,
+            status: true,
+            onlineStatus: true,
+            pricePerHour: true
+          }
+        },
+        externalAccounts: {
+          select: {
+            platform: true,
+            externalUserId: true,
+            displayName: true
+          }
+        }
+      }
+    }).then((users) =>
+      users.map((item) => ({
+        id: item.id,
+        email: item.email,
+        role: item.role,
+        status: item.status,
+        displayName: item.displayName,
+        createdAt: item.createdAt,
+        wallet: item.wallet
+          ? {
+              availableBalance: item.wallet.availableBalance.toString(),
+              frozenBalance: item.wallet.frozenBalance.toString(),
+              availableIncome: item.wallet.availableIncome.toString(),
+              pendingIncome: item.wallet.pendingIncome.toString()
+            }
+          : null,
+        companionProfile: item.companionProfile
+          ? {
+              nickname: item.companionProfile.nickname,
+              status: item.companionProfile.status,
+              onlineStatus: item.companionProfile.onlineStatus,
+              pricePerHour: item.companionProfile.pricePerHour.toString()
+            }
+          : null,
+        externalAccounts: item.externalAccounts
+      }))
+    );
+  }
+
+  @Patch("users/:id/status")
+  async updateUserStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { status: "ACTIVE" | "BANNED"; note?: string }
+  ) {
+    if (!["ACTIVE", "BANNED"].includes(body.status)) {
+      throw new BadRequestException("Invalid user status");
+    }
+    if (user.id === id && body.status === "BANNED") {
+      throw new BadRequestException("Admin cannot ban self");
+    }
+
+    const target = await this.prisma.user.update({
+      where: { id },
+      data: { status: body.status === "ACTIVE" ? UserStatus.ACTIVE : UserStatus.BANNED },
+      select: { id: true, email: true, role: true, status: true, displayName: true }
+    });
+
+    await this.prisma.adminLog.create({
+      data: {
+        actorId: user.id,
+        targetUserId: id,
+        action: body.status === "ACTIVE" ? "ACTIVATE_USER" : "BAN_USER",
+        entityType: "USER",
+        entityId: id,
+        detail: { email: target.email, role: target.role, note: body.note }
+      }
+    });
+
+    return target;
+  }
 
   @Post("companions")
   async createCompanion(
