@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { CustomerAuthGate } from "./auth-gate";
 
 type Companion = {
   id: string;
@@ -47,7 +48,9 @@ export function CustomerShell({ children }: { children: ReactNode }) {
           </Link>
         </div>
       </header>
-      <div className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-6 md:pb-10">{children}</div>
+      <div className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-6 md:pb-10">
+        <CustomerAuthGate>{children}</CustomerAuthGate>
+      </div>
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-dfc-border bg-dfc-bg md:hidden">
         <MobileNavLink href="/">注册</MobileNavLink>
         <MobileNavLink href="/home">大厅</MobileNavLink>

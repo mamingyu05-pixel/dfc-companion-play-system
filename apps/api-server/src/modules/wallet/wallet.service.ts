@@ -26,12 +26,118 @@ export class WalletService {
     });
   }
 
+  async getCustomerWalletSummary(userId: string) {
+    const [wallet, rechargeRequests] = await Promise.all([
+      this.prisma.wallet.findUnique({
+        where: { userId },
+        include: {
+          transactions: {
+            orderBy: { createdAt: "desc" },
+            take: 20
+          }
+        }
+      }),
+      this.prisma.rechargeRequest.findMany({
+        where: { customerId: userId },
+        orderBy: { createdAt: "desc" },
+        take: 20
+      })
+    ]);
+
+    const pendingRechargeAmount = rechargeRequests
+      .filter((request) => request.status === ReviewStatus.PENDING)
+      .reduce((total, request) => total.add(request.amount), new Prisma.Decimal(0));
+
+    return {
+      wallet: wallet
+        ? {
+            id: wallet.id,
+            availableBalance: wallet.availableBalance.toString(),
+            frozenBalance: wallet.frozenBalance.toString(),
+            transactions: wallet.transactions.map((transaction) => ({
+              id: transaction.id,
+              type: transaction.type,
+              direction: transaction.direction,
+              amount: transaction.amount.toString(),
+              balanceAfter: transaction.balanceAfter.toString(),
+              createdAt: transaction.createdAt
+            }))
+          }
+        : null,
+      pendingRechargeAmount: pendingRechargeAmount.toString(),
+      rechargeRequests: rechargeRequests.map((request) => ({
+        id: request.id,
+        amount: request.amount.toString(),
+        status: request.status,
+        note: request.note,
+        reviewNote: request.reviewNote,
+        createdAt: request.createdAt
+      }))
+    };
+  }
+
+  async getCompanionWalletSummary(userId: string) {
+    const [wallet, withdrawalRequests] = await Promise.all([
+      this.prisma.wallet.findUnique({
+        where: { userId },
+        include: {
+          transactions: {
+            orderBy: { createdAt: "desc" },
+            take: 20
+          }
+        }
+      }),
+      this.prisma.withdrawalRequest.findMany({
+        where: { companionId: userId },
+        orderBy: { createdAt: "desc" },
+        take: 20
+      })
+    ]);
+
+    const withdrawingAmount = withdrawalRequests
+      .filter((request) => request.status === WithdrawalStatus.PENDING || request.status === WithdrawalStatus.APPROVED)
+      .reduce((total, request) => total.add(request.amount), new Prisma.Decimal(0));
+
+    return {
+      wallet: wallet
+        ? {
+            id: wallet.id,
+            availableIncome: wallet.availableIncome.toString(),
+            pendingIncome: wallet.pendingIncome.toString(),
+            frozenIncome: wallet.frozenIncome.toString(),
+            transactions: wallet.transactions.map((transaction) => ({
+              id: transaction.id,
+              type: transaction.type,
+              direction: transaction.direction,
+              amount: transaction.amount.toString(),
+              balanceAfter: transaction.balanceAfter.toString(),
+              createdAt: transaction.createdAt
+            }))
+          }
+        : null,
+      withdrawingAmount: withdrawingAmount.toString(),
+      withdrawalRequests: withdrawalRequests.map((request) => ({
+        id: request.id,
+        amount: request.amount.toString(),
+        payoutAccount: request.payoutAccount,
+        status: request.status,
+        note: request.note,
+        reviewNote: request.reviewNote,
+        payoutReference: request.payoutReference,
+        createdAt: request.createdAt
+      }))
+    };
+  }
+
   async createRechargeRequest(
     customerId: string,
     body: { amount: string; screenshotUrl: string; note?: string }
   ) {
     const amount = this.positiveDecimal(body.amount, "amount");
     if (!body.screenshotUrl) throw new BadRequestException("screenshotUrl is required");
+    if (body.screenshotUrl.length > 2_500_000) {
+      throw new BadRequestException("screenshotUrl is too large");
+    }
 
     const customer = await this.prisma.user.findFirst({
       where: { id: customerId, role: UserRole.CUSTOMER, status: UserStatus.ACTIVE }
@@ -379,7 +485,12 @@ export class WalletService {
   }
 
   private positiveDecimal(value: string, fieldName: string) {
-    const decimal = new Prisma.Decimal(value);
+    let decimal: Prisma.Decimal;
+    try {
+      decimal = new Prisma.Decimal(value);
+    } catch {
+      throw new BadRequestException(`${fieldName} must be a valid amount`);
+    }
     if (decimal.lte(0)) throw new BadRequestException(`${fieldName} must be greater than 0`);
     return decimal;
   }

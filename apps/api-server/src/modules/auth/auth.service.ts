@@ -130,6 +130,14 @@ export class AuthService {
             pendingIncome: true
           }
         },
+        companionProfile: {
+          select: {
+            nickname: true,
+            onlineStatus: true,
+            status: true,
+            pricePerHour: true
+          }
+        },
         customerOrders: {
           orderBy: { createdAt: "desc" },
           take: 5,
@@ -140,6 +148,21 @@ export class AuthService {
             status: true,
             totalAmount: true,
             companion: { select: { displayName: true } },
+            createdAt: true
+          }
+        },
+        companionOrders: {
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            orderNo: true,
+            mode: true,
+            status: true,
+            hours: true,
+            totalAmount: true,
+            companionIncome: true,
+            customer: { select: { displayName: true } },
             createdAt: true
           }
         },
@@ -184,6 +207,25 @@ export class AuthService {
         status: order.status,
         totalAmount: order.totalAmount.toString(),
         companionName: order.companion?.displayName ?? "平台待匹配",
+        createdAt: order.createdAt
+      })),
+      companionProfile: user.companionProfile
+        ? {
+            nickname: user.companionProfile.nickname,
+            onlineStatus: user.companionProfile.onlineStatus,
+            status: user.companionProfile.status,
+            pricePerHour: user.companionProfile.pricePerHour.toString()
+          }
+        : null,
+      companionOrders: user.companionOrders.map((order) => ({
+        id: order.id,
+        orderNo: order.orderNo,
+        mode: order.mode,
+        status: order.status,
+        hours: order.hours.toString(),
+        totalAmount: order.totalAmount.toString(),
+        companionIncome: order.companionIncome.toString(),
+        customerName: order.customer.displayName,
         createdAt: order.createdAt
       })),
       walletTransactions: user.walletTransactions.map((transaction) => ({

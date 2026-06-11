@@ -17,6 +17,20 @@ export class WalletController {
     return this.wallet.getWallet(user.id);
   }
 
+  @Get("customer-summary")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  getCustomerWalletSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.wallet.getCustomerWalletSummary(user.id);
+  }
+
+  @Get("companion-summary")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.COMPANION)
+  getCompanionWalletSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.wallet.getCompanionWalletSummary(user.id);
+  }
+
   @Post("recharge-requests")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER)
