@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 export const dfcTailwindPreset = {
+  content: [],
   theme: {
     extend: {
       colors: {
@@ -40,5 +41,6 @@ export const dfcTailwindPreset = {
         ]
       }
     }
-  }
+  },
+  plugins: []
 } satisfies Config;
