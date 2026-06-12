@@ -191,17 +191,37 @@ export class WalletService {
 
     const promotion = body.promotionCode ? await this.findApplicablePromotionCode(body.promotionCode, amount) : null;
     const promotionBonus = promotion ? calculatePromotionBonus(amount, promotion) : new Prisma.Decimal(0);
-
-    return this.prisma.rechargeRequest.create({
-      data: {
-        customerId,
-        promotionCodeId: promotion?.id,
-        amount,
-        promotionBonus,
-        screenshotUrl: body.screenshotUrl,
-        note: body.note
+    if (promotion) {
+      const existingUse = await this.prisma.rechargeRequest.findFirst({
+        where: {
+          customerId,
+          promotionCodeId: promotion.id,
+          status: { not: ReviewStatus.REJECTED }
+        },
+        select: { id: true }
+      });
+      if (existingUse) {
+        throw new BadRequestException("Promotion code can only be used once per customer");
       }
-    });
+    }
+
+    try {
+      return await this.prisma.rechargeRequest.create({
+        data: {
+          customerId,
+          promotionCodeId: promotion?.id,
+          amount,
+          promotionBonus,
+          screenshotUrl: body.screenshotUrl,
+          note: body.note
+        }
+      });
+    } catch (error) {
+      if (isPrismaErrorCode(error, "P2002")) {
+        throw new BadRequestException("Promotion code can only be used once per customer");
+      }
+      throw error;
+    }
   }
 
   async adminCreditCustomerBalance(

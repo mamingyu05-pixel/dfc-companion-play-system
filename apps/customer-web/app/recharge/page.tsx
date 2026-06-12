@@ -233,6 +233,7 @@ function toChineseError(message?: string) {
   if (message.includes("Promotion code is invalid")) return "优惠码无效或已停用";
   if (message.includes("Promotion code is expired")) return "优惠码已过期";
   if (message.includes("Promotion code usage limit reached")) return "优惠码已被用完";
+  if (message.includes("Promotion code can only be used once per customer")) return "这个优惠码每个客户只能使用一次";
   if (message.includes("Recharge amount does not meet promotion code minimum")) return "充值金额未达到优惠码最低要求";
   if (message.includes("Promotion code has no bonus")) return "优惠码没有配置有效奖励";
   return message;
