@@ -1,3 +1,186 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #050711;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: #050711;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  background: #050711;
+  color: #f8fbff;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.35);
+  color: #ffffff;
+}
+
+.maycat-neon-bg {
+  position: relative;
+  isolation: isolate;
+  background: #050711;
+}
+
+.maycat-neon-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -4;
+  pointer-events: none;
+  background-image:
+    linear-gradient(90deg, rgba(5, 7, 17, 0.98) 0%, rgba(5, 7, 17, 0.72) 44%, rgba(5, 7, 17, 0.9) 100%),
+    linear-gradient(180deg, rgba(5, 7, 17, 0.08), rgba(5, 7, 17, 0.96)),
+    url("/brand/maycat-club-neon.jpg");
+  background-position: center;
+  background-size: cover;
+  opacity: 0.58;
+}
+
+.maycat-neon-bg::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(236, 72, 153, 0.28), transparent 28%),
+    radial-gradient(circle at 82% 12%, rgba(34, 211, 238, 0.22), transparent 30%),
+    radial-gradient(circle at 48% 92%, rgba(168, 85, 247, 0.2), transparent 34%),
+    linear-gradient(180deg, rgba(5, 7, 17, 0.08), #050711 92%);
+}
+
+.maycat-grid {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.82), transparent 86%);
+}
+
+.maycat-light-streaks {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, transparent 0 16%, rgba(34, 211, 238, 0.16) 16.15%, transparent 16.55%),
+    linear-gradient(293deg, transparent 0 72%, rgba(236, 72, 153, 0.18) 72.15%, transparent 72.55%),
+    linear-gradient(28deg, transparent 0 82%, rgba(250, 204, 21, 0.09) 82.1%, transparent 82.35%);
+}
+
+.maycat-panel {
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(18, 24, 42, 0.88), rgba(8, 10, 22, 0.92)),
+    rgba(8, 10, 22, 0.88);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+}
+
+.maycat-card {
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(20, 26, 45, 0.86), rgba(8, 11, 24, 0.88)),
+    rgba(12, 15, 28, 0.86);
+  box-shadow:
+    0 16px 54px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.maycat-card:hover {
+  border-color: rgba(34, 211, 238, 0.42);
+  box-shadow:
+    0 18px 64px rgba(0, 0, 0, 0.38),
+    0 0 34px rgba(34, 211, 238, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.maycat-nav {
+  border-bottom: 1px solid rgba(125, 211, 252, 0.16);
+  background: rgba(5, 7, 17, 0.78);
+  backdrop-filter: blur(20px);
+}
+
+.maycat-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(34, 211, 238, 0.34);
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.12);
+  color: #67e8f9;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.maycat-input {
+  width: 100%;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  border-radius: 8px;
+  background: rgba(3, 6, 15, 0.78);
+  color: #f8fbff;
+  outline: none;
+}
+
+.maycat-input:focus {
+  border-color: rgba(34, 211, 238, 0.82);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+
+.maycat-button {
+  border-radius: 8px;
+  background: linear-gradient(135deg, #22d3ee 0%, #38bdf8 36%, #ec4899 100%);
+  color: #04111f;
+  box-shadow:
+    0 0 28px rgba(34, 211, 238, 0.18),
+    0 0 34px rgba(236, 72, 153, 0.14);
+}
+
+.maycat-button:hover {
+  filter: brightness(1.08);
+}
+
+.maycat-button-secondary {
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.56);
+  color: #dbeafe;
+}
+
+.maycat-button-secondary:hover {
+  border-color: rgba(34, 211, 238, 0.55);
+  color: #67e8f9;
+}
+
+.maycat-text-glow {
+  text-shadow:
+    0 0 22px rgba(34, 211, 238, 0.32),
+    0 0 44px rgba(236, 72, 153, 0.2);
+}
+
+.maycat-hero-panel {
+  background-image:
+    linear-gradient(90deg, rgba(5, 7, 17, 0.98) 0%, rgba(5, 7, 17, 0.78) 46%, rgba(5, 7, 17, 0.28) 100%),
+    url("/brand/maycat-club-neon.jpg");
+  background-position: center;
+  background-size: cover;
+}

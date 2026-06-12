@@ -142,124 +142,127 @@ export function CustomerAuthForm() {
         localStorage.setItem("dfc_customer_user", JSON.stringify(data.user));
       }
 
-      setStatus(mode === "register" ? "注册成功，已为你创建客户钱包。" : "登录成功。");
+      setStatus(mode === "register" ? "注册成功，正在进入客户中心。" : "登录成功，正在进入客户中心。");
       window.setTimeout(() => {
         window.location.href = "/customer/home/";
       }, 600);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "请求失败，请稍后重试");
+      setError(err instanceof Error ? err.message : "请求失败，请检查填写内容");
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-dfc-bg px-4 py-5 text-dfc-text md:px-6 lg:px-10">
-      <div className="pointer-events-none absolute inset-0 opacity-30">
-        <div className="absolute inset-x-0 top-0 h-px bg-dfc-blue/60" />
-        <div className="absolute left-8 top-0 h-full w-px bg-dfc-border" />
-        <div className="absolute right-8 top-0 h-full w-px bg-dfc-border" />
-        <div className="absolute inset-x-0 bottom-24 h-px bg-dfc-border" />
-      </div>
+    <div className="maycat-neon-bg relative min-h-screen overflow-hidden px-4 py-5 text-dfc-text md:px-6 lg:px-10">
+      <div className="maycat-grid" />
+      <div className="maycat-light-streaks" />
 
-      <div className="relative grid min-h-[calc(100vh-40px)] gap-6 md:grid-cols-[minmax(0,1fr)_420px] lg:gap-10">
+      <div className="relative grid min-h-[calc(100vh-40px)] gap-6 md:grid-cols-[minmax(0,1fr)_430px] lg:gap-10">
         <section className="flex flex-col justify-center py-6">
           <div className="max-w-3xl">
             <MaycatLogo />
-            <div className="mt-8 inline-flex rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-1 text-xs font-semibold text-dfc-blue">
-              多游戏陪玩俱乐部 · 人工审核 · 订单可追踪
-            </div>
-            <h1 className="mt-5 text-4xl font-black leading-tight text-dfc-text md:text-6xl">May猫饼电竞</h1>
-            <p className="mt-3 text-xl font-semibold text-dfc-blue md:text-2xl">
-              找靠谱陪玩，上车前先看资料、试语音、再下单
-            </p>
+            <div className="maycat-chip mt-8 px-3 py-1 text-xs font-semibold">Maycat Club · 人工审核 · KOOK / Discord 客服</div>
+            <h1 className="maycat-text-glow mt-5 text-4xl font-black leading-tight text-white md:text-6xl">May猫饼电竞</h1>
+            <p className="mt-3 text-xl font-black text-cyan-200 md:text-2xl">霓虹电竞陪玩俱乐部，先试音，再下单。</p>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
-              充值人工审核，余额下单，支持指定陪玩或平台派单。注册时可填写邀请码，首单完成后系统自动发放推荐奖励。
+              支持多款热门游戏陪玩。充值人工审核，余额下单，订单、钱包、投诉都会保留后台记录。新用户可以使用邮箱验证码注册，也可以后续接入 KOOK / Discord 快捷登录。
             </p>
-            <div className="mt-5 inline-flex rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-2 text-sm text-dfc-subtext">
-              VX 客服：<span className="ml-1 font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span>
+
+            <div className="mt-6 overflow-hidden rounded-dfc border border-cyan-300/20 md:max-w-2xl">
+              <div className="maycat-hero-panel min-h-56 p-5 md:min-h-72">
+                <div className="max-w-sm">
+                  <div className="maycat-chip px-3 py-1 text-xs font-semibold">Maycat Club</div>
+                  <div className="mt-3 text-2xl font-black text-white">从客服接待到人工派单，全流程可追踪</div>
+                  <div className="mt-3 text-sm leading-6 text-cyan-50/80">客户可联系客服、选择陪玩、试音确认；管理员可审核充值、派单、处理投诉。</div>
+                </div>
+              </div>
             </div>
+
+            <div className="mt-5 inline-flex rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-sm text-dfc-subtext">
+              VX 客服：
+              <span className="ml-1 font-semibold text-cyan-300">{publicConfig.support?.wechatId || "暂未配置"}</span>
+            </div>
+
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
-              <Feature label="人工充值审核" value="每笔入账可追踪" />
-              <Feature label="指定或平台派单" value="下单更灵活" />
-              <Feature label="语音试音" value="先确认体验" />
-            </div>
-            <div className="mt-7 grid max-w-xl grid-cols-3 divide-x divide-dfc-border rounded-dfc border border-dfc-border bg-dfc-surface">
-              <Metric label="支持游戏" value="20+" />
-              <Metric label="注册验证" value="邮箱/KOOK/DC" />
-              <Metric label="服务模式" value="人工派单" />
+              <Feature label="人工充值" value="截图审核，到账留痕" />
+              <Feature label="试音选人" value="先确认声音和风格" />
+              <Feature label="平台派单" value="客服协助匹配陪玩" />
             </div>
           </div>
         </section>
 
-        <section className="self-center rounded-dfc border border-dfc-border bg-dfc-surface p-4 shadow-dfc-card md:p-5">
+        <section className="maycat-panel self-center p-4 md:p-5">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-black">加入 May猫饼</h2>
+              <h2 className="maycat-text-glow text-xl font-black text-white">
+                {mode === "forgot" ? "重置密码" : mode === "login" ? "登录 May猫饼" : "加入 May猫饼"}
+              </h2>
               <p className="mt-1 text-xs text-dfc-muted">客户入口 · 注册后进入个人中心</p>
             </div>
             <MaycatLogo compact />
           </div>
 
-          <div className="grid grid-cols-2 gap-2 rounded-dfc-control bg-dfc-elevated p-1">
+          <div className="grid grid-cols-2 gap-2 rounded-dfc-control bg-[#0b1020]/80 p-1">
             <button
               type="button"
-              onClick={() => setMode("register")}
-              className={`rounded-dfc-control px-3 py-2 text-sm font-semibold ${mode === "register" ? "bg-dfc-blue text-slate-950" : "text-dfc-subtext"}`}
+              onClick={() => switchMode("register")}
+              className={`rounded-dfc-control px-3 py-2 text-sm font-black transition ${mode === "register" ? "maycat-button" : "text-dfc-subtext hover:text-cyan-200"}`}
             >
               注册
             </button>
             <button
               type="button"
-              onClick={() => setMode("login")}
-              className={`rounded-dfc-control px-3 py-2 text-sm font-semibold ${mode === "login" ? "bg-dfc-blue text-slate-950" : "text-dfc-subtext"}`}
+              onClick={() => switchMode("login")}
+              className={`rounded-dfc-control px-3 py-2 text-sm font-black transition ${mode === "login" ? "maycat-button" : "text-dfc-subtext hover:text-cyan-200"}`}
             >
               登录
             </button>
           </div>
+
           <div className="mt-3 text-right">
             <button
               type="button"
-              onClick={() => {
-                setMode("forgot");
-                setStatus("");
-                setError("");
-              }}
-              className={`text-xs font-semibold ${mode === "forgot" ? "text-dfc-blue" : "text-dfc-subtext hover:text-dfc-blue"}`}
+              onClick={() => switchMode("forgot")}
+              className={`text-xs font-semibold ${mode === "forgot" ? "text-cyan-300" : "text-dfc-subtext hover:text-cyan-300"}`}
             >
               忘记密码？邮箱验证码重置
             </button>
           </div>
 
           <form onSubmit={submit} className="mt-5 space-y-4" autoComplete={mode === "login" ? "on" : "off"}>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 注册/登录" />
-              <OAuthButton href="/api/auth/oauth/kook/start" label="KOOK 注册/登录" />
-            </div>
-            <div className="flex items-center gap-3 text-xs text-dfc-muted">
-              <span className="h-px flex-1 bg-dfc-border" />
-              <span>或使用邮箱</span>
-              <span className="h-px flex-1 bg-dfc-border" />
-            </div>
+            {mode !== "forgot" ? (
+              <>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 注册/登录" />
+                  <OAuthButton href="/api/auth/oauth/kook/start" label="KOOK 注册/登录" />
+                </div>
+                <div className="flex items-center gap-3 text-xs text-dfc-muted">
+                  <span className="h-px flex-1 bg-cyan-300/15" />
+                  <span>或使用邮箱</span>
+                  <span className="h-px flex-1 bg-cyan-300/15" />
+                </div>
+              </>
+            ) : null}
 
             <Field label="邮箱">
               <div className="flex gap-2">
                 <input
                   required
                   type="email"
-                  name={mode === "register" ? "register-email" : "login-email"}
-                  autoComplete="email"
+                  name={mode === "login" ? "email" : "maycat-register-email"}
+                  autoComplete={mode === "login" ? "email" : "off"}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="you@example.com"
-                  className="min-w-0 flex-1 rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
+                  className="maycat-input min-w-0 flex-1 px-3 py-3 text-sm"
                 />
                 {mode === "register" || mode === "forgot" ? (
                   <button
                     type="button"
                     onClick={sendEmailCode}
                     disabled={isSendingCode}
-                    className="shrink-0 rounded-dfc-control border border-dfc-blue/40 px-3 text-xs font-semibold text-dfc-blue disabled:cursor-not-allowed disabled:opacity-60"
+                    className="maycat-button-secondary shrink-0 px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isSendingCode ? "发送中" : "发验证码"}
                   </button>
@@ -279,38 +282,42 @@ export function CustomerAuthForm() {
                     value={emailCode}
                     onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
                     placeholder="6 位验证码"
-                    className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
+                    className="maycat-input px-3 py-3 text-sm"
                   />
                 </Field>
 
-                <Field label="昵称">
-                  <input
-                    required={mode === "register"}
-                    name="display-name"
-                    autoComplete="nickname"
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                    placeholder="你的游戏昵称"
-                    className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
-                  />
-                </Field>
+                {mode === "register" ? (
+                  <>
+                    <Field label="昵称">
+                      <input
+                        required
+                        name="maycat-display-name"
+                        autoComplete="off"
+                        value={displayName}
+                        onChange={(event) => setDisplayName(event.target.value)}
+                        placeholder="你的游戏昵称"
+                        className="maycat-input px-3 py-3 text-sm"
+                      />
+                    </Field>
 
-                <Field label="邀请码（选填）">
-                  <input
-                    name="referral-code"
-                    autoComplete="off"
-                    value={referralCode}
-                    onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
-                    placeholder="朋友或陪玩的推荐码"
-                    className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
-                  />
-                </Field>
+                    <Field label="邀请码（选填）">
+                      <input
+                        name="referral-code"
+                        autoComplete="off"
+                        value={referralCode}
+                        onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
+                        placeholder="朋友或陪玩的推荐码"
+                        className="maycat-input px-3 py-3 text-sm"
+                      />
+                    </Field>
+                  </>
+                ) : null}
               </>
             ) : null}
 
-            <Field label="密码">
+            <Field label={mode === "forgot" ? "新密码" : "密码"}>
               <PasswordInput
-                name={mode === "login" ? "current-password" : "new-password"}
+                name={mode === "login" ? "current-password" : "maycat-new-password"}
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
                 value={password}
                 onChange={setPassword}
@@ -323,7 +330,7 @@ export function CustomerAuthForm() {
             {mode === "register" || mode === "forgot" ? (
               <Field label="确认密码">
                 <PasswordInput
-                  name="confirm-new-password"
+                  name="maycat-confirm-password"
                   autoComplete="new-password"
                   value={confirmPassword}
                   onChange={setConfirmPassword}
@@ -337,11 +344,7 @@ export function CustomerAuthForm() {
             {error ? <div className="rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
             {status ? <div className="rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <button type="submit" disabled={isSubmitting} className="maycat-button w-full px-4 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60">
               {isSubmitting ? "提交中..." : mode === "register" ? "创建客户账号" : mode === "forgot" ? "重置密码" : "登录客户入口"}
             </button>
           </form>
@@ -349,14 +352,30 @@ export function CustomerAuthForm() {
           <div className="mt-4 flex items-center justify-between gap-3 text-xs text-dfc-muted">
             <span>管理员和陪玩请走独立入口</span>
             <div className="flex gap-3">
-              <a href="/admin/" className="text-dfc-blue">管理端</a>
-              <a href="/companion/" className="text-dfc-blue">陪玩端</a>
+              <a href="/admin/" className="font-semibold text-cyan-300">
+                管理端
+              </a>
+              <a href="/companion/" className="font-semibold text-cyan-300">
+                陪玩端
+              </a>
             </div>
           </div>
         </section>
       </div>
     </div>
   );
+
+  function switchMode(nextMode: Mode) {
+    setMode(nextMode);
+    setStatus("");
+    setError("");
+    setShowPassword(false);
+    if (nextMode === "login") {
+      setEmailCode("");
+      setConfirmPassword("");
+      setReferralCode("");
+    }
+  }
 }
 
 function toChineseError(message?: string) {
@@ -383,7 +402,7 @@ function normalizeEmail(email: string) {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-medium text-dfc-subtext">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-cyan-50/80">{label}</span>
       {children}
     </label>
   );
@@ -391,10 +410,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function OAuthButton({ href, label }: { href: string; label: string }) {
   return (
-    <a
-      href={href}
-      className="rounded-dfc-control border border-dfc-border bg-dfc-elevated px-3 py-3 text-center text-sm font-semibold text-dfc-text hover:border-dfc-blue hover:text-dfc-blue"
-    >
+    <a href={href} className="maycat-button-secondary px-3 py-3 text-center text-sm font-black">
       {label}
     </a>
   );
@@ -418,7 +434,7 @@ function PasswordInput({
   placeholder: string;
 }) {
   return (
-    <div className="flex rounded-dfc-control border border-dfc-border bg-dfc-bg focus-within:border-dfc-blue">
+    <div className="flex rounded-dfc-control border border-cyan-300/24 bg-black/35 focus-within:border-cyan-300">
       <input
         required
         minLength={8}
@@ -430,12 +446,7 @@ function PasswordInput({
         placeholder={placeholder}
         className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm text-dfc-text outline-none"
       />
-      <button
-        type="button"
-        onClick={onToggleShow}
-        className="shrink-0 px-3 text-xs font-semibold text-dfc-blue"
-        aria-label={showPassword ? "隐藏密码" : "显示密码"}
-      >
+      <button type="button" onClick={onToggleShow} className="shrink-0 px-3 text-xs font-black text-cyan-300" aria-label={showPassword ? "隐藏密码" : "显示密码"}>
         {showPassword ? "隐藏" : "显示"}
       </button>
     </div>
@@ -444,18 +455,9 @@ function PasswordInput({
 
 function Feature({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-3">
+    <div className="maycat-card p-3">
       <div className="text-xs text-dfc-muted">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-dfc-text">{value}</div>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="p-4">
-      <div className="text-lg font-black text-dfc-text">{value}</div>
-      <div className="mt-1 text-xs text-dfc-muted">{label}</div>
+      <div className="mt-1 text-sm font-black text-white">{value}</div>
     </div>
   );
 }
