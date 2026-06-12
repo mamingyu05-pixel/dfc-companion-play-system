@@ -5,6 +5,7 @@ import {
   DeltaForceRank,
   GameCode,
   OnlineStatus,
+  OrderSourcePlatform,
   Prisma,
   UserRole,
   UserStatus,
@@ -19,6 +20,7 @@ import { createPasswordHash } from "../auth/password.util";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { OrdersService } from "../orders/orders.service";
+import { OrderDraftsService } from "../orders/order-drafts.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { WalletService } from "../wallet/wallet.service";
 import { CompanionExternalAccountsService } from "./companion-external-accounts.service";
@@ -30,6 +32,7 @@ export class AdminController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly orders: OrdersService,
+    private readonly orderDrafts: OrderDraftsService,
     private readonly wallet: WalletService,
     private readonly externalAccounts: CompanionExternalAccountsService
   ) {}
@@ -137,7 +140,7 @@ export class AdminController {
   adjustCustomerBalance(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
-    @Body() body: { amount: string; note?: string }
+    @Body() body: { amount: string; note?: string; direction?: "CREDIT" | "DEBIT" }
   ) {
     return this.wallet.adminCreditCustomerBalance(id, user.id, body);
   }
@@ -173,7 +176,8 @@ export class AdminController {
           passwordHash,
           role,
           displayName,
-          displayNameKey
+          displayNameKey,
+          referralCode: await generateUniqueReferralCode(this.prisma, role === UserRole.SUPER_ADMIN ? "S" : "A")
         },
         select: { id: true, email: true, role: true, status: true, displayName: true }
       });
@@ -379,6 +383,103 @@ export class AdminController {
     return this.orders.listAdminOrders();
   }
 
+  @Get("order-drafts")
+  listOrderDrafts() {
+    return this.orderDrafts.listAdminDrafts();
+  }
+
+  @Post("order-drafts")
+  createOrderDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body()
+    body: {
+      customerId?: string;
+      sourcePlatform?: OrderSourcePlatform;
+      customerPlatformUserId?: string;
+      customerDisplayName?: string;
+      sourceGuildId?: string;
+      sourceChannelId?: string;
+      sourceMessageId?: string;
+      voiceRoomId?: string;
+      game?: GameCode;
+      mode: string;
+      hours?: string;
+      budgetAmount?: string;
+      note?: string;
+    }
+  ) {
+    return this.orderDrafts.createDraft(user.id, body);
+  }
+
+  @Post("order-drafts/from-demand")
+  createOrderDraftFromDemand(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body()
+    body: {
+      customerId?: string;
+      sourcePlatform?: OrderSourcePlatform;
+      customerPlatformUserId?: string;
+      customerDisplayName?: string;
+      sourceGuildId?: string;
+      sourceChannelId?: string;
+      sourceMessageId?: string;
+      voiceRoomId?: string;
+      demandText: string;
+    }
+  ) {
+    return this.orderDrafts.createDraftFromDemand(user.id, body);
+  }
+
+  @Post("order-drafts/:id/recommend-candidates")
+  recommendOrderDraftCandidates(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { limit?: number }
+  ) {
+    return this.orderDrafts.recommendCandidates(user.id, id, body.limit);
+  }
+
+  @Post("order-drafts/:id/candidates")
+  addOrderDraftCandidate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { companionId: string; note?: string }
+  ) {
+    return this.orderDrafts.addCandidate(user.id, id, body);
+  }
+
+  @Patch("order-drafts/:id/select-companion")
+  selectOrderDraftCompanion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { companionId: string; note?: string }
+  ) {
+    return this.orderDrafts.selectCompanion(user.id, id, body);
+  }
+
+  @Patch("order-drafts/:id/confirm")
+  confirmOrderDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { note?: string }
+  ) {
+    return this.orderDrafts.confirmDraft(user.id, id, body);
+  }
+
+  @Patch("order-drafts/:id/cancel")
+  cancelOrderDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { note?: string }
+  ) {
+    return this.orderDrafts.cancelDraft(user.id, id, body);
+  }
+
+  @Post("order-drafts/:id/convert")
+  convertOrderDraft(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.orderDrafts.convertDraftToOrder(user.id, id);
+  }
+
   @Get("companions")
   listCompanions() {
     return this.prisma.companionProfile.findMany({
@@ -415,11 +516,70 @@ export class AdminController {
         deltaForceRank: profile.deltaForceRank,
         skillModes: profile.skillModes,
         pricePerHour: profile.pricePerHour.toString(),
+        commissionRate: profile.commissionRate.toString(),
         externalAccounts: profile.user.externalAccounts,
         availableIncome: profile.user.wallet?.availableIncome.toString() ?? "0",
         pendingIncome: profile.user.wallet?.pendingIncome.toString() ?? "0"
       }))
     );
+  }
+
+  @Get("promotion-settings")
+  async getPromotionSettings() {
+    await this.ensureDefaultPromotionSettings();
+    const settings = await this.prisma.platformSetting.findMany({ orderBy: { key: "asc" } });
+    return settings.map((setting) => ({
+      key: setting.key,
+      value: setting.value,
+      description: setting.description
+    }));
+  }
+
+  @Patch("promotion-settings")
+  async updatePromotionSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: Record<string, string>
+  ) {
+    const allowed = promotionSettingDefaults();
+    const entries = Object.entries(body).filter(([key]) => key in allowed);
+    if (!entries.length) throw new BadRequestException("No valid promotion setting provided");
+
+    for (const [key, value] of entries) {
+      const decimal = parseNonNegativeDecimal(value, key);
+      if (key.endsWith("_RATE") && decimal.gt(1)) {
+        throw new BadRequestException(`${key} cannot be greater than 1`);
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const [key, value] of entries) {
+        await tx.platformSetting.upsert({
+          where: { key },
+          create: {
+            key,
+            value,
+            description: allowed[key],
+            updatedById: user.id
+          },
+          update: {
+            value,
+            description: allowed[key],
+            updatedById: user.id
+          }
+        });
+      }
+
+      await tx.adminLog.create({
+        data: {
+          actorId: user.id,
+          action: "UPDATE_PROMOTION_SETTINGS",
+          entityType: "PLATFORM_SETTING",
+          detail: Object.fromEntries(entries)
+        }
+      });
+    });
+
+    return this.getPromotionSettings();
   }
 
   @Post("companions")
@@ -431,6 +591,7 @@ export class AdminController {
       password: string;
       nickname: string;
       pricePerHour: string;
+      commissionRate?: string;
       avatarUrl?: string;
       gender?: string;
       game?: GameCode;
@@ -471,6 +632,7 @@ export class AdminController {
             role: UserRole.COMPANION,
             displayName: nickname,
             displayNameKey,
+            referralCode: await generateUniqueReferralCode(tx, "P"),
             wallet: { create: {} },
             companionProfile: {
               create: {
@@ -481,6 +643,7 @@ export class AdminController {
                 deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
                 skillModes: body.skillModes ?? [],
                 pricePerHour,
+                commissionRate: parseCommissionRate((body as { commissionRate?: string }).commissionRate ?? "0.2"),
                 onlineStatus: OnlineStatus.OFFLINE,
                 bio: body.bio,
                 voicePreference: body.voicePreference ?? VoicePreference.OPTIONAL,
@@ -553,6 +716,38 @@ export class AdminController {
     };
   }
 
+  @Patch("companions/:id/commission")
+  async updateCompanionCommission(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { commissionRate: string; note?: string }
+  ) {
+    const commissionRate = parseCommissionRate(body.commissionRate);
+    const updated = await this.prisma.companionProfile.update({
+      where: { userId: id },
+      data: { commissionRate },
+      include: { user: { select: { id: true, email: true, displayName: true } } }
+    });
+
+    await this.prisma.adminLog.create({
+      data: {
+        actorId: user.id,
+        targetUserId: id,
+        action: "UPDATE_COMPANION_COMMISSION",
+        entityType: "COMPANION_PROFILE",
+        entityId: updated.id,
+        detail: { commissionRate: commissionRate.toString(), note: body.note }
+      }
+    });
+
+    return {
+      userId: updated.userId,
+      email: updated.user.email,
+      nickname: updated.nickname,
+      commissionRate: updated.commissionRate.toString()
+    };
+  }
+
   @Patch("recharges/:id/review")
   reviewRecharge(
     @CurrentUser() user: AuthenticatedUser,
@@ -595,9 +790,72 @@ export class AdminController {
       user.id
     );
   }
+
+  private async ensureDefaultPromotionSettings() {
+    const defaults = promotionSettingDefaults();
+    await this.prisma.$transaction(
+      Object.entries(defaults).map(([key, description]) =>
+        this.prisma.platformSetting.upsert({
+          where: { key },
+          create: { key, value: defaultPromotionSettingValue(key), description },
+          update: { description }
+        })
+      )
+    );
+  }
 }
 
 function isDisplayNameUniqueError(error: Prisma.PrismaClientKnownRequestError) {
   const target = error.meta?.target;
   return Array.isArray(target) && target.includes("displayNameKey");
+}
+
+function promotionSettingDefaults(): Record<string, string> {
+  return {
+    NEW_CUSTOMER_FIRST_RECHARGE_BONUS_RATE: "新客户首笔审核通过充值赠送比例，0.1 表示送 10%。",
+    NEW_CUSTOMER_FIRST_RECHARGE_BONUS_AMOUNT: "新客户首笔审核通过充值固定赠送金额。",
+    CUSTOMER_REFERRER_REWARD_AMOUNT: "老客户邀请新客户奖励金额，需要邀请码/邀请绑定后自动发放。",
+    CUSTOMER_INVITEE_BONUS_AMOUNT: "被邀请新客户奖励金额，需要邀请码/邀请绑定后自动发放。",
+    COMPANION_REFERRAL_REWARD_AMOUNT: "陪玩带来新客户的奖励金额，需要邀请绑定后自动发放。"
+  };
+}
+
+function defaultPromotionSettingValue(key: string) {
+  const defaults: Record<string, string> = {
+    NEW_CUSTOMER_FIRST_RECHARGE_BONUS_RATE: "0.1",
+    NEW_CUSTOMER_FIRST_RECHARGE_BONUS_AMOUNT: "0",
+    CUSTOMER_REFERRER_REWARD_AMOUNT: "10",
+    CUSTOMER_INVITEE_BONUS_AMOUNT: "10",
+    COMPANION_REFERRAL_REWARD_AMOUNT: "20"
+  };
+  return defaults[key] ?? "0";
+}
+
+function parseNonNegativeDecimal(value: string, fieldName: string) {
+  let decimal: Prisma.Decimal;
+  try {
+    decimal = new Prisma.Decimal(value);
+  } catch {
+    throw new BadRequestException(`${fieldName} must be a valid amount`);
+  }
+  if (decimal.lt(0)) throw new BadRequestException(`${fieldName} cannot be negative`);
+  return decimal;
+}
+
+function parseCommissionRate(value: string) {
+  const commissionRate = parseNonNegativeDecimal(value, "commissionRate");
+  if (commissionRate.gt(1)) throw new BadRequestException("commissionRate cannot be greater than 1");
+  return commissionRate;
+}
+
+async function generateUniqueReferralCode(client: Prisma.TransactionClient | PrismaService, prefix: string) {
+  for (let index = 0; index < 20; index += 1) {
+    const code = `${prefix}${Math.floor(100000 + Math.random() * 900000)}`;
+    const existing = await client.user.findUnique({
+      where: { referralCode: code },
+      select: { id: true }
+    });
+    if (!existing) return code;
+  }
+  return `${prefix}${Math.random().toString(16).slice(2, 10).toUpperCase()}`;
 }

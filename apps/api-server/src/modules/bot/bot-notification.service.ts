@@ -11,11 +11,25 @@ interface OrderNotificationData {
   companionName?: string;
 }
 
+interface OrderDraftNotificationData {
+  draftId: string;
+  draftNo: string;
+  game: string;
+  mode: string;
+  hours?: string | null;
+  budgetAmount?: string | null;
+  note?: string | null;
+}
+
 interface NotificationResult {
   platform: BotPlatform;
   status: BotEventStatus;
   messageId?: string;
   error?: string;
+}
+
+interface KookMessageResponse {
+  msg_id: string;
 }
 
 @Injectable()
@@ -25,16 +39,9 @@ export class BotNotificationService {
   async sendOrderAssignedNotifications(orderId: string): Promise<NotificationResult[]> {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: {
-        companion: {
-          include: { companionProfile: true }
-        }
-      }
+      include: { companion: { include: { companionProfile: true } } }
     });
-
-    if (!order) {
-      throw new Error("Order not found");
-    }
+    if (!order) throw new Error("Order not found");
 
     const payload: OrderNotificationData = {
       orderId: order.id,
@@ -45,37 +52,77 @@ export class BotNotificationService {
       companionName: order.companion?.companionProfile?.nickname ?? order.companion?.displayName
     };
 
-    const results = await Promise.allSettled([
-      this.sendDiscordOrderNotification(payload),
-      this.sendKookOrderNotification(payload)
-    ]);
+    const results = await Promise.allSettled([this.sendDiscordOrderNotification(payload), this.sendKookOrderNotification(payload)]);
+    return this.toNotificationResults(results);
+  }
 
-    return results.map((result, index) => {
-      const platform = index === 0 ? BotPlatform.DISCORD : BotPlatform.KOOK;
-      if (result.status === "fulfilled") return result.value;
-      return {
-        platform,
-        status: BotEventStatus.FAILED,
-        error: result.reason instanceof Error ? result.reason.message : String(result.reason)
-      };
-    });
+  async sendOrderDraftDispatchNotifications(draftId: string): Promise<NotificationResult[]> {
+    const draft = await this.prisma.orderDraft.findUnique({ where: { id: draftId } });
+    if (!draft) throw new Error("Order draft not found");
+
+    const payload: OrderDraftNotificationData = {
+      draftId: draft.id,
+      draftNo: draft.draftNo,
+      game: draft.game,
+      mode: draft.mode,
+      hours: draft.hours?.toString() ?? null,
+      budgetAmount: draft.budgetAmount?.toString() ?? null,
+      note: draft.note
+    };
+
+    const results = await Promise.allSettled([this.sendDiscordOrderDraftNotification(payload), this.sendKookOrderDraftNotification(payload)]);
+    return this.toNotificationResults(results);
+  }
+
+  async sendKookChannelText(channelId: string, content: string): Promise<NotificationResult> {
+    if (!process.env.KOOK_TOKEN) return this.recordGenericNotificationFailure(BotPlatform.KOOK, { channelId, content }, "KOOK_TOKEN is not configured");
+
+    try {
+      const body = await this.postKookMessage("/api/v3/message/create", {
+        target_id: channelId,
+        type: 9,
+        content
+      });
+      await this.recordGenericBotEvent(BotPlatform.KOOK, BotEventStatus.SENT, { channelId, content }, {
+        platformGuildId: process.env.KOOK_GUILD_ID,
+        platformChannelId: channelId,
+        platformMessageId: body.msg_id
+      });
+      return { platform: BotPlatform.KOOK, status: BotEventStatus.SENT, messageId: body.msg_id };
+    } catch (error) {
+      return this.recordGenericNotificationFailure(BotPlatform.KOOK, { channelId, content }, this.errorMessage(error));
+    }
+  }
+
+  async sendKookDirectMessage(userId: string, content: string): Promise<NotificationResult> {
+    if (!process.env.KOOK_TOKEN) return this.recordGenericNotificationFailure(BotPlatform.KOOK, { userId, content }, "KOOK_TOKEN is not configured");
+
+    try {
+      const body = await this.postKookMessage("/api/v3/direct-message/create", {
+        target_id: userId,
+        type: 9,
+        content
+      });
+      await this.recordGenericBotEvent(BotPlatform.KOOK, BotEventStatus.SENT, { userId, content }, {
+        platformGuildId: process.env.KOOK_GUILD_ID,
+        platformUserId: userId,
+        platformMessageId: body.msg_id
+      });
+      return { platform: BotPlatform.KOOK, status: BotEventStatus.SENT, messageId: body.msg_id };
+    } catch (error) {
+      return this.recordGenericNotificationFailure(BotPlatform.KOOK, { userId, content }, this.errorMessage(error));
+    }
   }
 
   private async sendDiscordOrderNotification(payload: OrderNotificationData): Promise<NotificationResult> {
     const token = process.env.DISCORD_TOKEN;
     const channelId = process.env.DISCORD_ORDER_CHANNEL_ID;
-
-    if (!token || !channelId) {
-      return this.recordNotificationFailure(BotPlatform.DISCORD, payload, "Discord order notification is not configured");
-    }
+    if (!token || !channelId) return this.recordNotificationFailure(BotPlatform.DISCORD, payload, "Discord order notification is not configured");
 
     try {
       const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
         method: "POST",
-        headers: {
-          Authorization: `Bot ${token}`,
-          "Content-Type": "application/json"
-        },
+        headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           content: "May猫饼新订单待接单",
           embeds: [
@@ -92,43 +139,71 @@ export class BotNotificationService {
           components: [
             {
               type: 1,
-              components: [
-                {
-                  type: 2,
-                  style: 1,
-                  label: "接单",
-                  custom_id: `order.accept.${payload.orderId}`
-                }
-              ]
+              components: [{ type: 2, style: 1, label: "接单", custom_id: `order.accept.${payload.orderId}` }]
             }
           ]
         })
       });
-
-      if (!response.ok) {
-        throw new Error(`Discord API HTTP ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`Discord API HTTP ${response.status}`);
       const body = (await response.json()) as { id: string; guild_id?: string; channel_id?: string };
       await this.recordBotEvent(BotPlatform.DISCORD, BotEventStatus.SENT, payload, {
         platformGuildId: body.guild_id,
         platformChannelId: body.channel_id ?? channelId,
         platformMessageId: body.id
       });
-
       return { platform: BotPlatform.DISCORD, status: BotEventStatus.SENT, messageId: body.id };
     } catch (error) {
       return this.recordNotificationFailure(BotPlatform.DISCORD, payload, this.errorMessage(error));
     }
   }
 
-  private async sendKookOrderNotification(payload: OrderNotificationData): Promise<NotificationResult> {
-    const token = process.env.KOOK_TOKEN;
-    const channelId = process.env.KOOK_ORDER_CHANNEL_ID;
+  private async sendDiscordOrderDraftNotification(payload: OrderDraftNotificationData): Promise<NotificationResult> {
+    const token = process.env.DISCORD_TOKEN;
+    const channelId = process.env.DISCORD_DISPATCH_CHANNEL_ID || process.env.DISCORD_ORDER_CHANNEL_ID;
+    if (!token || !channelId) return this.recordDraftNotificationFailure(BotPlatform.DISCORD, payload, "Discord dispatch notification is not configured");
 
-    if (!token || !channelId) {
-      return this.recordNotificationFailure(BotPlatform.KOOK, payload, "KOOK order notification is not configured");
+    try {
+      const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: "May猫饼试音派单，有空的陪玩可以报名",
+          embeds: [
+            {
+              title: `试音派单 ${payload.draftNo}`,
+              fields: [
+                { name: "游戏", value: payload.game, inline: true },
+                { name: "模式", value: payload.mode, inline: true },
+                { name: "时长", value: payload.hours ? `${payload.hours} 小时` : "待确认", inline: true },
+                { name: "预算", value: payload.budgetAmount ? `¥${payload.budgetAmount}` : "待确认", inline: true },
+                { name: "需求", value: payload.note?.slice(0, 900) || "无", inline: false }
+              ]
+            }
+          ],
+          components: [
+            {
+              type: 1,
+              components: [{ type: 2, style: 1, label: "我要报名", custom_id: `order-draft.apply.${payload.draftId}` }]
+            }
+          ]
+        })
+      });
+      if (!response.ok) throw new Error(`Discord API HTTP ${response.status}`);
+      const body = (await response.json()) as { id: string; guild_id?: string; channel_id?: string };
+      await this.recordDraftBotEvent(BotPlatform.DISCORD, BotEventStatus.SENT, payload, {
+        platformGuildId: body.guild_id,
+        platformChannelId: body.channel_id ?? channelId,
+        platformMessageId: body.id
+      });
+      return { platform: BotPlatform.DISCORD, status: BotEventStatus.SENT, messageId: body.id };
+    } catch (error) {
+      return this.recordDraftNotificationFailure(BotPlatform.DISCORD, payload, this.errorMessage(error));
     }
+  }
+
+  private async sendKookOrderNotification(payload: OrderNotificationData): Promise<NotificationResult> {
+    const channelId = process.env.KOOK_ORDER_CHANNEL_ID;
+    if (!process.env.KOOK_TOKEN || !channelId) return this.recordNotificationFailure(BotPlatform.KOOK, payload, "KOOK order notification is not configured");
 
     const content = [
       {
@@ -136,10 +211,7 @@ export class BotNotificationService {
         theme: "primary",
         size: "lg",
         modules: [
-          {
-            type: "header",
-            text: { type: "plain-text", content: "May猫饼新订单待接单" }
-          },
+          { type: "header", text: { type: "plain-text", content: "May猫饼新订单待接单" } },
           {
             type: "section",
             text: {
@@ -157,70 +229,108 @@ export class BotNotificationService {
           },
           {
             type: "action-group",
-            elements: [
-              {
-                type: "button",
-                theme: "primary",
-                value: `order.accept.${payload.orderId}`,
-                click: "return-val",
-                text: { type: "plain-text", content: "接单" }
-              }
-            ]
+            elements: [{ type: "button", theme: "primary", value: `order.accept.${payload.orderId}`, click: "return-val", text: { type: "plain-text", content: "接单" } }]
           }
         ]
       }
     ];
 
     try {
-      const response = await fetch("https://www.kookapp.cn/api/v3/message/create", {
-        method: "POST",
-        headers: {
-          Authorization: `Bot ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          target_id: channelId,
-          type: 10,
-          content: JSON.stringify(content)
-        })
+      const body = await this.postKookMessage("/api/v3/message/create", {
+        target_id: channelId,
+        type: 10,
+        content: JSON.stringify(content)
       });
-
-      if (!response.ok) {
-        throw new Error(`KOOK API HTTP ${response.status}`);
-      }
-
-      const body = (await response.json()) as { code: number; message: string; data?: { msg_id: string } };
-      if (body.code !== 0 || !body.data) {
-        throw new Error(`KOOK API error ${body.code}: ${body.message}`);
-      }
-
       await this.recordBotEvent(BotPlatform.KOOK, BotEventStatus.SENT, payload, {
         platformGuildId: process.env.KOOK_GUILD_ID,
         platformChannelId: channelId,
-        platformMessageId: body.data.msg_id
+        platformMessageId: body.msg_id
       });
-
-      return { platform: BotPlatform.KOOK, status: BotEventStatus.SENT, messageId: body.data.msg_id };
+      return { platform: BotPlatform.KOOK, status: BotEventStatus.SENT, messageId: body.msg_id };
     } catch (error) {
       return this.recordNotificationFailure(BotPlatform.KOOK, payload, this.errorMessage(error));
     }
   }
 
-  private async recordNotificationFailure(
-    platform: BotPlatform,
-    payload: OrderNotificationData,
-    error: string
-  ): Promise<NotificationResult> {
+  private async sendKookOrderDraftNotification(payload: OrderDraftNotificationData): Promise<NotificationResult> {
+    const channelId = process.env.KOOK_DISPATCH_CHANNEL_ID || process.env.KOOK_ORDER_CHANNEL_ID;
+    if (!process.env.KOOK_TOKEN || !channelId) return this.recordDraftNotificationFailure(BotPlatform.KOOK, payload, "KOOK dispatch notification is not configured");
+
+    const content = [
+      {
+        type: "card",
+        theme: "primary",
+        size: "lg",
+        modules: [
+          { type: "header", text: { type: "plain-text", content: `May猫饼试音派单 ${payload.draftNo}` } },
+          {
+            type: "section",
+            text: {
+              type: "kmarkdown",
+              content: [
+                `**游戏**：${payload.game}`,
+                `**模式**：${payload.mode}`,
+                `**时长**：${payload.hours ? `${payload.hours} 小时` : "待确认"}`,
+                `**预算**：${payload.budgetAmount ? `¥${payload.budgetAmount}` : "待确认"}`,
+                `**需求**：${payload.note || "无"}`
+              ].join("\n")
+            }
+          },
+          {
+            type: "action-group",
+            elements: [{ type: "button", theme: "primary", value: `order-draft.apply.${payload.draftId}`, click: "return-val", text: { type: "plain-text", content: "我要报名" } }]
+          }
+        ]
+      }
+    ];
+
+    try {
+      const body = await this.postKookMessage("/api/v3/message/create", {
+        target_id: channelId,
+        type: 10,
+        content: JSON.stringify(content)
+      });
+      await this.recordDraftBotEvent(BotPlatform.KOOK, BotEventStatus.SENT, payload, {
+        platformGuildId: process.env.KOOK_GUILD_ID,
+        platformChannelId: channelId,
+        platformMessageId: body.msg_id
+      });
+      return { platform: BotPlatform.KOOK, status: BotEventStatus.SENT, messageId: body.msg_id };
+    } catch (error) {
+      return this.recordDraftNotificationFailure(BotPlatform.KOOK, payload, this.errorMessage(error));
+    }
+  }
+
+  private async postKookMessage(path: string, body: Record<string, unknown>) {
+    const response = await fetch(`https://www.kookapp.cn${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bot ${process.env.KOOK_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) throw new Error(`KOOK API HTTP ${response.status}`);
+    const result = (await response.json()) as { code: number; message: string; data?: KookMessageResponse };
+    if (result.code !== 0 || !result.data) throw new Error(`KOOK API error ${result.code}: ${result.message}`);
+    return result.data;
+  }
+
+  private toNotificationResults(results: PromiseSettledResult<NotificationResult>[]) {
+    return results.map((result, index) => {
+      const platform = index === 0 ? BotPlatform.DISCORD : BotPlatform.KOOK;
+      if (result.status === "fulfilled") return result.value;
+      return {
+        platform,
+        status: BotEventStatus.FAILED,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason)
+      };
+    });
+  }
+
+  private async recordNotificationFailure(platform: BotPlatform, payload: OrderNotificationData, error: string): Promise<NotificationResult> {
     await this.recordBotEvent(platform, BotEventStatus.FAILED, payload, { error });
     return { platform, status: BotEventStatus.FAILED, error };
   }
 
-  private async recordBotEvent(
-    platform: BotPlatform,
-    status: BotEventStatus,
-    payload: OrderNotificationData,
-    extra: Partial<Prisma.BotEventCreateInput> = {}
-  ) {
+  private async recordBotEvent(platform: BotPlatform, status: BotEventStatus, payload: OrderNotificationData, extra: Partial<Prisma.BotEventCreateInput> = {}) {
     await this.prisma.botEvent.create({
       data: {
         platform,
@@ -228,6 +338,40 @@ export class BotNotificationService {
         type: BotEventType.ORDER_NOTIFICATION_SENT,
         orderId: payload.orderId,
         payload: payload as unknown as Prisma.InputJsonValue,
+        ...extra
+      }
+    });
+  }
+
+  private async recordDraftNotificationFailure(platform: BotPlatform, payload: OrderDraftNotificationData, error: string): Promise<NotificationResult> {
+    await this.recordDraftBotEvent(platform, BotEventStatus.FAILED, payload, { error });
+    return { platform, status: BotEventStatus.FAILED, error };
+  }
+
+  private async recordDraftBotEvent(platform: BotPlatform, status: BotEventStatus, payload: OrderDraftNotificationData, extra: Partial<Prisma.BotEventCreateInput> = {}) {
+    await this.prisma.botEvent.create({
+      data: {
+        platform,
+        status,
+        type: BotEventType.ADMIN_ALERT_SENT,
+        payload: payload as unknown as Prisma.InputJsonValue,
+        ...extra
+      }
+    });
+  }
+
+  private async recordGenericNotificationFailure(platform: BotPlatform, payload: Prisma.InputJsonValue, error: string): Promise<NotificationResult> {
+    await this.recordGenericBotEvent(platform, BotEventStatus.FAILED, payload, { error });
+    return { platform, status: BotEventStatus.FAILED, error };
+  }
+
+  private async recordGenericBotEvent(platform: BotPlatform, status: BotEventStatus, payload: Prisma.InputJsonValue, extra: Partial<Prisma.BotEventCreateInput> = {}) {
+    await this.prisma.botEvent.create({
+      data: {
+        platform,
+        status,
+        type: BotEventType.ADMIN_ALERT_SENT,
+        payload,
         ...extra
       }
     });

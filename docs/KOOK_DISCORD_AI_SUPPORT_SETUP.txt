@@ -1,0 +1,582 @@
+May猫饼电竞 - Discord / KOOK AI客服接入步骤
+
+目标
+====
+让客户可以在 Discord / KOOK 客服频道，或者私聊客服 Bot，直接咨询问题、提交找陪玩需求。
+
+系统会做：
+1. AI/规则客服自动回复常见问题。
+2. 客户找陪玩时，先收集需求。
+3. 后台记录客户消息和客服回复。
+4. 开启自动派单后，客户需求会生成试音派单草稿，并发到陪玩派单频道。
+5. 陪玩点击报名按钮后，后台显示候选陪玩。
+
+系统不会让 AI 直接做：
+1. 加余额。
+2. 退款。
+3. 提现。
+4. 封号。
+5. 修改订单金额。
+6. 完成订单结算。
+
+这些高风险动作必须管理员在后台手动确认。
+
+
+一、你需要准备的东西
+====================
+
+最终需要填到服务器 .env 里的配置：
+
+OPENAI_API_KEY=
+AI_SUPPORT_ENABLED=true
+AI_SUPPORT_MODEL=gpt-4o-mini
+AI_AUTO_DISPATCH_ENABLED=false
+
+DISCORD_TOKEN=
+DISCORD_GUILD_ID=
+DISCORD_SUPPORT_CHANNEL_ID=
+DISCORD_DISPATCH_CHANNEL_ID=
+
+KOOK_TOKEN=
+KOOK_VERIFY_TOKEN=
+KOOK_ENCRYPT_KEY=
+KOOK_GUILD_ID=
+KOOK_SUPPORT_CHANNEL_ID=
+KOOK_DISPATCH_CHANNEL_ID=
+
+注意：
+1. TOKEN、OPENAI_API_KEY 不要发给别人。
+2. AI_AUTO_DISPATCH_ENABLED 第一阶段先填 false。
+3. 等客服回复和频道消息都稳定后，再改成 true。
+
+
+二、不用 Termius，怎么登录服务器
+===============================
+
+你现在可以直接用腾讯云网页终端。
+
+步骤：
+1. 打开腾讯云控制台：
+   https://console.cloud.tencent.com/
+
+2. 登录你的腾讯云账号。
+
+3. 进入：
+   云服务器 CVM
+
+4. 找到你的服务器：
+   Ubuntu-KY8K
+   IP：43.161.202.13
+
+5. 点服务器右侧的：
+   登录
+
+6. 选择：
+   标准登录 / WebShell / 立即登录
+
+7. 进入黑色命令行页面后，看到类似：
+   ubuntu@VM-0-4-ubuntu:~$
+
+说明你已经登录服务器了。
+
+后面所有服务器命令都在这个网页终端里输入。
+
+
+三、准备 Discord 客服 Bot
+========================
+
+1. 打开 Discord 开发者后台：
+   https://discord.com/developers/applications
+
+2. 点右上角：
+   New Application
+
+3. 名字填：
+   May猫饼客服
+
+4. 创建后，左侧点：
+   Bot
+
+5. 点：
+   Reset Token
+   或
+   View Token
+
+6. 复制 Bot Token。
+
+这个值后面填到服务器 .env：
+DISCORD_TOKEN=这里填Discord Bot Token
+
+7. 还是在 Bot 页面，找到：
+   Privileged Gateway Intents
+
+8. 打开：
+   MESSAGE CONTENT INTENT
+
+非常重要：
+不开这个，Discord Bot 看不到客户在频道里发的文字。
+
+9. 左侧进入：
+   Installation
+   或
+   OAuth2
+
+10. 找到 OAuth2 URL Generator。
+
+11. Scopes 勾选：
+    bot
+    applications.commands
+
+12. Bot Permissions 勾选：
+    View Channels
+    Send Messages
+    Read Message History
+    Use Slash Commands
+
+后面如果要自动创建语音房，再额外加：
+    Manage Channels
+    Move Members
+    Connect
+    Speak
+
+13. 复制生成的邀请链接。
+
+14. 浏览器打开邀请链接。
+
+15. 选择你的 Discord 服务器。
+
+16. 确认授权。
+
+
+四、创建 Discord 频道
+====================
+
+在你的 Discord 服务器里创建两个文字频道：
+
+1. 客服接待频道：
+   #客服接待
+
+2. 陪玩派单频道：
+   #陪玩派单
+
+权限建议：
+1. #客服接待
+   客户可以看、可以发消息。
+   Bot 可以看、可以发消息、可以读历史消息。
+
+2. #陪玩派单
+   陪玩可以看、可以点报名。
+   客户不要进这个频道。
+   Bot 可以看、可以发消息、可以读历史消息。
+
+
+五、获取 Discord ID
+==================
+
+1. Discord 左下角点齿轮：
+   用户设置
+
+2. 找到：
+   高级
+
+3. 打开：
+   开发者模式
+
+4. 回到你的 Discord 服务器。
+
+5. 右键服务器名字。
+
+6. 点：
+   复制服务器 ID
+
+填到：
+DISCORD_GUILD_ID=复制的服务器ID
+
+7. 右键 #客服接待 频道。
+
+8. 点：
+   复制频道 ID
+
+填到：
+DISCORD_SUPPORT_CHANNEL_ID=客服频道ID
+
+9. 右键 #陪玩派单 频道。
+
+10. 点：
+    复制频道 ID
+
+填到：
+DISCORD_DISPATCH_CHANNEL_ID=派单频道ID
+
+
+六、准备 KOOK 客服 Bot
+=====================
+
+1. 打开 KOOK 开发者平台：
+   https://developer.kookapp.cn/
+
+2. 登录你的 KOOK 账号。
+
+3. 创建应用 / 机器人。
+
+4. 名字建议：
+   May猫饼客服
+
+5. 找到机器人 Token。
+
+复制后填到：
+KOOK_TOKEN=这里填KOOK机器人Token
+
+6. 找到事件回调 / 消息回调设置。
+
+7. 回调地址填写：
+   https://maycatplay.com/api/kook/webhook
+
+8. 找到 Verify Token。
+
+复制后填到：
+KOOK_VERIFY_TOKEN=这里填Verify Token
+
+9. 如果后台有 Encrypt Key，复制。
+
+填到：
+KOOK_ENCRYPT_KEY=这里填Encrypt Key
+
+说明：
+第一阶段如果 KOOK 后台允许关闭加密，可以先关闭加密，方便测试。
+后续正式运营再开启加密。
+
+
+七、创建 KOOK 频道
+=================
+
+在你的 KOOK 服务器里创建两个文字频道：
+
+1. 客服接待
+2. 陪玩派单
+
+权限建议：
+1. 客服接待
+   客户可以发消息。
+   Bot 可以看和发消息。
+
+2. 陪玩派单
+   陪玩可以看和报名。
+   客户不要进。
+   Bot 可以看和发消息。
+
+
+八、获取 KOOK ID
+================
+
+方式 A：客户端复制
+1. 在 KOOK 里右键服务器。
+2. 找复制 ID。
+3. 复制服务器 ID。
+
+填到：
+KOOK_GUILD_ID=KOOK服务器ID
+
+4. 右键客服接待频道。
+5. 复制频道 ID。
+
+填到：
+KOOK_SUPPORT_CHANNEL_ID=KOOK客服频道ID
+
+6. 右键陪玩派单频道。
+7. 复制频道 ID。
+
+填到：
+KOOK_DISPATCH_CHANNEL_ID=KOOK派单频道ID
+
+方式 B：开发者后台查看
+如果客户端没有复制 ID，就去 KOOK 开发者后台查看机器人所在服务器和频道信息。
+
+
+九、准备 OpenAI API Key
+======================
+
+1. 打开 OpenAI API Key 页面：
+   https://platform.openai.com/api-keys
+
+2. 登录 OpenAI 账号。
+
+3. 先进入 Billing 充值。
+
+建议第一阶段先充：
+   5 到 10 美元
+
+4. 回到 API Keys 页面。
+
+5. 点：
+   Create new secret key
+
+6. 名字填：
+   maycatplay-production
+
+7. 创建后复制 Key。
+
+填到：
+OPENAI_API_KEY=这里填OpenAI Key
+
+推荐模型：
+AI_SUPPORT_MODEL=gpt-4o-mini
+
+原因：
+1. 便宜。
+2. 回复客服问题够用。
+3. 适合先跑低成本测试。
+
+
+十、在服务器填写 .env
+====================
+
+用腾讯云网页终端进入服务器后，输入：
+
+cd /opt/companion-play-system
+sudo nano .env
+
+在文件末尾添加或修改这些内容：
+
+OPENAI_API_KEY=你的OpenAI Key
+AI_SUPPORT_ENABLED=true
+AI_SUPPORT_MODEL=gpt-4o-mini
+AI_AUTO_DISPATCH_ENABLED=false
+
+DISCORD_TOKEN=你的Discord Bot Token
+DISCORD_GUILD_ID=你的Discord服务器ID
+DISCORD_SUPPORT_CHANNEL_ID=你的Discord客服频道ID
+DISCORD_DISPATCH_CHANNEL_ID=你的Discord派单频道ID
+
+KOOK_TOKEN=你的KOOK Bot Token
+KOOK_VERIFY_TOKEN=你的KOOK Verify Token
+KOOK_ENCRYPT_KEY=你的KOOK Encrypt Key
+KOOK_GUILD_ID=你的KOOK服务器ID
+KOOK_SUPPORT_CHANNEL_ID=你的KOOK客服频道ID
+KOOK_DISPATCH_CHANNEL_ID=你的KOOK派单频道ID
+
+保存 nano：
+1. 按 Ctrl + O
+2. 按回车
+3. 按 Ctrl + X
+
+
+十一、更新服务器代码
+====================
+
+确认代码已经推送到 GitHub 后，在腾讯云网页终端执行：
+
+cd /opt/companion-play-system
+sudo git pull
+sudo docker compose build
+sudo docker compose run --rm api-server pnpm --filter @dfc/database prisma:deploy
+sudo docker compose up -d
+sudo docker compose ps
+
+看到这些服务 Up 才算正常：
+1. api-server
+2. customer-web
+3. companion-web
+4. admin-web
+5. discord-bot
+6. kook-bot
+7. nginx
+8. postgres
+
+
+十二、查看日志
+==============
+
+看 API 日志：
+
+sudo docker compose logs -f api-server
+
+看 Discord Bot 日志：
+
+sudo docker compose logs -f discord-bot
+
+看 KOOK Bot 日志：
+
+sudo docker compose logs -f kook-bot
+
+退出日志：
+按 Ctrl + C
+
+
+十三、测试 Discord 客服
+======================
+
+在 Discord 的 #客服接待 频道发：
+
+@May猫饼客服 我要找三角洲陪玩，2小时，预算100，想先试音
+
+正常结果：
+1. Bot 会回复。
+2. 后台会记录客服会话。
+3. 因为 AI_AUTO_DISPATCH_ENABLED=false，暂时不会自动派单。
+
+再测试私聊 Bot：
+
+我要找瓦陪玩，排位，1小时，预算80
+
+正常结果：
+1. Bot 私聊回复。
+2. 后台记录客服会话。
+
+如果 Discord 没回复，检查：
+1. DISCORD_TOKEN 是否正确。
+2. Discord Bot 是否已经加入服务器。
+3. MESSAGE CONTENT INTENT 是否打开。
+4. DISCORD_SUPPORT_CHANNEL_ID 是否填对。
+5. Bot 在频道里是否有发送消息权限。
+6. docker compose logs -f discord-bot 是否报错。
+
+
+十四、测试 KOOK 客服
+===================
+
+在 KOOK 的客服接待频道发：
+
+我要找三角洲陪玩，2小时，预算100，想试音
+
+正常结果：
+1. KOOK Bot 自动回复。
+2. 后台记录客服会话。
+
+如果 KOOK 没回复，检查：
+1. KOOK_TOKEN 是否正确。
+2. KOOK_VERIFY_TOKEN 是否正确。
+3. KOOK 回调地址是否是：
+   https://maycatplay.com/api/kook/webhook
+4. KOOK_SUPPORT_CHANNEL_ID 是否填对。
+5. Bot 是否有频道发送权限。
+6. api-server 日志是否有 KOOK webhook 报错。
+
+
+十五、确认稳定后开启自动派单
+============================
+
+先不要着急开。
+建议先用 AI_AUTO_DISPATCH_ENABLED=false 测试 1 天。
+
+确认：
+1. Discord 客服频道能回复。
+2. Discord 私聊能回复。
+3. KOOK 客服频道能回复。
+4. 后台能看到客服会话。
+5. 陪玩账号已经绑定 KOOK / Discord。
+6. 陪玩派单频道 ID 正确。
+
+确认后再打开自动派单。
+
+服务器执行：
+
+cd /opt/companion-play-system
+sudo nano .env
+
+把：
+AI_AUTO_DISPATCH_ENABLED=false
+
+改成：
+AI_AUTO_DISPATCH_ENABLED=true
+
+保存后执行：
+
+sudo docker compose up -d
+sudo docker compose restart api-server discord-bot
+
+
+十六、自动派单测试
+==================
+
+在 Discord 或 KOOK 客服频道发：
+
+我要找三角洲陪玩，烽火，2小时，预算100，要女声试音
+
+正常流程：
+1. AI 客服识别客户需求。
+2. 后台生成试音派单草稿。
+3. Bot 把派单发到陪玩派单频道。
+4. 陪玩点击“我要报名”。
+5. 后台派单草稿里出现候选陪玩。
+6. 管理员选择候选陪玩。
+7. 客户确认后转正式订单。
+
+
+十七、陪玩报名失败的常见原因
+============================
+
+如果陪玩点“我要报名”失败，常见原因是：
+
+1. 陪玩没有绑定 Discord / KOOK 账号。
+2. 陪玩账号不是 COMPANION 角色。
+3. 陪玩账号被封禁。
+4. 陪玩资料没有上架。
+5. 派单游戏和陪玩资料游戏不一致。
+6. 陪玩频道按钮来自旧派单，草稿已经取消或转订单。
+
+处理方式：
+1. 到后台用户/陪玩管理确认陪玩账号。
+2. 绑定陪玩的 Discord / KOOK ID。
+3. 确认陪玩状态是 ACTIVE。
+4. 确认陪玩资料是已上架。
+
+
+十八、推荐上线顺序
+==================
+
+第 1 阶段：
+AI_SUPPORT_ENABLED=true
+AI_AUTO_DISPATCH_ENABLED=false
+
+只让 AI 回复和记录，不自动派单。
+
+第 2 阶段：
+AI_AUTO_DISPATCH_ENABLED=true
+
+开启自动生成试音派单。
+
+第 3 阶段：
+接入更多自动化：
+1. 客户选择候选陪玩后，自动通知管理员。
+2. 管理员一键转正式订单。
+3. 派单失败自动提醒人工客服。
+4. 客服会话后台检索。
+
+
+十九、安全规则
+==============
+
+AI 可以做：
+1. 回答常见问题。
+2. 收集找陪玩需求。
+3. 生成试音派单草稿。
+4. 通知陪玩频道报名。
+5. 提醒人工客服处理异常。
+
+AI 不允许做：
+1. 自动加余额。
+2. 自动退款。
+3. 自动提现。
+4. 自动封号。
+5. 自动修改订单金额。
+6. 自动完成订单结算。
+
+只要涉及钱、订单最终结算、账号处罚，都必须管理员后台确认。
+
+
+二十、你每次改完 .env 后要执行
+=============================
+
+如果只是改 .env，不需要重新 build。
+
+执行：
+
+cd /opt/companion-play-system
+sudo docker compose up -d
+sudo docker compose restart api-server discord-bot kook-bot
+
+然后看日志：
+
+sudo docker compose logs -f api-server
+

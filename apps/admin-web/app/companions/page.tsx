@@ -13,6 +13,7 @@ type Companion = {
   onlineStatus: string;
   deltaForceRank: string;
   pricePerHour: string;
+  commissionRate: string;
   availableIncome: string;
   pendingIncome: string;
   externalAccounts: Array<{
@@ -64,13 +65,36 @@ export default function CompanionsPage() {
     await loadCompanions();
   }
 
+  async function updateCommission(userId: string, commissionRate: string) {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) return;
+    setError("");
+    setStatus("");
+    const response = await fetch(`/api/admin/companions/${userId}/commission`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ commissionRate })
+    });
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    if (!response.ok) {
+      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      setError(toFriendlyError(message));
+      return;
+    }
+    setStatus(`陪玩抽成已更新为 ${formatPercent(commissionRate)}`);
+    await loadCompanions();
+  }
+
   return (
     <AdminShell>
-      <SectionHeader title="陪玩管理" desc="真实陪玩资料。支持按游戏查看，并进行上架、下架、封禁。" />
+      <SectionHeader title="陪玩管理" desc="管理真实陪玩资料、上架状态、价格、平台抽成比例和 KOOK / Discord 绑定。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
       <DataTable
-        columns={["ID", "资料", "游戏", "账号", "段位", "价格", "资料状态", "在线", "收益", "操作"]}
+        columns={["ID", "资料", "游戏", "账号", "段位", "价格/抽成", "资料状态", "在线", "收益", "操作"]}
         rows={companions.map((item) => [
           item.userId,
           <div key={`${item.userId}-profile`} className="flex items-center gap-3">
@@ -85,7 +109,12 @@ export default function CompanionsPage() {
           gameName(item.game),
           formatAccountEmail(item.email),
           item.deltaForceRank,
-          `¥${formatMoney(item.pricePerHour)}`,
+          <CompanionCommissionEditor
+            key={`${item.userId}-commission`}
+            pricePerHour={item.pricePerHour}
+            commissionRate={item.commissionRate}
+            onSave={(value) => void updateCommission(item.userId, value)}
+          />,
           <StatusBadge key={`${item.userId}-s`} tone={item.status === "LISTED" ? "success" : item.status === "BANNED" ? "danger" : "warning"}>{item.status}</StatusBadge>,
           item.onlineStatus,
           `可提 ¥${formatMoney(item.availableIncome)} / 待结 ¥${formatMoney(item.pendingIncome)}`,
@@ -100,6 +129,35 @@ export default function CompanionsPage() {
   );
 }
 
+function CompanionCommissionEditor({
+  pricePerHour,
+  commissionRate,
+  onSave
+}: {
+  pricePerHour: string;
+  commissionRate: string;
+  onSave: (value: string) => void;
+}) {
+  const [value, setValue] = useState(commissionRate);
+  return (
+    <div className="min-w-44 text-xs">
+      <div>价格 ¥{formatMoney(pricePerHour)}/h</div>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          className="w-20 rounded-dfc-control border border-dfc-border bg-dfc-bg px-2 py-1 outline-none focus:shadow-dfc-focus"
+          inputMode="decimal"
+        />
+        <button type="button" onClick={() => onSave(value)} className="rounded-dfc-control bg-dfc-blue px-2 py-1 font-semibold text-slate-950">
+          保存
+        </button>
+      </div>
+      <div className="mt-1 text-dfc-muted">平台抽成 {formatPercent(commissionRate)}</div>
+    </div>
+  );
+}
+
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
   const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
   return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
@@ -109,6 +167,10 @@ function formatMoney(value: string) {
   return Number(value || 0).toFixed(2);
 }
 
+function formatPercent(value: string) {
+  return `${Math.round(Number(value || 0) * 10000) / 100}%`;
+}
+
 function formatAccountEmail(email: string) {
   return email.endsWith("@oauth.maycatplay.local") ? "第三方注册" : email;
 }
@@ -116,6 +178,14 @@ function formatAccountEmail(email: string) {
 function platformSummary(accounts: Companion["externalAccounts"]) {
   if (!accounts.length) return "未绑定 KOOK / Discord";
   return accounts.map((account) => `${account.platform}:${account.displayName || account.externalUserId}`).join(" / ");
+}
+
+function toFriendlyError(message?: string) {
+  if (!message) return "操作失败";
+  if (message.includes("commissionRate cannot be greater than 1")) return "抽成比例不能大于 1，0.2 表示 20%";
+  if (message.includes("commissionRate cannot be negative")) return "抽成比例不能小于 0";
+  if (message.includes("commissionRate must be a valid amount")) return "请输入正确抽成比例，例如 0.2";
+  return message;
 }
 
 function gameName(code: string) {

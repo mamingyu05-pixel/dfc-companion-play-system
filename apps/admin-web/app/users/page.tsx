@@ -35,6 +35,7 @@ export default function UsersPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
+  const [adjustmentDirection, setAdjustmentDirection] = useState<"CREDIT" | "DEBIT">("CREDIT");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminName, setAdminName] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
@@ -98,7 +99,7 @@ export default function UsersPage() {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ amount: creditAmount, note: creditNote })
+      body: JSON.stringify({ amount: creditAmount, note: creditNote, direction: adjustmentDirection })
     });
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
     if (!response.ok) {
@@ -107,7 +108,7 @@ export default function UsersPage() {
       return;
     }
 
-    setStatus("客户余额已增加，并已写入钱包流水");
+    setStatus(adjustmentDirection === "CREDIT" ? "客户余额已增加，并已写入钱包流水" : "客户余额已扣减，并已写入冲正流水");
     setCreditAmount("");
     setCreditNote("");
     await loadUsers();
@@ -181,13 +182,13 @@ export default function UsersPage() {
 
   return (
     <AdminShell>
-      <SectionHeader title="用户管理" desc="搜索真实用户，给客户人工加余额，并创建管理员账号。" />
+      <SectionHeader title="用户管理" desc="搜索真实用户，给客户人工调账，并创建管理员账号。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
       <section className="mb-6 grid gap-4 xl:grid-cols-[1fr_1fr]">
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">搜索用户 / 人工加余额</h2>
+          <h2 className="text-base font-semibold">搜索用户 / 人工调账</h2>
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -200,13 +201,23 @@ export default function UsersPage() {
               onChange={(event) => setSelectedCustomerId(event.target.value)}
               className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
             >
-              <option value="">选择要加余额的客户</option>
+              <option value="">选择要调账的客户</option>
               {customerOptions.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.displayName} / {user.email}
                 </option>
               ))}
             </select>
+            <select
+              value={adjustmentDirection}
+              onChange={(event) => setAdjustmentDirection(event.target.value === "DEBIT" ? "DEBIT" : "CREDIT")}
+              className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+            >
+              <option value="CREDIT">增加余额</option>
+              <option value="DEBIT">扣减余额 / 冲正</option>
+            </select>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-1">
             <input
               value={creditAmount}
               onChange={(event) => setCreditAmount(event.target.value)}
@@ -221,9 +232,16 @@ export default function UsersPage() {
             className="mt-3 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
             placeholder="备注，例如微信转账已确认"
           />
-          <button type="button" onClick={() => void creditCustomerBalance()} className="mt-4 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">
-            给客户增加余额
+          <button
+            type="button"
+            onClick={() => void creditCustomerBalance()}
+            className={`mt-4 rounded-dfc-control px-4 py-3 text-sm font-semibold ${
+              adjustmentDirection === "CREDIT" ? "bg-dfc-blue text-slate-950" : "bg-dfc-warning text-slate-950"
+            }`}
+          >
+            {adjustmentDirection === "CREDIT" ? "给客户增加余额" : "扣减客户余额"}
           </button>
+          <p className="mt-3 text-xs text-dfc-muted">扣减用于测试回滚、误加款冲正。系统会保留正反两条流水，禁止直接删账。</p>
         </div>
 
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
@@ -309,6 +327,7 @@ function toFriendlyError(message?: string) {
   if (message.includes("Customer does not exist or is not active")) return "客户不存在或不可用";
   if (message.includes("amount must be a valid amount")) return "请输入正确金额";
   if (message.includes("amount must be greater than 0")) return "金额必须大于 0";
+  if (message.includes("Insufficient available balance")) return "客户可用余额不足，不能扣减到负数";
   if (message.includes("Database migration is not applied")) return "服务器数据库还没更新，请先执行数据库迁移";
   if (message.includes("Related account or wallet data is invalid")) return "客户钱包数据异常，请检查该客户账号";
   return message;

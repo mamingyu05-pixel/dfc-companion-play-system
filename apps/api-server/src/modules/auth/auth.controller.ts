@@ -14,7 +14,7 @@ export class AuthController {
   }
 
   @Post("register/customer")
-  registerCustomer(@Body() body: { email: string; password: string; displayName: string; emailCode: string }) {
+  registerCustomer(@Body() body: { email: string; password: string; displayName: string; emailCode: string; referralCode?: string }) {
     return this.auth.registerCustomer(body);
   }
 

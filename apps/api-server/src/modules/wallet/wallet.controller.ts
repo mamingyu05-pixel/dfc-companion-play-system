@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post, UseGuards } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/current-user.decorator";
@@ -49,5 +49,22 @@ export class WalletController {
     @Body() body: { amount: string; payoutAccount: string; note?: string }
   ) {
     return this.wallet.createWithdrawalRequest(user.id, body);
+  }
+
+  @Get("companion-payout-profile")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.COMPANION)
+  getCompanionPayoutProfile(@CurrentUser() user: AuthenticatedUser) {
+    return this.wallet.getCompanionPayoutProfile(user.id);
+  }
+
+  @Patch("companion-payout-profile")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.COMPANION)
+  updateCompanionPayoutProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { payoutMethod?: string; payoutAccountName?: string; payoutAccountNo?: string; payoutQrCodeUrl?: string }
+  ) {
+    return this.wallet.updateCompanionPayoutProfile(user.id, body);
   }
 }

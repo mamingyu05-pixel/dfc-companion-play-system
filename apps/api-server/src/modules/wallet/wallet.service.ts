@@ -129,6 +129,50 @@ export class WalletService {
     };
   }
 
+  async getCompanionPayoutProfile(userId: string) {
+    const profile = await this.prisma.companionProfile.findUnique({
+      where: { userId },
+      select: {
+        payoutMethod: true,
+        payoutAccountName: true,
+        payoutAccountNo: true,
+        payoutQrCodeUrl: true
+      }
+    });
+    if (!profile) throw new BadRequestException("Companion profile does not exist");
+    return profile;
+  }
+
+  async updateCompanionPayoutProfile(
+    userId: string,
+    body: { payoutMethod?: string; payoutAccountName?: string; payoutAccountNo?: string; payoutQrCodeUrl?: string }
+  ) {
+    const payoutMethod = sanitizeText(body.payoutMethod || "ALIPAY", 30);
+    const payoutAccountName = sanitizeText(body.payoutAccountName, 50);
+    const payoutAccountNo = sanitizeText(body.payoutAccountNo, 120);
+    const payoutQrCodeUrl = sanitizeText(body.payoutQrCodeUrl, 2_500_000);
+
+    if (!payoutAccountName || !payoutAccountNo) {
+      throw new BadRequestException("payoutAccountName and payoutAccountNo are required");
+    }
+
+    return this.prisma.companionProfile.update({
+      where: { userId },
+      data: {
+        payoutMethod,
+        payoutAccountName,
+        payoutAccountNo,
+        payoutQrCodeUrl: payoutQrCodeUrl || null
+      },
+      select: {
+        payoutMethod: true,
+        payoutAccountName: true,
+        payoutAccountNo: true,
+        payoutQrCodeUrl: true
+      }
+    });
+  }
+
   async createRechargeRequest(
     customerId: string,
     body: { amount: string; screenshotUrl: string; note?: string }
@@ -157,10 +201,11 @@ export class WalletService {
   async adminCreditCustomerBalance(
     customerId: string,
     operatorId: string,
-    body: { amount: string; note?: string }
+    body: { amount: string; note?: string; direction?: "CREDIT" | "DEBIT" }
   ) {
     try {
       const amount = this.positiveDecimal(body.amount, "amount");
+      const direction = body.direction === "DEBIT" ? TransactionDirection.DEBIT : TransactionDirection.CREDIT;
 
       return await this.prisma.$transaction(async (tx) => {
         const customer = await tx.user.findFirst({
@@ -169,14 +214,21 @@ export class WalletService {
         });
         if (!customer) throw new BadRequestException("Customer does not exist or is not active");
 
-        const wallet = customer.wallet
-          ? await tx.wallet.update({
-              where: { id: customer.wallet.id },
-              data: { availableBalance: { increment: amount } }
-            })
-          : await tx.wallet.create({
-              data: { userId: customerId, availableBalance: amount }
-            });
+        if (direction === TransactionDirection.DEBIT && !customer.wallet) {
+          throw new BadRequestException("Insufficient available balance");
+        }
+
+        const wallet =
+          direction === TransactionDirection.CREDIT
+            ? customer.wallet
+              ? await tx.wallet.update({
+                  where: { id: customer.wallet.id },
+                  data: { availableBalance: { increment: amount } }
+                })
+              : await tx.wallet.create({
+                  data: { userId: customerId, availableBalance: amount }
+                })
+            : await this.debitCustomerAvailableBalance(tx, customer.wallet!.id, amount);
 
         const transaction = await tx.walletTransaction.create({
           data: {
@@ -184,7 +236,7 @@ export class WalletService {
             userId: customerId,
             operatorId,
             type: WalletTransactionType.ADMIN_ADJUSTMENT,
-            direction: TransactionDirection.CREDIT,
+            direction,
             amount,
             balanceAfter: wallet.availableBalance,
             referenceType: "ADMIN_BALANCE_ADJUSTMENT",
@@ -197,10 +249,10 @@ export class WalletService {
           data: {
             actorId: operatorId,
             targetUserId: customerId,
-            action: "ADMIN_CREDIT_BALANCE",
+            action: direction === TransactionDirection.CREDIT ? "ADMIN_CREDIT_BALANCE" : "ADMIN_DEBIT_BALANCE",
             entityType: "WALLET",
             entityId: wallet.id,
-            detail: { amount: amount.toString(), balanceAfter: wallet.availableBalance.toString(), note: body.note }
+            detail: { direction, amount: amount.toString(), balanceAfter: wallet.availableBalance.toString(), note: body.note }
           }
         });
 
@@ -269,9 +321,21 @@ export class WalletService {
         return tx.rechargeRequest.findUniqueOrThrow({ where: { id: rechargeRequestId } });
       }
 
+      const approvedRechargeCount = await tx.rechargeRequest.count({
+        where: {
+          customerId: request.customerId,
+          status: ReviewStatus.APPROVED,
+          id: { not: rechargeRequestId }
+        }
+      });
+      const firstRechargeBonus = approvedRechargeCount === 0
+        ? await this.calculateFirstRechargeBonus(tx, request.amount)
+        : new Prisma.Decimal(0);
+      const creditAmount = request.amount.add(firstRechargeBonus);
+
       const wallet = await tx.wallet.update({
         where: { userId: request.customerId },
-        data: { availableBalance: { increment: request.amount } }
+        data: { availableBalance: { increment: creditAmount } }
       });
 
       await tx.walletTransaction.create({
@@ -289,6 +353,23 @@ export class WalletService {
         }
       });
 
+      if (firstRechargeBonus.gt(0)) {
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            userId: request.customerId,
+            operatorId: reviewerId,
+            type: WalletTransactionType.PROMOTION_BONUS,
+            direction: TransactionDirection.CREDIT,
+            amount: firstRechargeBonus,
+            balanceAfter: wallet.availableBalance,
+            referenceType: "RECHARGE_REQUEST",
+            referenceId: rechargeRequestId,
+            note: "New customer first recharge bonus"
+          }
+        });
+      }
+
       await tx.adminLog.create({
         data: {
           actorId: reviewerId,
@@ -296,7 +377,12 @@ export class WalletService {
           action: "APPROVE_RECHARGE",
           entityType: "RECHARGE_REQUEST",
           entityId: rechargeRequestId,
-          detail: { amount: request.amount.toString(), note: body.note }
+          detail: {
+            amount: request.amount.toString(),
+            firstRechargeBonus: firstRechargeBonus.toString(),
+            totalCredit: creditAmount.toString(),
+            note: body.note
+          }
         }
       });
 
@@ -309,14 +395,15 @@ export class WalletService {
     body: { amount: string; payoutAccount: string; note?: string }
   ) {
     const amount = this.positiveDecimal(body.amount, "amount");
-    if (!body.payoutAccount) throw new BadRequestException("payoutAccount is required");
 
     return this.prisma.$transaction(async (tx) => {
       const companion = await tx.user.findFirst({
         where: { id: companionId, role: UserRole.COMPANION, status: UserStatus.ACTIVE },
-        include: { wallet: true }
+        include: { wallet: true, companionProfile: true }
       });
       if (!companion?.wallet) throw new BadRequestException("Companion wallet does not exist");
+      const payoutAccount = sanitizeText(body.payoutAccount, 500) || buildPayoutAccount(companion.companionProfile);
+      if (!payoutAccount) throw new BadRequestException("payoutAccount is required");
 
       const frozen = await tx.wallet.updateMany({
         where: {
@@ -335,7 +422,7 @@ export class WalletService {
         data: {
           companionId,
           amount,
-          payoutAccount: body.payoutAccount,
+          payoutAccount,
           note: body.note
         }
       });
@@ -562,6 +649,43 @@ export class WalletService {
     if (decimal.lte(0)) throw new BadRequestException(`${fieldName} must be greater than 0`);
     return decimal;
   }
+
+  private async calculateFirstRechargeBonus(tx: Prisma.TransactionClient, rechargeAmount: Prisma.Decimal) {
+    const [rateSetting, fixedSetting] = await Promise.all([
+      tx.platformSetting.findUnique({ where: { key: "NEW_CUSTOMER_FIRST_RECHARGE_BONUS_RATE" } }),
+      tx.platformSetting.findUnique({ where: { key: "NEW_CUSTOMER_FIRST_RECHARGE_BONUS_AMOUNT" } })
+    ]);
+    const rate = this.nonNegativeDecimal(rateSetting?.value ?? "0", "NEW_CUSTOMER_FIRST_RECHARGE_BONUS_RATE");
+    const fixed = this.nonNegativeDecimal(fixedSetting?.value ?? "0", "NEW_CUSTOMER_FIRST_RECHARGE_BONUS_AMOUNT");
+    return rechargeAmount.mul(rate).add(fixed).toDecimalPlaces(2);
+  }
+
+  private nonNegativeDecimal(value: string, fieldName: string) {
+    let decimal: Prisma.Decimal;
+    try {
+      decimal = new Prisma.Decimal(value);
+    } catch {
+      throw new BadRequestException(`${fieldName} must be a valid amount`);
+    }
+    if (decimal.lt(0)) throw new BadRequestException(`${fieldName} cannot be negative`);
+    return decimal;
+  }
+
+  private async debitCustomerAvailableBalance(tx: Prisma.TransactionClient, walletId: string, amount: Prisma.Decimal) {
+    const updated = await tx.wallet.updateMany({
+      where: {
+        id: walletId,
+        availableBalance: { gte: amount }
+      },
+      data: { availableBalance: { decrement: amount } }
+    });
+
+    if (updated.count !== 1) {
+      throw new BadRequestException("Insufficient available balance");
+    }
+
+    return tx.wallet.findUniqueOrThrow({ where: { id: walletId } });
+  }
 }
 
 function mapWalletOperationError(error: unknown) {
@@ -579,4 +703,14 @@ function mapWalletOperationError(error: unknown) {
 
 function isPrismaErrorCode(error: unknown, code: string) {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === code;
+}
+
+function sanitizeText(value: string | null | undefined, maxLength: number) {
+  return (value ?? "").trim().slice(0, maxLength);
+}
+
+function buildPayoutAccount(profile?: { payoutMethod: string | null; payoutAccountName: string | null; payoutAccountNo: string | null } | null) {
+  if (!profile?.payoutAccountName || !profile.payoutAccountNo) return "";
+  const method = profile.payoutMethod || "ALIPAY";
+  return `${method}: ${profile.payoutAccountName} / ${profile.payoutAccountNo}`;
 }

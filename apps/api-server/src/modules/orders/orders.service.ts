@@ -5,6 +5,7 @@ import {
   CompanionProfileStatus,
   GameCode,
   OrderAssignmentType,
+  OrderSourcePlatform,
   OrderStatus,
   Prisma,
   TransactionDirection,
@@ -111,6 +112,7 @@ export class OrdersService {
         customer: { select: { id: true, email: true, displayName: true } },
         companion: { select: { id: true, email: true, displayName: true } },
         assignedBy: { select: { id: true, email: true, displayName: true } },
+        sourceDraft: { select: { id: true, draftNo: true, sourcePlatform: true, voiceRoomId: true, status: true } },
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
       }
     });
@@ -126,6 +128,10 @@ export class OrdersService {
       companionId?: string;
       notes?: string;
       voiceTrialRequested?: boolean;
+      sourcePlatform?: OrderSourcePlatform;
+      sourceDraftId?: string;
+      sourceChannelId?: string;
+      sourceMessageId?: string;
     }
   ) {
     if (!body.mode) throw new BadRequestException("mode is required");
@@ -175,7 +181,11 @@ export class OrdersService {
           totalAmount,
           status: OrderStatus.PAID,
           notes: body.notes,
-          voiceTrialRequested: body.voiceTrialRequested ?? false
+          voiceTrialRequested: body.voiceTrialRequested ?? false,
+          sourcePlatform: body.sourcePlatform ?? OrderSourcePlatform.WEB,
+          sourceDraftId: body.sourceDraftId,
+          sourceChannelId: body.sourceChannelId,
+          sourceMessageId: body.sourceMessageId
         }
       });
 
@@ -473,12 +483,23 @@ export class OrdersService {
   }
 
   async completeOrder(orderId: string, actorId: string) {
-    const platformRate = new Prisma.Decimal(process.env.PLATFORM_COMMISSION_RATE ?? "0.2");
+    const defaultPlatformRate = new Prisma.Decimal(process.env.PLATFORM_COMMISSION_RATE ?? "0.2");
 
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        select: { id: true, status: true, customerId: true, companionId: true, totalAmount: true }
+        select: {
+          id: true,
+          status: true,
+          customerId: true,
+          companionId: true,
+          totalAmount: true,
+          companion: {
+            select: {
+              companionProfile: { select: { commissionRate: true } }
+            }
+          }
+        }
       });
 
       if (!order) throw new NotFoundException("Order not found");
@@ -493,6 +514,7 @@ export class OrdersService {
         }
       }
 
+      const platformRate = order.companion?.companionProfile?.commissionRate ?? defaultPlatformRate;
       const platformFee = order.totalAmount.mul(platformRate);
       const companionIncome = order.totalAmount.sub(platformFee);
 
@@ -562,6 +584,8 @@ export class OrdersService {
         }
       });
 
+      await this.settleReferralReward(tx, order.customerId, orderId, actorId);
+
       await tx.orderStatusLog.create({
         data: {
           orderId,
@@ -574,6 +598,126 @@ export class OrdersService {
 
       return tx.order.findUniqueOrThrow({ where: { id: orderId } });
     });
+  }
+
+  private async settleReferralReward(tx: Prisma.TransactionClient, customerId: string, orderId: string, operatorId: string) {
+    const completedOrderCount = await tx.order.count({
+      where: {
+        customerId,
+        status: OrderStatus.COMPLETED,
+        id: { not: orderId }
+      }
+    });
+    if (completedOrderCount > 0) return;
+
+    const referral = await tx.userReferral.findUnique({
+      where: { referredUserId: customerId },
+      include: {
+        referrer: { include: { wallet: true } },
+        referredUser: { include: { wallet: true } }
+      }
+    });
+    if (!referral || referral.rewardStatus !== "PENDING") return;
+
+    const [customerReferrerReward, customerInviteeBonus, companionReferralReward] = await Promise.all([
+      this.getPlatformSettingDecimal(tx, "CUSTOMER_REFERRER_REWARD_AMOUNT", "10"),
+      this.getPlatformSettingDecimal(tx, "CUSTOMER_INVITEE_BONUS_AMOUNT", "10"),
+      this.getPlatformSettingDecimal(tx, "COMPANION_REFERRAL_REWARD_AMOUNT", "20")
+    ]);
+
+    if (referral.referrer.role === UserRole.CUSTOMER && customerReferrerReward.gt(0)) {
+      const referrerWallet = referral.referrer.wallet
+        ? await tx.wallet.update({
+            where: { id: referral.referrer.wallet.id },
+            data: { availableBalance: { increment: customerReferrerReward } }
+          })
+        : await tx.wallet.create({
+            data: { userId: referral.referrerId, availableBalance: customerReferrerReward }
+          });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: referrerWallet.id,
+          userId: referral.referrerId,
+          operatorId,
+          type: WalletTransactionType.REFERRAL_REWARD,
+          direction: TransactionDirection.CREDIT,
+          amount: customerReferrerReward,
+          balanceAfter: referrerWallet.availableBalance,
+          referenceType: "USER_REFERRAL",
+          referenceId: referral.id,
+          note: "Customer referral reward"
+        }
+      });
+    }
+
+    if (referral.referrer.role === UserRole.COMPANION && companionReferralReward.gt(0)) {
+      const referrerWallet = referral.referrer.wallet
+        ? await tx.wallet.update({
+            where: { id: referral.referrer.wallet.id },
+            data: { availableIncome: { increment: companionReferralReward } }
+          })
+        : await tx.wallet.create({
+            data: { userId: referral.referrerId, availableIncome: companionReferralReward }
+          });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: referrerWallet.id,
+          userId: referral.referrerId,
+          operatorId,
+          type: WalletTransactionType.REFERRAL_REWARD,
+          direction: TransactionDirection.CREDIT,
+          amount: companionReferralReward,
+          balanceAfter: referrerWallet.availableIncome,
+          referenceType: "USER_REFERRAL",
+          referenceId: referral.id,
+          note: "Companion customer referral reward"
+        }
+      });
+    }
+
+    if (customerInviteeBonus.gt(0)) {
+      const inviteeWallet = referral.referredUser.wallet
+        ? await tx.wallet.update({
+            where: { id: referral.referredUser.wallet.id },
+            data: { availableBalance: { increment: customerInviteeBonus } }
+          })
+        : await tx.wallet.create({
+            data: { userId: customerId, availableBalance: customerInviteeBonus }
+          });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: inviteeWallet.id,
+          userId: customerId,
+          operatorId,
+          type: WalletTransactionType.REFERRAL_REWARD,
+          direction: TransactionDirection.CREDIT,
+          amount: customerInviteeBonus,
+          balanceAfter: inviteeWallet.availableBalance,
+          referenceType: "USER_REFERRAL",
+          referenceId: referral.id,
+          note: "Invitee first order bonus"
+        }
+      });
+    }
+
+    await tx.userReferral.update({
+      where: { id: referral.id },
+      data: {
+        rewardStatus: "REWARDED",
+        firstOrderId: orderId,
+        rewardedAt: new Date()
+      }
+    });
+  }
+
+  private async getPlatformSettingDecimal(tx: Prisma.TransactionClient, key: string, fallback: string) {
+    const setting = await tx.platformSetting.findUnique({ where: { key } });
+    try {
+      const value = new Prisma.Decimal(setting?.value ?? fallback);
+      return value.lt(0) ? new Prisma.Decimal(0) : value.toDecimalPlaces(2);
+    } catch {
+      return new Prisma.Decimal(fallback);
+    }
   }
 
   private async resolvePricing(companionId: string | undefined, game: GameCode) {
@@ -632,6 +776,10 @@ export class OrdersService {
     status: OrderStatus;
     notes: string | null;
     voiceTrialRequested: boolean;
+    sourcePlatform: OrderSourcePlatform;
+    sourceDraftId: string | null;
+    sourceChannelId: string | null;
+    sourceMessageId: string | null;
     createdAt: Date;
     acceptedAt: Date | null;
     startedAt: Date | null;
@@ -639,6 +787,7 @@ export class OrdersService {
     customer?: { id: string; email: string; displayName: string };
     companion?: { id: string; email: string; displayName: string } | null;
     assignedBy?: { id: string; email: string; displayName: string } | null;
+    sourceDraft?: { id: string; draftNo: string; sourcePlatform: OrderSourcePlatform; voiceRoomId: string | null; status: string } | null;
     statusLogs?: Array<{ id: string; fromStatus: OrderStatus | null; toStatus: OrderStatus; reason: string | null; createdAt: Date }>;
   }) {
     return {
@@ -657,6 +806,10 @@ export class OrdersService {
       status: order.status,
       notes: order.notes,
       voiceTrialRequested: order.voiceTrialRequested,
+      sourcePlatform: order.sourcePlatform,
+      sourceDraftId: order.sourceDraftId,
+      sourceChannelId: order.sourceChannelId,
+      sourceMessageId: order.sourceMessageId,
       createdAt: order.createdAt,
       acceptedAt: order.acceptedAt,
       startedAt: order.startedAt,
@@ -664,6 +817,7 @@ export class OrdersService {
       customer: order.customer,
       companion: order.companion,
       assignedBy: order.assignedBy,
+      sourceDraft: order.sourceDraft,
       statusLogs: order.statusLogs ?? []
     };
   }

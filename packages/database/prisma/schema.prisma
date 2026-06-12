@@ -92,6 +92,50 @@ enum OrderAssignmentType {
   PLATFORM_MATCH
 }
 
+enum OrderSourcePlatform {
+  WEB
+  DISCORD
+  KOOK
+}
+
+enum OrderDraftStatus {
+  OPEN
+  TRIALING
+  SELECTED
+  CUSTOMER_CONFIRMED
+  CONVERTED
+  CANCELLED
+}
+
+enum OrderDraftCandidateStatus {
+  RECOMMENDED
+  TRIALING
+  LIKED
+  REJECTED
+  SELECTED
+}
+
+enum OrderDraftActorType {
+  CUSTOMER
+  ADMIN
+  COMPANION
+  BOT
+}
+
+enum OrderDraftEventType {
+  DRAFT_CREATED
+  CUSTOMER_REQUESTED_ORDER
+  COMPANION_APPLIED
+  COMPANION_RECOMMENDED
+  COMPANION_TRIAL_STARTED
+  CUSTOMER_SELECTED_COMPANION
+  CUSTOMER_CHANGED_COMPANION
+  CUSTOMER_CONFIRMED
+  DRAFT_CONVERTED_TO_ORDER
+  DRAFT_CANCELLED
+  NOTE_ADDED
+}
+
 enum WalletTransactionType {
   RECHARGE_APPROVED
   ORDER_PAYMENT
@@ -101,6 +145,20 @@ enum WalletTransactionType {
   WITHDRAWAL_COMPLETED
   WITHDRAWAL_REJECTED
   ADMIN_ADJUSTMENT
+  PROMOTION_BONUS
+  REFERRAL_REWARD
+}
+
+enum ReferralRewardStatus {
+  PENDING
+  REWARDED
+  CANCELLED
+}
+
+enum ReferralSourceType {
+  CUSTOMER
+  COMPANION
+  ADMIN
 }
 
 enum TransactionDirection {
@@ -156,6 +214,7 @@ model User {
   status                     UserStatus          @default(ACTIVE)
   displayName                String
   displayNameKey             String
+  referralCode               String?             @unique
   createdAt                  DateTime            @default(now())
   updatedAt                  DateTime            @updatedAt
 
@@ -164,9 +223,18 @@ model User {
   customerOrders             Order[]             @relation("OrderCustomer")
   companionOrders            Order[]             @relation("OrderCompanion")
   assignedOrders             Order[]             @relation("OrderAssigner")
+  customerOrderDrafts         OrderDraft[]        @relation("OrderDraftCustomer")
+  serviceOrderDrafts          OrderDraft[]        @relation("OrderDraftServiceAdmin")
+  selectedOrderDrafts         OrderDraft[]        @relation("OrderDraftSelectedCompanion")
+  convertedOrderDrafts        OrderDraft[]        @relation("OrderDraftConverter")
+  draftCandidates             OrderDraftCandidate[] @relation("OrderDraftCandidateCompanion")
+  draftCandidateRecommends    OrderDraftCandidate[] @relation("OrderDraftCandidateRecommender")
+  orderDraftEvents            OrderDraftEvent[]   @relation("OrderDraftEventActor")
   orderStatusLogs            OrderStatusLog[]    @relation("OrderStatusActor")
   walletTransactions         WalletTransaction[] @relation("WalletTransactionUser")
   operatedWalletTransactions WalletTransaction[] @relation("WalletTransactionOperator")
+  referralsGiven             UserReferral[]      @relation("ReferralReferrer")
+  referralReceived           UserReferral?       @relation("ReferralReferredUser")
   rechargeRequests           RechargeRequest[]   @relation("RechargeCustomer")
   rechargeReviews            RechargeRequest[]   @relation("RechargeReviewer")
   withdrawalRequests         WithdrawalRequest[] @relation("WithdrawalCompanion")
@@ -175,8 +243,10 @@ model User {
   complaintsResolved         Complaint[]         @relation("ComplaintResolver")
   adminLogs                  AdminLog[]          @relation("AdminLogActor")
   targetAdminLogs            AdminLog[]          @relation("AdminLogTarget")
+  updatedPlatformSettings    PlatformSetting[]   @relation("PlatformSettingUpdater")
   botEvents                  BotEvent[]          @relation("BotEventActor")
   externalAccounts           UserExternalAccount[]
+  supportConversations       AiSupportConversation[]
 
   @@unique([role, displayNameKey])
   @@map("users")
@@ -224,10 +294,15 @@ model CompanionProfile {
   deltaForceRank  DeltaForceRank         @default(UNRANKED)
   skillModes      String[]
   pricePerHour    Decimal                @db.Decimal(12, 2)
+  commissionRate  Decimal                @default(0.2) @db.Decimal(5, 4)
   onlineStatus    OnlineStatus           @default(OFFLINE)
   bio             String?
   voicePreference VoicePreference        @default(OPTIONAL)
   status          CompanionProfileStatus @default(PENDING_REVIEW)
+  payoutMethod    String?
+  payoutAccountName String?
+  payoutAccountNo String?
+  payoutQrCodeUrl String?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
@@ -272,6 +347,10 @@ model Order {
   voiceTrialRequested Boolean         @default(false)
   voiceRoomId       String?
   discordMessageId  String?
+  sourcePlatform    OrderSourcePlatform @default(WEB)
+  sourceDraftId     String?          @unique
+  sourceChannelId   String?
+  sourceMessageId   String?
   acceptedAt        DateTime?
   startedAt         DateTime?
   completedAt       DateTime?
@@ -282,13 +361,113 @@ model Order {
   customer          User             @relation("OrderCustomer", fields: [customerId], references: [id])
   companion         User?            @relation("OrderCompanion", fields: [companionId], references: [id])
   assignedBy        User?            @relation("OrderAssigner", fields: [assignedById], references: [id])
+  sourceDraft       OrderDraft?      @relation("OrderSourceDraft", fields: [sourceDraftId], references: [id])
   statusLogs        OrderStatusLog[]
   complaints        Complaint[]
+  referralRewards   UserReferral[]   @relation("ReferralFirstOrder")
 
   @@index([status])
   @@index([customerId])
   @@index([companionId])
+  @@index([sourceDraftId])
   @@map("orders")
+}
+
+model UserReferral {
+  id             String               @id @default(cuid())
+  referrerId     String
+  referredUserId String               @unique
+  sourceType     ReferralSourceType
+  rewardStatus   ReferralRewardStatus @default(PENDING)
+  firstOrderId   String?
+  rewardedAt     DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  referrer        User                 @relation("ReferralReferrer", fields: [referrerId], references: [id])
+  referredUser    User                 @relation("ReferralReferredUser", fields: [referredUserId], references: [id])
+  firstOrder      Order?               @relation("ReferralFirstOrder", fields: [firstOrderId], references: [id])
+
+  @@index([referrerId])
+  @@index([rewardStatus])
+  @@map("user_referrals")
+}
+
+model OrderDraft {
+  id                     String              @id @default(cuid())
+  draftNo                String              @unique
+  customerId             String?
+  serviceAdminId         String
+  selectedCompanionId    String?
+  convertedById          String?
+  sourcePlatform         OrderSourcePlatform
+  customerPlatformUserId String?
+  customerDisplayName    String?
+  sourceGuildId          String?
+  sourceChannelId        String?
+  sourceMessageId        String?
+  voiceRoomId            String?
+  game                   GameCode            @default(DELTA_FORCE)
+  mode                   String
+  hours                  Decimal?            @db.Decimal(6, 2)
+  budgetAmount           Decimal?            @db.Decimal(12, 2)
+  status                 OrderDraftStatus    @default(OPEN)
+  note                   String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  customer               User?               @relation("OrderDraftCustomer", fields: [customerId], references: [id])
+  serviceAdmin           User                @relation("OrderDraftServiceAdmin", fields: [serviceAdminId], references: [id])
+  selectedCompanion      User?               @relation("OrderDraftSelectedCompanion", fields: [selectedCompanionId], references: [id])
+  convertedBy            User?               @relation("OrderDraftConverter", fields: [convertedById], references: [id])
+  convertedOrder         Order?              @relation("OrderSourceDraft")
+  candidates             OrderDraftCandidate[]
+  events                 OrderDraftEvent[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([serviceAdminId])
+  @@index([selectedCompanionId])
+  @@map("order_drafts")
+}
+
+model OrderDraftCandidate {
+  id              String                    @id @default(cuid())
+  draftId         String
+  companionId     String
+  recommendedById String?
+  status          OrderDraftCandidateStatus @default(RECOMMENDED)
+  note            String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  draft           OrderDraft                @relation(fields: [draftId], references: [id])
+  companion       User                      @relation("OrderDraftCandidateCompanion", fields: [companionId], references: [id])
+  recommendedBy   User?                     @relation("OrderDraftCandidateRecommender", fields: [recommendedById], references: [id])
+
+  @@unique([draftId, companionId])
+  @@index([companionId])
+  @@map("order_draft_candidates")
+}
+
+model OrderDraftEvent {
+  id             String              @id @default(cuid())
+  draftId        String
+  actorType      OrderDraftActorType
+  actorUserId    String?
+  platform       OrderSourcePlatform
+  platformUserId String?
+  eventType      OrderDraftEventType
+  content        String?
+  metadata       Json?
+  createdAt      DateTime            @default(now())
+
+  draft          OrderDraft          @relation(fields: [draftId], references: [id])
+  actor          User?               @relation("OrderDraftEventActor", fields: [actorUserId], references: [id])
+
+  @@index([draftId])
+  @@index([eventType])
+  @@map("order_draft_events")
 }
 
 model OrderStatusLog {
@@ -408,6 +587,44 @@ model AdminLog {
   @@index([actorId])
   @@index([entityType, entityId])
   @@map("admin_logs")
+}
+
+model PlatformSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  updatedBy   User?    @relation("PlatformSettingUpdater", fields: [updatedById], references: [id])
+
+  @@map("platform_settings")
+}
+
+model AiSupportConversation {
+  id              String   @id @default(cuid())
+  userId          String?
+  platform        BotPlatform?
+  platformUserId  String?
+  platformGuildId String?
+  platformChannelId String?
+  platformMessageId String?
+  replyMessageId  String?
+  message         String
+  answer          String
+  matchedTopic    String?
+  handoffRequired Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([platform, platformUserId])
+  @@index([platformChannelId])
+  @@index([createdAt])
+  @@map("ai_support_conversations")
 }
 
 model BotEvent {

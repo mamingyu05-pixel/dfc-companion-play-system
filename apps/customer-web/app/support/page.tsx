@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import Link from "next/link";
 import { CustomerShell, SectionHeader, StatCard } from "../components";
 
@@ -9,6 +10,7 @@ type CustomerMe = {
     id: string;
     email: string;
     displayName: string;
+    referralCode?: string | null;
   };
   wallet: {
     availableBalance: string;
@@ -28,9 +30,25 @@ type PublicConfig = {
   };
 };
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  text: string;
+  topic?: string;
+  handoffRequired?: boolean;
+};
+
 export default function SupportPage() {
   const [profile, setProfile] = useState<CustomerMe | null>(null);
   const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
+  const [question, setQuestion] = useState("");
+  const [chat, setChat] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      text: "你好，我是 May猫饼自动客服。可以先问我充值、下单、试音、退款、陪玩入驻、KOOK/Discord 绑定等问题。"
+    }
+  ]);
+  const [error, setError] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("dfc_customer_token");
@@ -61,11 +79,61 @@ export default function SupportPage() {
       .catch(() => setPublicConfig({}));
   }, []);
 
+  async function askAutoSupport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const message = question.trim();
+    if (!message) return;
+
+    const token = localStorage.getItem("dfc_customer_token");
+    if (!token) {
+      window.location.href = "/customer/";
+      return;
+    }
+
+    setQuestion("");
+    setError("");
+    setChat((current) => [...current, { role: "user", text: message }]);
+    setIsSending(true);
+    try {
+      const response = await fetch("/api/support/auto-reply", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ message })
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        answer?: string;
+        matchedTopic?: string;
+        handoffRequired?: boolean;
+        message?: string | string[];
+      };
+      if (!response.ok) {
+        const errorMessage = Array.isArray(data.message) ? data.message.join("，") : data.message;
+        throw new Error(errorMessage || "自动客服暂时不可用");
+      }
+      setChat((current) => [
+        ...current,
+        {
+          role: "assistant",
+          text: data.answer || "这个问题需要转人工客服确认。",
+          topic: data.matchedTopic,
+          handoffRequired: data.handoffRequired
+        }
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "自动客服暂时不可用，请联系人工客服");
+    } finally {
+      setIsSending(false);
+    }
+  }
+
   return (
     <CustomerShell>
       <SectionHeader
-        title="人工客服中心"
-        desc="第一阶段充值、退款、投诉都由人工处理。联系客服时请提供账号邮箱、充值记录或订单号。"
+        title="客服中心"
+        desc="自动客服先解决常见问题；充值异常、试音派单、退款投诉会引导你转人工客服。"
       />
 
       <section className="mt-6 grid gap-4 md:grid-cols-3">
@@ -74,39 +142,81 @@ export default function SupportPage() {
         <StatCard label="可用余额" value={`¥${formatMoney(profile?.wallet?.availableBalance ?? "0")}`} hint="只显示当前账号余额" />
       </section>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-2">
+      <section className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">常见人工处理</h2>
-          <div className="mt-4 space-y-3 text-sm text-dfc-subtext">
-            <SupportItem title="充值未到账" desc="先到充值页提交金额和截图，管理员会在后台审核，通过后余额自动增加。" href="/recharge" action="去提交充值" />
-            <SupportItem title="充值金额填错" desc="不要重复提交，联系客服说明正确金额，管理员可在后台按客户搜索后人工加余额。" href="/recharge" action="查看充值记录" />
-            <SupportItem title="订单问题 / 退款投诉" desc="请提供订单号、陪玩昵称、问题说明。投诉处理页接入后会形成正式工单。" href="/home" action="查看我的订单" />
+          <h2 className="text-base font-semibold">自动客服</h2>
+          <div className="mt-4 max-h-[460px] space-y-3 overflow-y-auto rounded-dfc-control border border-dfc-border bg-dfc-bg p-3">
+            {chat.map((message, index) => (
+              <div
+                key={`${message.role}-${index}`}
+                className={`rounded-dfc-control px-3 py-2 text-sm leading-6 ${
+                  message.role === "user" ? "ml-auto max-w-[85%] bg-dfc-blue text-slate-950" : "mr-auto max-w-[92%] border border-dfc-border bg-dfc-surface text-dfc-text"
+                }`}
+              >
+                {message.topic ? <div className="mb-1 text-xs text-dfc-muted">匹配主题：{message.topic}</div> : null}
+                <div>{message.text}</div>
+                {message.handoffRequired ? <div className="mt-2 text-xs text-dfc-warning">建议转人工客服继续处理。</div> : null}
+              </div>
+            ))}
           </div>
+          <form onSubmit={askAutoSupport} className="mt-4 flex gap-2">
+            <input
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              className="min-w-0 flex-1 rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+              placeholder="输入问题，例如：充值不到账怎么办？"
+            />
+            <button disabled={isSending} className="rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">
+              {isSending ? "回复中" : "发送"}
+            </button>
+          </form>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            {["充值未到账", "如何下单", "试音选人", "退款投诉", "陪玩入驻"].map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setQuestion(item)}
+                className="rounded-full border border-dfc-border px-3 py-1 text-dfc-subtext hover:border-dfc-blue hover:text-dfc-blue"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
         </div>
 
-        <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">联系信息</h2>
-          <div className="mt-4 rounded-dfc-control border border-dfc-border bg-dfc-bg p-3 text-sm text-dfc-subtext">
-            <div>客服会优先处理已提交充值截图的用户。也可以添加 VX 客服处理充值、退款、投诉和陪玩入驻。</div>
-            <div className="mt-3 rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-3">
-              <span className="text-dfc-muted">VX 客服：</span>
-              <span className="font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span>
-            </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <SupportLink href={publicConfig.support?.kookUrl ?? undefined} label="KOOK 联系客服" />
-              <SupportLink href={publicConfig.support?.discordUrl ?? undefined} label="Discord 联系客服" />
-            </div>
-            <div className="mt-4">请复制以下信息发给客服：</div>
-            <div className="mt-3 rounded-dfc-control border border-dfc-border bg-dfc-surface p-3 text-xs leading-6">
-              <div>账号昵称：{profile?.user.displayName ?? "-"}</div>
-              <div>账号邮箱：{formatAccountEmail(profile?.user.email)}</div>
-              <div>客户 ID：{profile?.user.id ?? "-"}</div>
-              <div>最近订单：{profile?.recentOrders[0]?.orderNo ?? "暂无"}</div>
+        <div className="space-y-6">
+          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
+            <h2 className="text-base font-semibold">人工客服</h2>
+            <div className="mt-4 rounded-dfc-control border border-dfc-border bg-dfc-bg p-3 text-sm text-dfc-subtext">
+              <div>充值、退款、投诉、试音选人和陪玩入驻都可以联系人工客服。请优先提供账号邮箱、客户 ID、订单号或充值截图。</div>
+              <div className="mt-3 rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-3">
+                <span className="text-dfc-muted">VX 客服：</span>
+                <span className="font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <SupportLink href={publicConfig.support?.kookUrl ?? undefined} label="KOOK 联系客服" />
+                <SupportLink href={publicConfig.support?.discordUrl ?? undefined} label="Discord 联系客服" />
+              </div>
+              <div className="mt-4">复制给客服：</div>
+              <div className="mt-3 rounded-dfc-control border border-dfc-border bg-dfc-surface p-3 text-xs leading-6">
+                <div>账号昵称：{profile?.user.displayName ?? "-"}</div>
+                <div>账号邮箱：{formatAccountEmail(profile?.user.email)}</div>
+                <div>客户 ID：{profile?.user.id ?? "-"}</div>
+                <div>我的推荐码：{profile?.user.referralCode ?? "-"}</div>
+                <div>最近订单：{profile?.recentOrders[0]?.orderNo ?? "暂无"}</div>
+              </div>
             </div>
           </div>
-          <p className="mt-4 text-xs leading-5 text-dfc-muted">
-            如果按钮显示“未配置”，说明后台还没有填写对应平台的客服链接。
-          </p>
+
+          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
+            <h2 className="text-base font-semibold">常见入口</h2>
+            <div className="mt-4 space-y-3 text-sm text-dfc-subtext">
+              <SupportItem title="充值未到账" desc="到充值页提交金额和截图，管理员审核通过后余额自动增加。" href="/recharge" action="去提交充值" />
+              <SupportItem title="订单问题 / 退款投诉" desc="提供订单号、陪玩昵称、问题说明和截图，客服会转后台处理。" href="/home" action="查看我的订单" />
+              <SupportItem title="试音选人" desc="联系人工客服进入 KOOK/DC 试音频道，确认后由后台转正式订单。" href="/support" action="联系人工客服" />
+            </div>
+          </div>
         </div>
       </section>
     </CustomerShell>

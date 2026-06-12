@@ -96,7 +96,7 @@ export class AuthService {
     return { message: "Verification code sent" };
   }
 
-  async registerCustomer(body: { email: string; password: string; displayName: string; emailCode: string }) {
+  async registerCustomer(body: { email: string; password: string; displayName: string; emailCode: string; referralCode?: string }) {
     try {
       if (!body.email || !body.password || !body.displayName || !body.emailCode) {
         throw new BadRequestException("email, password, displayName and emailCode are required");
@@ -106,6 +106,7 @@ export class AuthService {
       const displayName = body.displayName.trim();
       const displayNameKey = normalizeDisplayNameKey(displayName);
       const emailCode = body.emailCode.trim();
+      const referralCode = body.referralCode?.trim().toUpperCase();
 
       if (!email || !displayName || !displayNameKey || !emailCode) {
         throw new BadRequestException("email, password, displayName and emailCode are required");
@@ -141,7 +142,8 @@ export class AuthService {
         passwordHash,
         displayName,
         displayNameKey,
-        verificationId
+        verificationId,
+        referralCode
       });
 
       return {
@@ -153,7 +155,7 @@ export class AuthService {
     }
   }
 
-  private async createCustomerUser(body: { email: string; passwordHash: string; displayName: string; displayNameKey: string; verificationId: string }) {
+  private async createCustomerUser(body: { email: string; passwordHash: string; displayName: string; displayNameKey: string; verificationId: string; referralCode?: string }) {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const verification = await tx.emailVerificationCode.findUnique({
@@ -170,18 +172,41 @@ export class AuthService {
           throw new BadRequestException("Verification code is invalid or expired");
         }
 
+        const referrer = body.referralCode
+          ? await tx.user.findFirst({
+              where: { referralCode: body.referralCode, status: "ACTIVE" },
+              select: { id: true, role: true }
+            })
+          : null;
+        if (body.referralCode && !referrer) {
+          throw new BadRequestException("Referral code is invalid");
+        }
+        if (referrer?.role === UserRole.ADMIN || referrer?.role === UserRole.SUPER_ADMIN) {
+          throw new BadRequestException("Referral code is invalid");
+        }
+
         const created = await tx.user.create({
           data: {
             email: body.email,
             passwordHash: body.passwordHash,
             role: UserRole.CUSTOMER,
             displayName: body.displayName,
-            displayNameKey: body.displayNameKey
+            displayNameKey: body.displayNameKey,
+            referralCode: await generateUniqueReferralCode(tx, "C")
           },
-          select: { id: true, email: true, role: true, displayName: true }
+          select: { id: true, email: true, role: true, displayName: true, referralCode: true }
         });
 
         await tx.wallet.create({ data: { userId: created.id } });
+        if (referrer && referrer.id !== created.id) {
+          await tx.userReferral.create({
+            data: {
+              referrerId: referrer.id,
+              referredUserId: created.id,
+              sourceType: referrer.role === UserRole.COMPANION ? "COMPANION" : "CUSTOMER"
+            }
+          });
+        }
         await tx.emailVerificationCode.update({
           where: { id: verification.id },
           data: { consumedAt: new Date() }
@@ -441,9 +466,10 @@ export class AuthService {
             passwordHash,
             role,
             displayName,
-            displayNameKey
+            displayNameKey,
+            referralCode: await generateUniqueReferralCode(tx, "C")
           },
-          select: { id: true, email: true, role: true, displayName: true }
+          select: { id: true, email: true, role: true, displayName: true, referralCode: true }
         });
         await tx.wallet.create({ data: { userId: created.id } });
         await tx.userExternalAccount.create({
@@ -487,6 +513,7 @@ export class AuthService {
         email: true,
         role: true,
         displayName: true,
+        referralCode: true,
         wallet: {
           select: {
             availableBalance: true,
@@ -502,7 +529,11 @@ export class AuthService {
             game: true,
             onlineStatus: true,
             status: true,
-            pricePerHour: true
+            pricePerHour: true,
+            payoutMethod: true,
+            payoutAccountName: true,
+            payoutAccountNo: true,
+            payoutQrCodeUrl: true
           }
         },
         customerOrders: {
@@ -557,7 +588,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
-        displayName: user.displayName
+        displayName: user.displayName,
+        referralCode: user.referralCode
       },
       wallet: user.wallet
         ? {
@@ -581,9 +613,13 @@ export class AuthService {
           nickname: user.companionProfile.nickname,
           avatarUrl: user.companionProfile.avatarUrl,
           game: user.companionProfile.game,
-            onlineStatus: user.companionProfile.onlineStatus,
-            status: user.companionProfile.status,
-            pricePerHour: user.companionProfile.pricePerHour.toString()
+          onlineStatus: user.companionProfile.onlineStatus,
+          status: user.companionProfile.status,
+          pricePerHour: user.companionProfile.pricePerHour.toString(),
+          payoutMethod: user.companionProfile.payoutMethod,
+          payoutAccountName: user.companionProfile.payoutAccountName,
+          payoutAccountNo: user.companionProfile.payoutAccountNo,
+          payoutQrCodeUrl: user.companionProfile.payoutQrCodeUrl
           }
         : null,
       companionOrders: user.companionOrders.map((order) => ({
@@ -701,6 +737,18 @@ function hashEmailCode(email: string, code: string) {
     throw new InternalServerErrorException("JWT_SECRET is not configured");
   }
   return createHash("sha256").update(`${secret}:${email}:${code}`).digest("hex");
+}
+
+async function generateUniqueReferralCode(tx: Prisma.TransactionClient, prefix: string) {
+  for (let index = 0; index < 20; index += 1) {
+    const code = `${prefix}${randomInt(100000, 999999)}`;
+    const existing = await tx.user.findUnique({
+      where: { referralCode: code },
+      select: { id: true }
+    });
+    if (!existing) return code;
+  }
+  return `${prefix}${randomBytes(4).toString("hex").toUpperCase()}`;
 }
 
 function signOAuthState(platform: OAuthPlatform, portal: OAuthPortal) {

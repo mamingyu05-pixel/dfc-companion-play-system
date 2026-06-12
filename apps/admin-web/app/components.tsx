@@ -8,7 +8,9 @@ const navItems = [
   ["陪玩", "/companions"],
   ["添加陪玩", "/companions/new"],
   ["订单", "/orders"],
+  ["试音派单", "/order-drafts"],
   ["派单", "/dispatch"],
+  ["优惠", "/promotions"],
   ["充值", "/recharges"],
   ["提现", "/withdrawals"],
   ["投诉", "/complaints"],
@@ -37,7 +39,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <header className="sticky top-0 z-20 flex items-center justify-between border-b border-dfc-border bg-dfc-bg/95 px-4 py-3 backdrop-blur md:px-6">
             <div>
               <div className="text-sm font-semibold">管理后台</div>
-              <div className="text-xs text-dfc-muted">充值、提现、派单、投诉、日志</div>
+              <div className="text-xs text-dfc-muted">充值、提现、派单、试音、投诉、日志</div>
             </div>
             <span className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-3 py-2 text-xs text-dfc-subtext">SUPER_ADMIN</span>
           </header>

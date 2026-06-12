@@ -1,11 +1,17 @@
 import { Body, Controller, Post, UseGuards } from "@nestjs/common";
-import { BotPlatform } from "@prisma/client";
+import { BotPlatform, OrderSourcePlatform } from "@prisma/client";
 import { BotInternalGuard } from "../bot/bot-internal.guard";
+import { OrderDraftsService } from "../orders/order-drafts.service";
 import { OrdersService } from "../orders/orders.service";
+import { PlatformSupportService } from "../support/platform-support.service";
 
 @Controller("discord")
 export class DiscordWebhookController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(
+    private readonly orders: OrdersService,
+    private readonly orderDrafts: OrderDraftsService,
+    private readonly platformSupport: PlatformSupportService
+  ) {}
 
   @Post("orders/accept")
   @UseGuards(BotInternalGuard)
@@ -16,5 +22,41 @@ export class DiscordWebhookController {
       body.companionDiscordId,
       body.messageId
     );
+  }
+
+  @Post("order-drafts/apply")
+  @UseGuards(BotInternalGuard)
+  applyOrderDraft(@Body() body: { draftId: string; companionDiscordId: string; note?: string; quoteAmount?: string; messageId?: string }) {
+    return this.orderDrafts.companionApplyFromPlatform(OrderSourcePlatform.DISCORD, body.draftId, body.companionDiscordId, {
+      note: body.note,
+      quoteAmount: body.quoteAmount,
+      messageId: body.messageId
+    });
+  }
+
+  @Post("support/messages")
+  @UseGuards(BotInternalGuard)
+  supportMessage(
+    @Body()
+    body: {
+      discordUserId: string;
+      displayName?: string;
+      guildId?: string;
+      channelId?: string;
+      messageId?: string;
+      content: string;
+      isDirect?: boolean;
+    }
+  ) {
+    return this.platformSupport.handlePlatformMessage({
+      platform: BotPlatform.DISCORD,
+      platformUserId: body.discordUserId,
+      displayName: body.displayName,
+      guildId: body.guildId,
+      channelId: body.channelId,
+      messageId: body.messageId,
+      content: body.content,
+      isDirect: body.isDirect
+    });
   }
 }

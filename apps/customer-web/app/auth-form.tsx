@@ -13,6 +13,7 @@ type AuthResponse = {
     email: string;
     displayName?: string | null;
     role: string;
+    referralCode?: string | null;
   };
   message?: string | string[];
 };
@@ -30,9 +31,10 @@ export function CustomerAuthForm() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [emailCode, setEmailCode] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [status, setStatus] = useState<string>("");
-  const [error, setError] = useState<string>("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
   const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
@@ -69,7 +71,7 @@ export function CustomerAuthForm() {
         const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
         throw new Error(toChineseError(message));
       }
-      setStatus("验证码已发送，请去邮箱查看。");
+      setStatus("验证码已发送，请到邮箱查看。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "验证码发送失败，请稍后重试");
     } finally {
@@ -97,7 +99,13 @@ export function CustomerAuthForm() {
     const normalizedEmail = normalizeEmail(email);
     const payload =
       mode === "register"
-        ? { email: normalizedEmail, password, displayName: displayName.trim(), emailCode: emailCode.trim() }
+        ? {
+            email: normalizedEmail,
+            password,
+            displayName: displayName.trim(),
+            emailCode: emailCode.trim(),
+            referralCode: referralCode.trim() || undefined
+          }
         : { email: normalizedEmail, password, portal: "customer" };
 
     try {
@@ -145,26 +153,24 @@ export function CustomerAuthForm() {
             <div className="mt-8 inline-flex rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-1 text-xs font-semibold text-dfc-blue">
               多游戏陪玩俱乐部 · 人工审核 · 订单可追踪
             </div>
-            <h1 className="mt-5 text-4xl font-black leading-tight text-dfc-text md:text-6xl">
-              May猫饼电竞
-            </h1>
+            <h1 className="mt-5 text-4xl font-black leading-tight text-dfc-text md:text-6xl">May猫饼电竞</h1>
             <p className="mt-3 text-xl font-semibold text-dfc-blue md:text-2xl">
               找靠谱陪玩，上车前先看资料、试语音、再下单
             </p>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
-              充值人工审核，余额下单，平台派单或指定陪玩。注册邮箱验证码校验，订单、钱包、投诉都会保留后台记录。
+              充值人工审核，余额下单，支持指定陪玩或平台派单。注册时可填写邀请码，首单完成后系统自动发放推荐奖励。
             </p>
             <div className="mt-5 inline-flex rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-2 text-sm text-dfc-subtext">
               VX 客服：<span className="ml-1 font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span>
             </div>
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
               <Feature label="人工充值审核" value="每笔入账可追踪" />
-              <Feature label="指定或平台匹配" value="下单更灵活" />
+              <Feature label="指定或平台派单" value="下单更灵活" />
               <Feature label="语音试音" value="先确认体验" />
             </div>
             <div className="mt-7 grid max-w-xl grid-cols-3 divide-x divide-dfc-border rounded-dfc border border-dfc-border bg-dfc-surface">
               <Metric label="支持游戏" value="20+" />
-              <Metric label="注册验证" value="邮箱" />
+              <Metric label="注册验证" value="邮箱/KOOK/DC" />
               <Metric label="服务模式" value="人工派单" />
             </div>
           </div>
@@ -197,107 +203,118 @@ export function CustomerAuthForm() {
           </div>
 
           <form onSubmit={submit} className="mt-5 space-y-4" autoComplete={mode === "register" ? "off" : "on"}>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 注册/登录" />
-            <OAuthButton href="/api/auth/oauth/kook/start" label="KOOK 注册/登录" />
-          </div>
-          <div className="flex items-center gap-3 text-xs text-dfc-muted">
-            <span className="h-px flex-1 bg-dfc-border" />
-            <span>或使用邮箱</span>
-            <span className="h-px flex-1 bg-dfc-border" />
-          </div>
-
-          <Field label="邮箱">
-            <div className="flex gap-2">
-              <input
-                required
-                type="email"
-                name={mode === "register" ? "register-email" : "login-email"}
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                className="min-w-0 flex-1 rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
-              />
-              {mode === "register" ? (
-                <button
-                  type="button"
-                  onClick={sendEmailCode}
-                  disabled={isSendingCode}
-                  className="shrink-0 rounded-dfc-control border border-dfc-blue/40 px-3 text-xs font-semibold text-dfc-blue disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSendingCode ? "发送中" : "发验证码"}
-                </button>
-              ) : null}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 注册/登录" />
+              <OAuthButton href="/api/auth/oauth/kook/start" label="KOOK 注册/登录" />
             </div>
-          </Field>
+            <div className="flex items-center gap-3 text-xs text-dfc-muted">
+              <span className="h-px flex-1 bg-dfc-border" />
+              <span>或使用邮箱</span>
+              <span className="h-px flex-1 bg-dfc-border" />
+            </div>
 
-          {mode === "register" ? (
-            <>
-              <Field label="邮箱验证码">
+            <Field label="邮箱">
+              <div className="flex gap-2">
                 <input
                   required
-                  inputMode="numeric"
-                  name="email-verification-code"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  value={emailCode}
-                  onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="6 位验证码"
-                  className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
+                  type="email"
+                  name={mode === "register" ? "register-email" : "login-email"}
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  className="min-w-0 flex-1 rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
                 />
-              </Field>
+                {mode === "register" ? (
+                  <button
+                    type="button"
+                    onClick={sendEmailCode}
+                    disabled={isSendingCode}
+                    className="shrink-0 rounded-dfc-control border border-dfc-blue/40 px-3 text-xs font-semibold text-dfc-blue disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSendingCode ? "发送中" : "发验证码"}
+                  </button>
+                ) : null}
+              </div>
+            </Field>
 
-              <Field label="昵称">
-                <input
-                  required
-                  name="display-name"
-                  autoComplete="nickname"
-                  value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="你的游戏昵称"
-                  className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
-                />
-              </Field>
-            </>
-          ) : null}
+            {mode === "register" ? (
+              <>
+                <Field label="邮箱验证码">
+                  <input
+                    required
+                    inputMode="numeric"
+                    name="email-verification-code"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={emailCode}
+                    onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="6 位验证码"
+                    className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
+                  />
+                </Field>
 
-          <Field label="密码">
-            <PasswordInput
-              name={mode === "register" ? "new-password" : "current-password"}
-              autoComplete={mode === "register" ? "new-password" : "current-password"}
-              value={password}
-              onChange={setPassword}
-              showPassword={showPassword}
-              onToggleShow={() => setShowPassword((current) => !current)}
-              placeholder="至少 8 位"
-            />
-          </Field>
+                <Field label="昵称">
+                  <input
+                    required
+                    name="display-name"
+                    autoComplete="nickname"
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    placeholder="你的游戏昵称"
+                    className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
+                  />
+                </Field>
 
-          {mode === "register" ? (
-            <Field label="确认密码">
+                <Field label="邀请码（选填）">
+                  <input
+                    name="referral-code"
+                    autoComplete="off"
+                    value={referralCode}
+                    onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
+                    placeholder="朋友或陪玩的推荐码"
+                    className="w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
+                  />
+                </Field>
+              </>
+            ) : null}
+
+            <Field label="密码">
               <PasswordInput
-                name="confirm-new-password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={setConfirmPassword}
+                name={mode === "register" ? "new-password" : "current-password"}
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                value={password}
+                onChange={setPassword}
                 showPassword={showPassword}
                 onToggleShow={() => setShowPassword((current) => !current)}
-                placeholder="再次输入密码"
+                placeholder="至少 8 位"
               />
             </Field>
-          ) : null}
 
-          {error ? <div className="rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
-          {status ? <div className="rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
+            {mode === "register" ? (
+              <Field label="确认密码">
+                <PasswordInput
+                  name="confirm-new-password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={setConfirmPassword}
+                  showPassword={showPassword}
+                  onToggleShow={() => setShowPassword((current) => !current)}
+                  placeholder="再次输入密码"
+                />
+              </Field>
+            ) : null}
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSubmitting ? "提交中..." : mode === "register" ? "创建客户账号" : "登录客户入口"}
-          </button>
+            {error ? <div className="rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
+            {status ? <div className="rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSubmitting ? "提交中..." : mode === "register" ? "创建客户账号" : "登录客户入口"}
+            </button>
           </form>
 
           <div className="mt-4 flex items-center justify-between gap-3 text-xs text-dfc-muted">
@@ -317,11 +334,12 @@ function toChineseError(message?: string) {
   if (!message) return "请求失败，请检查填写内容";
   if (message.includes("Email is already registered")) return "这个邮箱已经注册过，请直接登录或换一个邮箱";
   if (message.includes("Display name is already taken")) return "这个昵称已经被使用，请换一个昵称";
+  if (message.includes("Referral code is invalid")) return "邀请码无效，请检查后再提交，或留空注册";
   if (message.includes("Invalid email format")) return "邮箱格式不正确，请检查后再提交";
   if (message.includes("Verification code is invalid or expired")) return "验证码不正确或已过期，请重新获取";
   if (message.includes("Verification code has too many failed attempts")) return "验证码错误次数太多，请重新获取";
   if (message.includes("Please wait before requesting another verification code")) return "验证码刚刚发送过，请稍等 1 分钟再试";
-  if (message.includes("Email service is not configured")) return "邮箱发送服务还没配置，请联系管理员";
+  if (message.includes("Email service is not configured")) return "邮箱发送服务还没配置，请联系客服";
   if (message.includes("Database migration is not applied")) return "服务器数据库还没更新，请管理员执行数据库迁移后再注册";
   if (message.includes("Password must be at least 8 characters")) return "密码至少需要 8 位";
   if (message.includes("Invalid email or password")) return "邮箱或密码不正确";
