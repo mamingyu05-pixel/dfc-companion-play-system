@@ -55,7 +55,7 @@ main().catch((error) => {
 });
 
 async function main() {
-  const env = loadEnv(path.resolve(process.cwd(), ".env"));
+  const env = { ...loadEnv(path.resolve(process.cwd(), ".env")), ...process.env };
   const token = env.KOOK_TOKEN;
   const guildId = env.KOOK_GUILD_ID || process.argv[2];
 
