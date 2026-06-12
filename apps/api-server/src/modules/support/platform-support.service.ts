@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import { BotPlatform, OrderSourcePlatform, UserRole, UserStatus } from "@prisma/client";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import { BotPlatform, CompanionProfileStatus, OrderSourcePlatform, UserRole, UserStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderDraftsService } from "../orders/order-drafts.service";
 
@@ -107,6 +107,8 @@ export const DEFAULT_SUPPORT_SUGGESTIONS = ["找陪玩", "预算价格", "充值
 
 @Injectable()
 export class PlatformSupportService {
+  private readonly logger = new Logger(PlatformSupportService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly orderDrafts: OrderDraftsService
@@ -223,6 +225,10 @@ export class PlatformSupportService {
 
   private async resolveSupportAnswer(message: string, history: SupportHistoryTurn[] = []): Promise<SupportResult> {
     const normalized = this.normalizeMessage(message).toLowerCase();
+
+    const dynamicAnswer = await this.tryDynamicBusinessAnswer(normalized);
+    if (dynamicAnswer) return dynamicAnswer;
+
     const matched = SUPPORT_RULES.find((rule) => rule.keywords.some((keyword) => normalized.includes(keyword.toLowerCase())));
 
     if (matched?.handoffRequired) {
@@ -252,10 +258,41 @@ export class PlatformSupportService {
 
     return {
       matchedTopic: "继续确认",
-      answer:
-        "我先帮你确认一下。你可以直接补充更多信息，比如游戏、模式、时长、预算、是否试音；如果是充值、退款、提现或投诉，请带上账号邮箱、订单号或截图，客服会继续跟进。",
+      answer: this.buildContextualFallback(message),
       handoffRequired: false
     };
+  }
+
+  private async tryDynamicBusinessAnswer(message: string): Promise<SupportResult | null> {
+    if (this.isCompanionCountQuestion(message)) {
+      const [listedCount, totalCount, onlineCount] = await this.prisma.$transaction([
+        this.prisma.companionProfile.count({ where: { status: CompanionProfileStatus.LISTED } }),
+        this.prisma.companionProfile.count(),
+        this.prisma.companionProfile.count({ where: { status: CompanionProfileStatus.LISTED, onlineStatus: "ONLINE" } })
+      ]);
+
+      const answer =
+        listedCount > 0
+          ? `目前后台正式上架的陪玩有 ${listedCount} 位，其中在线状态 ${onlineCount} 位；总陪玩档案 ${totalCount} 位，包含待审核、下架或测试账号。你如果要找人，可以直接说游戏、模式和大概时间，我帮你走人工派单。`
+          : `目前还在测试和招募阶段，后台暂时没有正式上架的陪玩；如果你是在测试流程，可以继续发游戏、模式和预计时间，我会按派单流程帮你记录，后面接入真实陪玩后就能直接匹配。`;
+
+      return {
+        matchedTopic: "陪玩数量",
+        answer,
+        handoffRequired: false
+      };
+    }
+
+    if (/(你能干什么|能做什么|怎么用|如何使用|你是谁|客服能干嘛)/i.test(message)) {
+      return {
+        matchedTopic: "客服能力",
+        answer:
+          "我可以先帮你处理找陪玩、试音选人、充值说明、优惠码、订单问题、投诉退款和陪玩入驻咨询。涉及加余额、退款结论、提现完成这类要改后台数据的事，我会提醒转人工处理。你可以直接像聊天一样说需求，不用按固定格式发。",
+        handoffRequired: false
+      };
+    }
+
+    return null;
   }
 
   private async tryOpenAiSupportAnswer(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string) {
@@ -298,7 +335,11 @@ export class PlatformSupportService {
           ]
         })
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        this.logger.warn(`OpenAI support reply failed: HTTP ${response.status} ${text.slice(0, 240)}`);
+        return null;
+      }
       const data = (await response.json()) as {
         output_text?: string;
         output?: Array<{ content?: Array<{ text?: string }> }>;
@@ -313,7 +354,8 @@ export class PlatformSupportService {
           .trim() ||
         null
       );
-    } catch {
+    } catch (error) {
+      this.logger.warn(`OpenAI support reply error: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
   }
@@ -338,7 +380,29 @@ export class PlatformSupportService {
   }
 
   private isDispatchIntent(message: string) {
+    if (this.isCompanionCountQuestion(message)) return false;
     return /(找陪玩|下单|派单|预约|试音|上分|带我|陪打|陪练|来个|安排|want.*play|need.*companion|boost|rank)/i.test(message);
+  }
+
+  private isCompanionCountQuestion(message: string) {
+    return (
+      /(多少|几位|几个|人数|数量|规模|多吗|有多少|目前有|现在有)/i.test(message) &&
+      /(陪玩|陪练|公会|工会|俱乐部|club|成员|人)/i.test(message)
+    );
+  }
+
+  private buildContextualFallback(message: string) {
+    const normalized = message.toLowerCase();
+
+    if (/(吗|么|多少|怎么|如何|什么|啥|？|\?)/.test(normalized)) {
+      return "这个问题我先按客服口径回答：我现在没有足够信息给你下最终结论，但可以继续帮你判断。你可以直接把具体问题说完整一点，比如是问价格、陪玩数量、充值、订单、试音还是入驻，我会按对应流程回复；需要改余额或处理售后的地方会转人工。";
+    }
+
+    if (/(想|要|需要|找|来|安排|下单|陪玩|陪练|试音)/i.test(normalized)) {
+      return "可以，我先理解成你有找陪玩或试音需求。你不用填表，直接告诉我游戏、模式、大概什么时候玩、想男声女声还是无所谓，我会继续帮你整理给人工派单。";
+    }
+
+    return "收到。我会按 May猫饼客服流程继续跟进。你可以直接补充下一句，不用按模板发；如果涉及充值、退款、提现、投诉或后台改余额，我会提醒你转人工确认。";
   }
 
   private async findServiceAdmin() {
