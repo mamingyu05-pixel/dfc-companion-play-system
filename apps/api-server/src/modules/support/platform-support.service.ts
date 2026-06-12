@@ -16,6 +16,11 @@ type SupportResult = {
   handoffRequired: boolean;
 };
 
+type SupportHistoryTurn = {
+  message: string;
+  answer: string;
+};
+
 type PlatformSupportMessage = {
   platform: BotPlatform;
   platformUserId: string;
@@ -108,11 +113,13 @@ export class PlatformSupportService {
   ) {}
 
   async autoReplyForWeb(userId: string, message: string) {
-    const result = await this.resolveSupportAnswer(message);
+    const normalizedMessage = this.normalizeMessage(message);
+    const history = await this.loadConversationHistory({ userId });
+    const result = await this.resolveSupportAnswer(normalizedMessage, history);
     await this.prisma.aiSupportConversation.create({
       data: {
         userId,
-        message: this.normalizeMessage(message),
+        message: normalizedMessage,
         answer: result.answer,
         matchedTopic: result.matchedTopic,
         handoffRequired: result.handoffRequired
@@ -139,7 +146,12 @@ export class PlatformSupportService {
       include: { user: true }
     });
 
-    const result = await this.resolveSupportAnswer(message);
+    const history = await this.loadConversationHistory({
+      userId: account?.userId,
+      platform: input.platform,
+      platformUserId: input.platformUserId
+    });
+    const result = await this.resolveSupportAnswer(message, history);
     const dispatchIntent = this.isDispatchIntent(message);
     let finalAnswer = result.answer;
     let draft: { id: string; draftNo: string } | null = null;
@@ -209,22 +221,31 @@ export class PlatformSupportService {
     };
   }
 
-  private async resolveSupportAnswer(message: string): Promise<SupportResult> {
+  private async resolveSupportAnswer(message: string, history: SupportHistoryTurn[] = []): Promise<SupportResult> {
     const normalized = this.normalizeMessage(message).toLowerCase();
     const matched = SUPPORT_RULES.find((rule) => rule.keywords.some((keyword) => normalized.includes(keyword.toLowerCase())));
+
+    if (matched?.handoffRequired) {
+      return {
+        matchedTopic: matched.topic,
+        answer: matched.answer,
+        handoffRequired: true
+      };
+    }
+
+    const aiAnswer = await this.tryOpenAiSupportAnswer(message, history, matched?.answer);
+    if (aiAnswer) {
+      return {
+        matchedTopic: matched?.topic ?? "AI客服",
+        answer: aiAnswer,
+        handoffRequired: false
+      };
+    }
+
     if (matched) {
       return {
         matchedTopic: matched.topic,
         answer: matched.answer,
-        handoffRequired: Boolean(matched.handoffRequired)
-      };
-    }
-
-    const aiAnswer = await this.tryOpenAiSupportAnswer(message);
-    if (aiAnswer) {
-      return {
-        matchedTopic: "AI客服",
-        answer: aiAnswer,
         handoffRequired: false
       };
     }
@@ -237,7 +258,7 @@ export class PlatformSupportService {
     };
   }
 
-  private async tryOpenAiSupportAnswer(message: string) {
+  private async tryOpenAiSupportAnswer(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string) {
     const enabled = process.env.AI_SUPPORT_ENABLED === "true";
     const apiKey = process.env.OPENAI_API_KEY;
     if (!enabled || !apiKey) return null;
@@ -258,6 +279,18 @@ export class PlatformSupportService {
               content:
                 "你是 May猫饼电竞陪玩俱乐部客服。语气自然、温和、像真人客服，不要机械重复。优先解决客户问题，并主动给下一步。只回答平台流程、下单、试音、充值说明、账号绑定、陪玩入驻、提现规则、优惠说明。客户预算不确定时告诉他可以先提交需求，后续按候选陪玩报价确认。涉及余额修改、退款、提现完成、封号、投诉结论、订单强制改价时必须提示转人工，不能承诺已经处理。提醒用户不要泄露验证码、密码、后台 Token。"
             },
+            ...history.flatMap((turn) => [
+              { role: "user", content: turn.message },
+              { role: "assistant", content: turn.answer }
+            ]),
+            ...(fallbackHint
+              ? [
+                  {
+                    role: "developer",
+                    content: `如果用户问题很简单，可以参考这个业务答案，但请换成更自然、贴合上下文的表达：${fallbackHint}`
+                  }
+                ]
+              : []),
             {
               role: "user",
               content: message
@@ -283,6 +316,25 @@ export class PlatformSupportService {
     } catch {
       return null;
     }
+  }
+
+  private async loadConversationHistory(input: { userId?: string; platform?: BotPlatform; platformUserId?: string }) {
+    const where = input.userId
+      ? { userId: input.userId }
+      : input.platform && input.platformUserId
+        ? { platform: input.platform, platformUserId: input.platformUserId }
+        : undefined;
+
+    if (!where) return [];
+
+    const rows = await this.prisma.aiSupportConversation.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: { message: true, answer: true }
+    });
+
+    return rows.reverse();
   }
 
   private isDispatchIntent(message: string) {
