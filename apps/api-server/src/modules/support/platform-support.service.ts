@@ -138,6 +138,18 @@ export class PlatformSupportService {
 
   async handlePlatformMessage(input: PlatformSupportMessage) {
     const message = this.normalizeMessage(input.content);
+    const duplicate = await this.findDuplicatePlatformMessage(input, message);
+    if (duplicate) {
+      return {
+        conversationId: duplicate.id,
+        reply: "",
+        matchedTopic: duplicate.matchedTopic ?? "duplicate",
+        handoffRequired: duplicate.handoffRequired,
+        draft: null,
+        duplicate: true
+      };
+    }
+
     const account = await this.prisma.userExternalAccount.findUnique({
       where: {
         platform_externalUserId: {
@@ -186,6 +198,14 @@ export class PlatformSupportService {
       handoffRequired: dispatchIntent || result.handoffRequired,
       draft
     };
+  }
+
+  async markReplyMessage(conversationId: string, replyMessageId?: string) {
+    if (!replyMessageId) return;
+    await this.prisma.aiSupportConversation.update({
+      where: { id: conversationId },
+      data: { replyMessageId }
+    });
   }
 
   private async maybeCreateDispatchDraft(input: PlatformSupportMessage, customerId: string | undefined, message: string) {
@@ -302,6 +322,34 @@ export class PlatformSupportService {
     }
 
     return null;
+  }
+
+  private async findDuplicatePlatformMessage(input: PlatformSupportMessage, message: string) {
+    if (input.messageId) {
+      const existing = await this.prisma.aiSupportConversation.findFirst({
+        where: {
+          platform: input.platform,
+          platformMessageId: input.messageId
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, matchedTopic: true, handoffRequired: true }
+      });
+      if (existing) return existing;
+    }
+
+    const recentSameMessage = await this.prisma.aiSupportConversation.findFirst({
+      where: {
+        platform: input.platform,
+        platformUserId: input.platformUserId,
+        platformChannelId: input.channelId,
+        message,
+        createdAt: { gte: new Date(Date.now() - 8000) }
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, matchedTopic: true, handoffRequired: true }
+    });
+
+    return recentSameMessage;
   }
 
   private async tryOpenAiSupportAnswer(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string) {

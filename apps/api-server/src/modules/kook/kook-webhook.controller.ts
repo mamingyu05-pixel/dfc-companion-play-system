@@ -121,12 +121,18 @@ export class KookWebhookController {
       isDirect
     });
 
+    if ("duplicate" in result && result.duplicate) {
+      return { ...result, notification: null };
+    }
+
     const reply = result.reply;
     const notification = isDirect
       ? await this.botNotifications.sendKookDirectMessage(kookUserId, reply)
       : channelId
         ? await this.botNotifications.sendKookChannelText(channelId, reply)
         : null;
+
+    await this.platformSupport.markReplyMessage(result.conversationId, notification?.messageId);
 
     return { ...result, notification };
   }
