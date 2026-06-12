@@ -43,6 +43,9 @@ export default function UsersPage() {
   const [adminName, setAdminName] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminRole, setAdminRole] = useState<"ADMIN" | "SUPER_ADMIN">("ADMIN");
+  const [promoteUserId, setPromoteUserId] = useState("");
+  const [promoteRole, setPromoteRole] = useState<"ADMIN" | "SUPER_ADMIN">("ADMIN");
+  const [promoteNote, setPromoteNote] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
@@ -186,6 +189,38 @@ export default function UsersPage() {
     await loadUsers();
   }
 
+  async function promoteExistingUserToAdmin() {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) return;
+    if (!promoteUserId) {
+      setError("请先选择要设置为管理员的用户");
+      return;
+    }
+
+    setError("");
+    setStatus("");
+    const response = await fetch(`/api/admin/users/${promoteUserId}/role`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ role: promoteRole, note: promoteNote })
+    });
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    if (!response.ok) {
+      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      setError(toFriendlyError(message));
+      return;
+    }
+
+    setStatus("已把现有用户设置为管理员，该用户可用原邮箱和密码登录管理端");
+    setPromoteUserId("");
+    setPromoteRole("ADMIN");
+    setPromoteNote("");
+    await loadUsers();
+  }
+
   const normalizedSearch = search.trim().toLowerCase();
   const filteredUsers = normalizedSearch
     ? users.filter((user) =>
@@ -194,6 +229,7 @@ export default function UsersPage() {
     : users;
   const customerOptions = users.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
   const passwordResetOptions = users.filter((user) => user.status === "ACTIVE");
+  const promotableUserOptions = users.filter((user) => (user.role === "CUSTOMER" || user.role === "ADMIN") && user.status === "ACTIVE");
 
   const rows = filteredUsers.map((user) => [
     user.id,
@@ -374,6 +410,41 @@ export default function UsersPage() {
               清空
             </button>
           </div>
+          <div className="mt-6 border-t border-dfc-border pt-4">
+            <h3 className="text-sm font-semibold">把已有用户设为管理员</h3>
+            <p className="mt-2 text-xs text-dfc-muted">用于邮箱已经注册成客户账号的情况。会保留原邮箱和密码，只改变后台角色。</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <select
+                value={promoteUserId}
+                onChange={(event) => setPromoteUserId(event.target.value)}
+                className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+              >
+                <option value="">选择已有用户</option>
+                {promotableUserOptions.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.displayName} / {user.email} / {user.role}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={promoteRole}
+                onChange={(event) => setPromoteRole(event.target.value === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN")}
+                className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+              >
+                <option value="ADMIN">ADMIN</option>
+                <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+              </select>
+            </div>
+            <input
+              value={promoteNote}
+              onChange={(event) => setPromoteNote(event.target.value)}
+              className="mt-3 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+              placeholder="备注，例如邮箱误注册为客户"
+            />
+            <button type="button" onClick={() => void promoteExistingUserToAdmin()} className="mt-4 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">
+              设置为管理员
+            </button>
+          </div>
           <p className="mt-3 text-xs text-dfc-muted">只有 SUPER_ADMIN 可以创建管理员账号。</p>
         </div>
       </section>
@@ -397,10 +468,14 @@ function toFriendlyError(message?: string) {
   if (message.includes("Admin cannot ban self")) return "不能封禁自己的管理员账号";
   if (message.includes("Invalid user status")) return "无效账号状态";
   if (message.includes("Only SUPER_ADMIN can create admin accounts")) return "只有超级管理员可以创建管理员账号";
+  if (message.includes("Only SUPER_ADMIN can update admin roles")) return "只有超级管理员可以设置管理员角色";
   if (message.includes("Only SUPER_ADMIN can reset admin passwords")) return "只有超级管理员可以重置管理员密码";
   if (message.includes("Email is already registered")) return "该邮箱已注册";
   if (message.includes("Password must be at least 8 characters")) return "密码至少 8 位";
   if (message.includes("User does not exist")) return "用户不存在";
+  if (message.includes("User must be active before becoming admin")) return "用户必须是 ACTIVE 状态才能设置为管理员";
+  if (message.includes("Companion accounts cannot be promoted to admin")) return "陪玩账号不能直接设置为管理员，请单独创建管理员账号";
+  if (message.includes("Display name is already taken")) return "该昵称在目标角色下已存在，请先修改昵称";
   if (message.includes("Customer does not exist or is not active")) return "客户不存在或不可用";
   if (message.includes("amount must be a valid amount")) return "请输入正确金额";
   if (message.includes("amount must be greater than 0")) return "金额必须大于 0";

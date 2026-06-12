@@ -248,6 +248,59 @@ export class AdminController {
     }
   }
 
+  @Patch("users/:id/role")
+  async updateUserRole(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { role: "ADMIN" | "SUPER_ADMIN"; note?: string }
+  ) {
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException("Only SUPER_ADMIN can update admin roles");
+    }
+    const nextRole = body.role === "SUPER_ADMIN" ? UserRole.SUPER_ADMIN : UserRole.ADMIN;
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true, status: true, displayName: true }
+    });
+    if (!target) {
+      throw new BadRequestException("User does not exist");
+    }
+    if (target.status !== UserStatus.ACTIVE) {
+      throw new BadRequestException("User must be active before becoming admin");
+    }
+    if (target.role === UserRole.COMPANION) {
+      throw new BadRequestException("Companion accounts cannot be promoted to admin");
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({
+          where: { id },
+          data: { role: nextRole },
+          select: { id: true, email: true, role: true, status: true, displayName: true }
+        });
+
+        await tx.adminLog.create({
+          data: {
+            actorId: user.id,
+            targetUserId: id,
+            action: "UPDATE_USER_ROLE",
+            entityType: "USER",
+            entityId: id,
+            detail: { email: target.email, fromRole: target.role, toRole: updated.role, note: body.note }
+          }
+        });
+
+        return updated;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new BadRequestException(isDisplayNameUniqueError(error) ? "Display name is already taken" : "User role update conflicts with existing data");
+      }
+      throw error;
+    }
+  }
+
   @Get("recharges")
   listRechargeRequests() {
     return this.prisma.rechargeRequest.findMany({
