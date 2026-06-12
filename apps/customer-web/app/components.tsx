@@ -27,7 +27,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
     <main className="min-h-screen bg-dfc-bg text-dfc-text">
       <header className="sticky top-0 z-20 border-b border-dfc-border bg-dfc-bg/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
-          <Link href="/" className="flex items-center gap-3">
+          <Link href="/home" className="flex items-center gap-3">
             <MaycatLogo compact />
             <span className="hidden sm:block">
               <span className="block text-sm font-semibold">May猫饼电竞</span>
@@ -35,7 +35,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
             </span>
           </Link>
           <nav className="hidden items-center gap-2 md:flex">
-            <NavLink href="/">注册/登录</NavLink>
+            <NavLink href="/home">客户中心</NavLink>
             <NavLink href="/home">大厅</NavLink>
             <NavLink href="/companions">陪玩</NavLink>
             <NavLink href="/order">下单</NavLink>
@@ -52,7 +52,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <CustomerAuthGate>{children}</CustomerAuthGate>
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-dfc-border bg-dfc-bg md:hidden">
-        <MobileNavLink href="/">登录</MobileNavLink>
+        <MobileNavLink href="/recharge">充值</MobileNavLink>
         <MobileNavLink href="/home">大厅</MobileNavLink>
         <MobileNavLink href="/companions">陪玩</MobileNavLink>
         <MobileNavLink href="/order">下单</MobileNavLink>
