@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Post, UnauthorizedException, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, HttpCode, Post, UnauthorizedException, UseGuards } from "@nestjs/common";
 import { BotPlatform, OrderSourcePlatform } from "@prisma/client";
 import { BotInternalGuard } from "../bot/bot-internal.guard";
 import { BotNotificationService } from "../bot/bot-notification.service";
@@ -32,8 +32,9 @@ export class KookWebhookController {
   }
 
   @Post("webhook")
+  @HttpCode(200)
   async webhook(@Body() body: KookWebhookBody) {
-    const challenge = body.d?.challenge;
+    const challenge = this.extractChallenge(body);
     if (challenge) return { challenge };
 
     const expectedVerifyToken = process.env.KOOK_VERIFY_TOKEN;
@@ -137,6 +138,10 @@ export class KookWebhookController {
     );
   }
 
+  private extractChallenge(body: KookWebhookBody): string | undefined {
+    return body.challenge ?? body.d?.challenge ?? body.d?.extra?.challenge;
+  }
+
   private extractKookUserId(body: KookWebhookBody): string | undefined {
     return body.d?.author_id ?? body.d?.extra?.user_id ?? body.d?.extra?.body?.user_id;
   }
@@ -160,6 +165,7 @@ export class KookWebhookController {
 
 interface KookWebhookBody {
   s?: number;
+  challenge?: string;
   d?: {
     type?: number;
     channel_type?: string;
@@ -171,6 +177,7 @@ interface KookWebhookBody {
     channel_id?: string;
     content?: string;
     extra?: {
+      challenge?: string;
       value?: string;
       user_id?: string;
       guild_id?: string;
