@@ -264,6 +264,15 @@ export class PlatformSupportService {
   }
 
   private async tryDynamicBusinessAnswer(message: string): Promise<SupportResult | null> {
+    const shortGameName = this.matchShortGameName(message);
+    if (shortGameName) {
+      return {
+        matchedTopic: "游戏确认",
+        answer: `可以，${shortGameName}我先记下。你是想找陪玩、试音选人，还是先问价格？`,
+        handoffRequired: false
+      };
+    }
+
     if (this.isCompanionCountQuestion(message)) {
       const [listedCount, totalCount, onlineCount] = await this.prisma.$transaction([
         this.prisma.companionProfile.count({ where: { status: CompanionProfileStatus.LISTED } }),
@@ -320,7 +329,7 @@ export class PlatformSupportService {
         output?: Array<{ content?: Array<{ text?: string }> }>;
         choices?: Array<{ message?: { content?: string } }>;
       };
-      return (
+      const text =
         data.output_text?.trim() ||
         data.choices?.[0]?.message?.content?.trim() ||
         data.output
@@ -329,8 +338,8 @@ export class PlatformSupportService {
           .filter(Boolean)
           .join("\n")
           .trim() ||
-        null
-      );
+        null;
+      return text ? this.cleanAiSupportAnswer(text) : null;
     } catch (error) {
       this.logger.warn(`AI support reply error: ${error instanceof Error ? error.message : String(error)}`);
       return null;
@@ -346,7 +355,7 @@ export class PlatformSupportService {
       },
       body: JSON.stringify({
         model,
-        max_output_tokens: 320,
+        max_output_tokens: 160,
         input: messages
       })
     });
@@ -361,8 +370,9 @@ export class PlatformSupportService {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 320,
-        temperature: 0.6,
+        max_tokens: 160,
+        temperature: 0.35,
+        thinking: { type: "disabled" },
         messages: messages.map((item) => ({
           role: item.role === "developer" ? "system" : item.role,
           content: item.content
@@ -376,7 +386,7 @@ export class PlatformSupportService {
       {
         role: "developer",
         content:
-          "你是 May猫饼电竞陪玩俱乐部客服。语气自然、温和、像真人客服，不要机械重复。优先解决客户问题，并主动给下一步。只回答平台流程、下单、试音、充值说明、账号绑定、陪玩入驻、提现规则、优惠说明。客户预算不确定时告诉他可以先提交需求，后续按候选陪玩报价确认。涉及余额修改、退款、提现完成、封号、投诉结论、订单强制改价时必须提示转人工，不能承诺已经处理。提醒用户不要泄露验证码、密码、后台 Token。"
+          "你是 May猫饼电竞陪玩俱乐部客服。回复必须像真人客服，短、自然、直接。每次最多 120 个中文字，最多追问 1 个问题。不要复述客户的话，不要说“我刚才重复了/抱歉让你觉得奇怪/现在直接说”。不要连续给多个模板。只回答平台流程、下单、试音、充值说明、账号绑定、陪玩入驻、提现规则、优惠说明。涉及余额修改、退款、提现完成、封号、投诉结论、订单强制改价时必须转人工，不能承诺已处理。"
       },
       ...history.flatMap((turn) => [
         { role: "user", content: turn.message },
@@ -397,6 +407,23 @@ export class PlatformSupportService {
     ];
   }
 
+  private cleanAiSupportAnswer(answer: string) {
+    const cleaned = answer
+      .replace(/^(明白了|好的|收到)[，,。]\s*(是我.*?。|我刚才.*?。|抱歉.*?。)?/u, "")
+      .replace(/现在直接说[:：]?\s*/u, "")
+      .trim();
+
+    const firstLines = cleaned
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 3)
+      .join("\n");
+
+    if (firstLines.length <= 180) return firstLines;
+    return `${firstLines.slice(0, 177)}...`;
+  }
+
   private async loadConversationHistory(input: { userId?: string; platform?: BotPlatform; platformUserId?: string }) {
     const where = input.userId
       ? { userId: input.userId }
@@ -409,7 +436,7 @@ export class PlatformSupportService {
     const rows = await this.prisma.aiSupportConversation.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: 6,
+      take: 2,
       select: { message: true, answer: true }
     });
 
@@ -426,6 +453,17 @@ export class PlatformSupportService {
       /(多少|几位|几个|人数|数量|规模|多吗|有多少|目前有|现在有)/i.test(message) &&
       /(陪玩|陪练|公会|工会|俱乐部|club|成员|人)/i.test(message)
     );
+  }
+
+  private matchShortGameName(message: string) {
+    const value = message.trim().toLowerCase();
+    if (/^(瓦|瓦罗兰特|无畏契约|valorant|val)$/.test(value)) return "无畏契约";
+    if (/^(lol|联盟|英雄联盟)$/.test(value)) return "英雄联盟";
+    if (/^(三角洲|三角洲行动|delta force|df)$/.test(value)) return "三角洲行动";
+    if (/^(王者|王者荣耀)$/.test(value)) return "王者荣耀";
+    if (/^(吃鸡|和平精英|pubg)$/.test(value)) return "和平精英/PUBG";
+    if (/^(永劫|永劫无间)$/.test(value)) return "永劫无间";
+    return null;
   }
 
   private buildContextualFallback(message: string) {
