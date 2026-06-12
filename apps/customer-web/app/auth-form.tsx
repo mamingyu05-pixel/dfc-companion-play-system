@@ -69,7 +69,8 @@ export function CustomerAuthForm() {
       const data = (await response.json().catch(() => ({}))) as AuthResponse;
       if (!response.ok) {
         const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
-        throw new Error(toChineseError(message));
+        const fallbackMessage = response.status === 401 ? "Invalid email or password" : undefined;
+        throw new Error(toChineseError(message || fallbackMessage));
       }
       setStatus("验证码已发送，请到邮箱查看。");
     } catch (err) {

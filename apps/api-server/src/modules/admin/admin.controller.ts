@@ -145,6 +145,52 @@ export class AdminController {
     return this.wallet.adminCreditCustomerBalance(id, user.id, body);
   }
 
+  @Post("users/:id/password")
+  async resetUserPassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { password: string; note?: string }
+  ) {
+    if (!body.password || body.password.length < 8) {
+      throw new BadRequestException("Password must be at least 8 characters");
+    }
+
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true, displayName: true }
+    });
+    if (!target) {
+      throw new BadRequestException("User does not exist");
+    }
+    if ((target.role === UserRole.ADMIN || target.role === UserRole.SUPER_ADMIN) && user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException("Only SUPER_ADMIN can reset admin passwords");
+    }
+
+    const passwordHash = await createPasswordHash(body.password);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.user.update({
+        where: { id },
+        data: { passwordHash },
+        select: { id: true, email: true, role: true, status: true, displayName: true }
+      });
+
+      await tx.adminLog.create({
+        data: {
+          actorId: user.id,
+          targetUserId: id,
+          action: "RESET_USER_PASSWORD",
+          entityType: "USER",
+          entityId: id,
+          detail: { email: target.email, role: target.role, note: body.note }
+        }
+      });
+
+      return result;
+    });
+
+    return updated;
+  }
+
   @Post("admins")
   async createAdmin(
     @CurrentUser() user: AuthenticatedUser,

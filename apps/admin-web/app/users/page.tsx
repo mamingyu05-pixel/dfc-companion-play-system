@@ -36,6 +36,9 @@ export default function UsersPage() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
   const [adjustmentDirection, setAdjustmentDirection] = useState<"CREDIT" | "DEBIT">("CREDIT");
+  const [passwordResetUserId, setPasswordResetUserId] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [passwordResetNote, setPasswordResetNote] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminName, setAdminName] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
@@ -114,6 +117,41 @@ export default function UsersPage() {
     await loadUsers();
   }
 
+  async function resetUserPassword() {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) return;
+    if (!passwordResetUserId) {
+      setError("请先选择要重置密码的用户");
+      return;
+    }
+    if (newUserPassword.length < 8) {
+      setError("新密码至少 8 位");
+      return;
+    }
+
+    setError("");
+    setStatus("");
+    const response = await fetch(`/api/admin/users/${passwordResetUserId}/password`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ password: newUserPassword, note: passwordResetNote })
+    });
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    if (!response.ok) {
+      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      setError(toFriendlyError(message));
+      return;
+    }
+
+    setStatus("用户密码已重置，可以用新密码登录对应入口");
+    setNewUserPassword("");
+    setPasswordResetNote("");
+    await loadUsers();
+  }
+
   async function createAdminAccount() {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
@@ -155,6 +193,7 @@ export default function UsersPage() {
       )
     : users;
   const customerOptions = users.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
+  const passwordResetOptions = users.filter((user) => user.status === "ACTIVE");
 
   const rows = filteredUsers.map((user) => [
     user.id,
@@ -245,6 +284,42 @@ export default function UsersPage() {
         </div>
 
         <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
+          <h2 className="text-base font-semibold">重置用户密码</h2>
+          <p className="mt-2 text-xs text-dfc-muted">客户忘记密码或测试账号密码混乱时使用。操作会写入后台日志。</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <select
+              value={passwordResetUserId}
+              onChange={(event) => setPasswordResetUserId(event.target.value)}
+              className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+            >
+              <option value="">选择要重置密码的用户</option>
+              {passwordResetOptions.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.displayName} / {user.email} / {user.role}
+                </option>
+              ))}
+            </select>
+            <input
+              value={newUserPassword}
+              onChange={(event) => setNewUserPassword(event.target.value)}
+              className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+              placeholder="新密码，至少 8 位"
+              type="password"
+              autoComplete="new-password"
+            />
+          </div>
+          <input
+            value={passwordResetNote}
+            onChange={(event) => setPasswordResetNote(event.target.value)}
+            className="mt-3 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+            placeholder="备注，例如客户忘记密码"
+          />
+          <button type="button" onClick={() => void resetUserPassword()} className="mt-4 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">
+            重置密码
+          </button>
+        </div>
+
+        <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
           <h2 className="text-base font-semibold">创建管理员账号</h2>
           <div className="pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0" aria-hidden="true">
             <input name="username" autoComplete="username" tabIndex={-1} />
@@ -322,8 +397,10 @@ function toFriendlyError(message?: string) {
   if (message.includes("Admin cannot ban self")) return "不能封禁自己的管理员账号";
   if (message.includes("Invalid user status")) return "无效账号状态";
   if (message.includes("Only SUPER_ADMIN can create admin accounts")) return "只有超级管理员可以创建管理员账号";
+  if (message.includes("Only SUPER_ADMIN can reset admin passwords")) return "只有超级管理员可以重置管理员密码";
   if (message.includes("Email is already registered")) return "该邮箱已注册";
   if (message.includes("Password must be at least 8 characters")) return "密码至少 8 位";
+  if (message.includes("User does not exist")) return "用户不存在";
   if (message.includes("Customer does not exist or is not active")) return "客户不存在或不可用";
   if (message.includes("amount must be a valid amount")) return "请输入正确金额";
   if (message.includes("amount must be greater than 0")) return "金额必须大于 0";
