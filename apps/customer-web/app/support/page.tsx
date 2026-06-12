@@ -27,6 +27,7 @@ type PublicConfig = {
     discordUrl?: string | null;
     kookUrl?: string | null;
     wechatId?: string | null;
+    wechatQrUrl?: string | null;
   };
 };
 
@@ -193,6 +194,20 @@ export default function SupportPage() {
               <div className="mt-3 rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-3">
                 <span className="text-dfc-muted">VX 客服：</span>
                 <span className="font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span>
+              </div>
+              <div className="mt-3 rounded-dfc-control border border-dfc-border bg-dfc-surface p-3">
+                <div className="text-xs font-semibold text-dfc-text">VX 客服二维码</div>
+                {publicConfig.support?.wechatQrUrl ? (
+                  <img
+                    src={publicConfig.support.wechatQrUrl}
+                    alt="VX 客服二维码"
+                    className="mt-2 h-36 w-36 rounded-dfc-control border border-dfc-border bg-white object-cover p-2"
+                  />
+                ) : (
+                  <div className="mt-2 flex h-36 w-36 items-center justify-center rounded-dfc-control border border-dashed border-dfc-border text-center text-xs text-dfc-muted">
+                    暂未配置二维码
+                  </div>
+                )}
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <SupportLink href={publicConfig.support?.kookUrl ?? undefined} label="KOOK 联系客服" />

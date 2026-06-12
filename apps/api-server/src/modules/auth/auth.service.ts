@@ -403,7 +403,8 @@ export class AuthService {
       support: {
         discordUrl: process.env.SUPPORT_DISCORD_URL || null,
         kookUrl: process.env.SUPPORT_KOOK_URL || null,
-        wechatId: process.env.SUPPORT_WECHAT_ID || null
+        wechatId: process.env.SUPPORT_WECHAT_ID || null,
+        wechatQrUrl: process.env.SUPPORT_WECHAT_QR_URL || null
       }
     };
   }

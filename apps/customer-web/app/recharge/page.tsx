@@ -21,8 +21,18 @@ type RechargeSummary = {
   }>;
 };
 
+type PublicConfig = {
+  support?: {
+    discordUrl?: string | null;
+    kookUrl?: string | null;
+    wechatId?: string | null;
+    wechatQrUrl?: string | null;
+  };
+};
+
 export default function RechargePage() {
   const [summary, setSummary] = useState<RechargeSummary | null>(null);
+  const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [amount, setAmount] = useState("");
   const [screenshotUrl, setScreenshotUrl] = useState("");
   const [screenshotName, setScreenshotName] = useState("");
@@ -45,6 +55,16 @@ export default function RechargePage() {
 
   useEffect(() => {
     void loadSummary().catch(() => setError("无法加载你的充值数据，请刷新页面"));
+  }, []);
+
+  useEffect(() => {
+    void fetch("/api/auth/public-config")
+      .then(async (response) => {
+        if (!response.ok) return {};
+        return (await response.json()) as PublicConfig;
+      })
+      .then(setPublicConfig)
+      .catch(() => setPublicConfig({}));
   }, []);
 
   async function handleScreenshot(event: ChangeEvent<HTMLInputElement>) {
@@ -200,7 +220,70 @@ export default function RechargePage() {
           </button>
         </form>
       </section>
+
+      <section className="mt-6 rounded-dfc border border-dfc-border bg-dfc-surface p-4">
+        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <div>
+            <h2 className="text-base font-semibold">联系人工客服充值</h2>
+            <p className="mt-2 text-sm leading-6 text-dfc-subtext">
+              如果你不会上传截图、转账备注填错、优惠码不确定，或者需要人工确认到账，可以直接联系人工客服。
+              KOOK 用户优先走 KOOK，Discord 用户优先走 Discord，也可以扫码添加 VX 客服。
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <SupportButton href={publicConfig.support?.kookUrl ?? undefined} label="KOOK 联系客服" />
+              <SupportButton href={publicConfig.support?.discordUrl ?? undefined} label="Discord 联系客服" />
+            </div>
+            <div className="mt-4 rounded-dfc-control border border-dfc-blue/30 bg-dfc-blue/10 px-3 py-3 text-sm">
+              <span className="text-dfc-subtext">VX 客服：</span>
+              <span className="font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span>
+            </div>
+          </div>
+
+          <div className="rounded-dfc-control border border-dfc-border bg-dfc-bg p-4">
+            <div className="text-sm font-semibold">微信扫码添加人工客服</div>
+            <div className="mt-3 grid gap-4 sm:grid-cols-[160px_1fr] sm:items-center">
+              {publicConfig.support?.wechatQrUrl ? (
+                <img
+                  src={publicConfig.support.wechatQrUrl}
+                  alt="VX 客服二维码"
+                  className="h-40 w-40 rounded-dfc-control border border-dfc-border bg-white object-cover p-2"
+                />
+              ) : (
+                <div className="flex h-40 w-40 items-center justify-center rounded-dfc-control border border-dashed border-dfc-border bg-dfc-surface px-4 text-center text-xs text-dfc-muted">
+                  暂未配置二维码
+                </div>
+              )}
+              <div className="text-sm leading-6 text-dfc-subtext">
+                <div>添加时请备注：注册邮箱 / 昵称 / 充值金额。</div>
+                <div className="mt-2">客服确认后，你仍需要在本页提交充值申请，后台审核通过后余额才会入账。</div>
+                <div className="mt-2 text-dfc-warning">不要把密码、验证码、后台 Token 发给任何人。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </CustomerShell>
+  );
+}
+
+function SupportButton({ href, label }: { href?: string; label: string }) {
+  if (!href) {
+    return (
+      <span className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-center text-sm font-semibold text-dfc-muted">
+        {label}未配置
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="rounded-dfc-control bg-dfc-blue px-3 py-3 text-center text-sm font-semibold text-slate-950"
+    >
+      {label}
+    </a>
   );
 }
 
