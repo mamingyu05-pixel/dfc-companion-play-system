@@ -13,6 +13,16 @@ export class AuthController {
     return this.auth.requestCustomerEmailVerification(body);
   }
 
+  @Post("password-reset-code")
+  requestCustomerPasswordResetCode(@Body() body: { email: string }) {
+    return this.auth.requestCustomerPasswordResetCode(body);
+  }
+
+  @Post("password-reset")
+  resetCustomerPassword(@Body() body: { email: string; emailCode: string; password: string }) {
+    return this.auth.resetCustomerPassword(body);
+  }
+
   @Post("register/customer")
   registerCustomer(@Body() body: { email: string; password: string; displayName: string; emailCode: string; referralCode?: string }) {
     return this.auth.registerCustomer(body);

@@ -19,6 +19,7 @@ type OAuthProfile = {
 };
 
 const CUSTOMER_REGISTER_EMAIL_PURPOSE = "CUSTOMER_REGISTER";
+const CUSTOMER_PASSWORD_RESET_EMAIL_PURPOSE = "CUSTOMER_PASSWORD_RESET";
 const EMAIL_CODE_TTL_MINUTES = 10;
 const EMAIL_CODE_RESEND_SECONDS = 60;
 const MAX_EMAIL_CODE_ATTEMPTS = 5;
@@ -94,6 +95,105 @@ export class AuthService {
     }
 
     return { message: "Verification code sent" };
+  }
+
+  async requestCustomerPasswordResetCode(body: { email: string }) {
+    if (!body.email) {
+      throw new BadRequestException("email is required");
+    }
+
+    const email = normalizeEmail(body.email);
+    if (!isValidEmail(email)) {
+      throw new BadRequestException("Invalid email format");
+    }
+
+    const existing = await this.prisma.user.findFirst({
+      where: { email, role: UserRole.CUSTOMER, status: "ACTIVE" },
+      select: { id: true }
+    });
+    if (!existing) {
+      return { message: "If the account exists, a verification code has been sent" };
+    }
+
+    const recent = await this.prisma.emailVerificationCode.findFirst({
+      where: {
+        email,
+        purpose: CUSTOMER_PASSWORD_RESET_EMAIL_PURPOSE,
+        consumedAt: null,
+        createdAt: { gte: new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000) }
+      },
+      select: { id: true }
+    });
+    if (recent) {
+      throw new BadRequestException("Please wait before requesting another verification code");
+    }
+
+    const code = generateEmailCode();
+    const codeHash = hashEmailCode(email, code);
+    const expiresAt = new Date(Date.now() + EMAIL_CODE_TTL_MINUTES * 60 * 1000);
+
+    const verification = await this.prisma.$transaction(async (tx) => {
+      await tx.emailVerificationCode.deleteMany({
+        where: { email, purpose: CUSTOMER_PASSWORD_RESET_EMAIL_PURPOSE, consumedAt: null }
+      });
+      return tx.emailVerificationCode.create({
+        data: {
+          email,
+          purpose: CUSTOMER_PASSWORD_RESET_EMAIL_PURPOSE,
+          codeHash,
+          expiresAt
+        },
+        select: { id: true }
+      });
+    });
+
+    try {
+      await this.sendVerificationEmail(email, code, "重置密码");
+    } catch (error) {
+      await this.prisma.emailVerificationCode.delete({ where: { id: verification.id } }).catch(() => undefined);
+      throw error;
+    }
+
+    return { message: "Verification code sent" };
+  }
+
+  async resetCustomerPassword(body: { email: string; emailCode: string; password: string }) {
+    if (!body.email || !body.emailCode || !body.password) {
+      throw new BadRequestException("email, emailCode and password are required");
+    }
+    if (body.password.length < 8) {
+      throw new BadRequestException("Password must be at least 8 characters");
+    }
+
+    const email = normalizeEmail(body.email);
+    const emailCode = body.emailCode.trim();
+    if (!isValidEmail(email) || !emailCode) {
+      throw new BadRequestException("email, emailCode and password are required");
+    }
+
+    const verificationId = await this.assertEmailVerification(email, emailCode, CUSTOMER_PASSWORD_RESET_EMAIL_PURPOSE);
+    const passwordHash = await createPasswordHash(body.password);
+
+    await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findFirst({
+        where: { email, role: UserRole.CUSTOMER, status: "ACTIVE" },
+        select: { id: true }
+      });
+      if (!user) {
+        throw new BadRequestException("Verification code is invalid or expired");
+      }
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: { passwordHash }
+      });
+      await tx.emailVerificationCode.update({
+        where: { id: verificationId },
+        data: { consumedAt: new Date() }
+      });
+    });
+
+    return { message: "Password reset successfully" };
   }
 
   async registerCustomer(body: { email: string; password: string; displayName: string; emailCode: string; referralCode?: string }) {
@@ -222,10 +322,14 @@ export class AuthService {
   }
 
   private async assertCustomerEmailVerification(email: string, emailCode: string) {
+    return this.assertEmailVerification(email, emailCode, CUSTOMER_REGISTER_EMAIL_PURPOSE);
+  }
+
+  private async assertEmailVerification(email: string, emailCode: string, purpose: string) {
     const verification = await this.prisma.emailVerificationCode.findFirst({
       where: {
         email,
-        purpose: CUSTOMER_REGISTER_EMAIL_PURPOSE,
+        purpose,
         consumedAt: null
       },
       orderBy: { createdAt: "desc" }
@@ -658,7 +762,7 @@ export class AuthService {
     return role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN;
   }
 
-  private async sendVerificationEmail(email: string, code: string) {
+  private async sendVerificationEmail(email: string, code: string, _actionLabel = "注册") {
     const host = process.env.SMTP_HOST?.trim();
     const user = process.env.SMTP_USER?.trim();
     const pass = process.env.SMTP_PASS;

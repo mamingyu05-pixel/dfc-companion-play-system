@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { MaycatLogo } from "./brand";
 
-type Mode = "register" | "login";
+type Mode = "register" | "login" | "forgot";
 
 type AuthResponse = {
   accessToken?: string;
@@ -61,7 +61,7 @@ export function CustomerAuthForm() {
 
     setIsSendingCode(true);
     try {
-      const response = await fetch("/api/auth/email-verification-code", {
+      const response = await fetch(mode === "forgot" ? "/api/auth/password-reset-code" : "/api/auth/email-verification-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: normalizedEmail })
@@ -85,18 +85,18 @@ export function CustomerAuthForm() {
     setStatus("");
     setError("");
 
-    if (mode === "register" && password !== confirmPassword) {
+    if ((mode === "register" || mode === "forgot") && password !== confirmPassword) {
       setError("两次输入的密码不一致");
       return;
     }
-    if (mode === "register" && !emailCode.trim()) {
+    if ((mode === "register" || mode === "forgot") && !emailCode.trim()) {
       setError("请填写邮箱验证码");
       return;
     }
 
     setIsSubmitting(true);
 
-    const endpoint = mode === "register" ? "/api/auth/register/customer" : "/api/auth/login";
+    const endpoint = mode === "register" ? "/api/auth/register/customer" : mode === "forgot" ? "/api/auth/password-reset" : "/api/auth/login";
     const normalizedEmail = normalizeEmail(email);
     const payload =
       mode === "register"
@@ -107,7 +107,13 @@ export function CustomerAuthForm() {
             emailCode: emailCode.trim(),
             referralCode: referralCode.trim() || undefined
           }
-        : { email: normalizedEmail, password, portal: "customer" };
+        : mode === "forgot"
+          ? {
+              email: normalizedEmail,
+              emailCode: emailCode.trim(),
+              password
+            }
+          : { email: normalizedEmail, password, portal: "customer" };
 
     try {
       const response = await fetch(endpoint, {
@@ -120,6 +126,15 @@ export function CustomerAuthForm() {
       if (!response.ok) {
         const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
         throw new Error(toChineseError(message));
+      }
+
+      if (mode === "forgot") {
+        setStatus("密码已重置，请使用新密码登录。");
+        setMode("login");
+        setPassword("");
+        setConfirmPassword("");
+        setEmailCode("");
+        return;
       }
 
       if (data.accessToken) {
@@ -202,8 +217,21 @@ export function CustomerAuthForm() {
               登录
             </button>
           </div>
+          <div className="mt-3 text-right">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("forgot");
+                setStatus("");
+                setError("");
+              }}
+              className={`text-xs font-semibold ${mode === "forgot" ? "text-dfc-blue" : "text-dfc-subtext hover:text-dfc-blue"}`}
+            >
+              忘记密码？邮箱验证码重置
+            </button>
+          </div>
 
-          <form onSubmit={submit} className="mt-5 space-y-4" autoComplete={mode === "register" ? "off" : "on"}>
+          <form onSubmit={submit} className="mt-5 space-y-4" autoComplete={mode === "login" ? "on" : "off"}>
             <div className="grid gap-2 sm:grid-cols-2">
               <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 注册/登录" />
               <OAuthButton href="/api/auth/oauth/kook/start" label="KOOK 注册/登录" />
@@ -226,7 +254,7 @@ export function CustomerAuthForm() {
                   placeholder="you@example.com"
                   className="min-w-0 flex-1 rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none focus:border-dfc-blue"
                 />
-                {mode === "register" ? (
+                {mode === "register" || mode === "forgot" ? (
                   <button
                     type="button"
                     onClick={sendEmailCode}
@@ -239,7 +267,7 @@ export function CustomerAuthForm() {
               </div>
             </Field>
 
-            {mode === "register" ? (
+            {mode === "register" || mode === "forgot" ? (
               <>
                 <Field label="邮箱验证码">
                   <input
@@ -257,7 +285,7 @@ export function CustomerAuthForm() {
 
                 <Field label="昵称">
                   <input
-                    required
+                    required={mode === "register"}
                     name="display-name"
                     autoComplete="nickname"
                     value={displayName}
@@ -282,8 +310,8 @@ export function CustomerAuthForm() {
 
             <Field label="密码">
               <PasswordInput
-                name={mode === "register" ? "new-password" : "current-password"}
-                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                name={mode === "login" ? "current-password" : "new-password"}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
                 value={password}
                 onChange={setPassword}
                 showPassword={showPassword}
@@ -292,7 +320,7 @@ export function CustomerAuthForm() {
               />
             </Field>
 
-            {mode === "register" ? (
+            {mode === "register" || mode === "forgot" ? (
               <Field label="确认密码">
                 <PasswordInput
                   name="confirm-new-password"
@@ -314,7 +342,7 @@ export function CustomerAuthForm() {
               disabled={isSubmitting}
               className="w-full rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? "提交中..." : mode === "register" ? "创建客户账号" : "登录客户入口"}
+              {isSubmitting ? "提交中..." : mode === "register" ? "创建客户账号" : mode === "forgot" ? "重置密码" : "登录客户入口"}
             </button>
           </form>
 
