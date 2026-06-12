@@ -680,6 +680,15 @@ export class AuthService {
             balanceAfter: true,
             createdAt: true
           }
+        },
+        externalAccounts: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            platform: true,
+            externalUserId: true,
+            displayName: true,
+            createdAt: true
+          }
         }
       }
     });
@@ -745,6 +754,12 @@ export class AuthService {
         amount: transaction.amount.toString(),
         balanceAfter: transaction.balanceAfter.toString(),
         createdAt: transaction.createdAt
+      })),
+      externalAccounts: user.externalAccounts.map((account) => ({
+        platform: account.platform,
+        externalUserId: account.externalUserId,
+        displayName: account.displayName,
+        createdAt: account.createdAt
       }))
     };
   }

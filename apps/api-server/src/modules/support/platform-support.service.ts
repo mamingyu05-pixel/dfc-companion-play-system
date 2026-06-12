@@ -284,6 +284,14 @@ export class PlatformSupportService {
   }
 
   private async tryDynamicBusinessAnswer(message: string): Promise<SupportResult | null> {
+    if (this.isPersonalSettingsQuestion(message)) {
+      return {
+        matchedTopic: "个人设置",
+        answer: "网站端个人设置在顶部导航或手机底部的“设置”，也可以直接打开 /customer/settings。里面能看账号、邀请码、钱包、KOOK/Discord 绑定和客服入口。",
+        handoffRequired: false
+      };
+    }
+
     const shortGameName = this.matchShortGameName(message);
     if (shortGameName) {
       return {
@@ -434,7 +442,7 @@ export class PlatformSupportService {
       {
         role: "developer",
         content:
-          "你是 May猫饼电竞陪玩俱乐部客服。回复必须像真人客服，短、自然、直接。每次最多 120 个中文字，最多追问 1 个问题。不要复述客户的话，不要说“我刚才重复了/抱歉让你觉得奇怪/现在直接说”。不要连续给多个模板。只回答平台流程、下单、试音、充值说明、账号绑定、陪玩入驻、提现规则、优惠说明。涉及余额修改、退款、提现完成、封号、投诉结论、订单强制改价时必须转人工，不能承诺已处理。"
+          "你是 May猫饼电竞陪玩俱乐部客服。回复必须像真人客服，短、自然、直接。当前产品是网站，不是 APP；不要编造“APP右下角我的”“齿轮图标”“头像下拉菜单”等不存在入口。客户问个人设置/账号设置/绑定账号时，只能说网站顶部导航或手机底部有“设置”，路径是 /customer/settings。每次最多 120 个中文字，最多追问 1 个问题。不要复述客户的话，不要说“我刚才重复了/抱歉让你觉得奇怪/现在直接说”。不要连续给多个模板。只回答平台流程、下单、试音、充值说明、账号绑定、陪玩入驻、提现规则、优惠说明。涉及余额修改、退款、提现完成、封号、投诉结论、订单强制改价时必须转人工，不能承诺已处理。"
       },
       ...history.flatMap((turn) => [
         { role: "user", content: turn.message },
@@ -501,6 +509,10 @@ export class PlatformSupportService {
       /(多少|几位|几个|人数|数量|规模|多吗|有多少|目前有|现在有)/i.test(message) &&
       /(陪玩|陪练|公会|工会|俱乐部|club|成员|人)/i.test(message)
     );
+  }
+
+  private isPersonalSettingsQuestion(message: string) {
+    return /(个人设置|账号设置|账户设置|资料设置|我的设置|设置在哪|哪里.*设置|怎么.*设置|绑定账号|绑定.*kook|绑定.*discord|改资料|修改资料)/i.test(message);
   }
 
   private matchShortGameName(message: string) {

@@ -45,6 +45,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
             <NavLink href="/recharge">充值</NavLink>
             <NavLink href="/complaints">投诉</NavLink>
             <NavLink href="/support">客服</NavLink>
+            <NavLink href="/settings">设置</NavLink>
           </nav>
           <Link href="/recharge" className="maycat-button-secondary px-3 py-2 text-xs font-semibold">
             钱包
@@ -56,12 +57,13 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <CustomerAuthGate>{children}</CustomerAuthGate>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-cyan-300/15 bg-[#050711]/92 backdrop-blur-xl md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-cyan-300/15 bg-[#050711]/92 backdrop-blur-xl md:hidden">
         <MobileNavLink href="/recharge">充值</MobileNavLink>
         <MobileNavLink href="/home">大厅</MobileNavLink>
         <MobileNavLink href="/companions">陪玩</MobileNavLink>
         <MobileNavLink href="/order">下单</MobileNavLink>
         <MobileNavLink href="/support">客服</MobileNavLink>
+        <MobileNavLink href="/settings">设置</MobileNavLink>
       </nav>
     </main>
   );
