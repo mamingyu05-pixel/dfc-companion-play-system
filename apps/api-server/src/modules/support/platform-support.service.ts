@@ -297,55 +297,32 @@ export class PlatformSupportService {
 
   private async tryOpenAiSupportAnswer(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string) {
     const enabled = process.env.AI_SUPPORT_ENABLED === "true";
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.AI_SUPPORT_API_KEY || process.env.OPENAI_API_KEY;
     if (!enabled || !apiKey) return null;
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: process.env.AI_SUPPORT_MODEL || "gpt-4o-mini",
-          max_output_tokens: 320,
-          input: [
-            {
-              role: "developer",
-              content:
-                "你是 May猫饼电竞陪玩俱乐部客服。语气自然、温和、像真人客服，不要机械重复。优先解决客户问题，并主动给下一步。只回答平台流程、下单、试音、充值说明、账号绑定、陪玩入驻、提现规则、优惠说明。客户预算不确定时告诉他可以先提交需求，后续按候选陪玩报价确认。涉及余额修改、退款、提现完成、封号、投诉结论、订单强制改价时必须提示转人工，不能承诺已经处理。提醒用户不要泄露验证码、密码、后台 Token。"
-            },
-            ...history.flatMap((turn) => [
-              { role: "user", content: turn.message },
-              { role: "assistant", content: turn.answer }
-            ]),
-            ...(fallbackHint
-              ? [
-                  {
-                    role: "developer",
-                    content: `如果用户问题很简单，可以参考这个业务答案，但请换成更自然、贴合上下文的表达：${fallbackHint}`
-                  }
-                ]
-              : []),
-            {
-              role: "user",
-              content: message
-            }
-          ]
-        })
-      });
+      const model = process.env.AI_SUPPORT_MODEL || "gpt-4o-mini";
+      const baseUrl = (process.env.AI_SUPPORT_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+      const apiStyle = process.env.AI_SUPPORT_API_STYLE || "responses";
+      const messages = this.buildAiSupportMessages(message, history, fallbackHint);
+      const response =
+        apiStyle === "chat_completions"
+          ? await this.callChatCompletions(baseUrl, apiKey, model, messages)
+          : await this.callResponsesApi(baseUrl, apiKey, model, messages);
+
       if (!response.ok) {
         const text = await response.text().catch(() => "");
-        this.logger.warn(`OpenAI support reply failed: HTTP ${response.status} ${text.slice(0, 240)}`);
+        this.logger.warn(`AI support reply failed: HTTP ${response.status} ${text.slice(0, 240)}`);
         return null;
       }
       const data = (await response.json()) as {
         output_text?: string;
         output?: Array<{ content?: Array<{ text?: string }> }>;
+        choices?: Array<{ message?: { content?: string } }>;
       };
       return (
         data.output_text?.trim() ||
+        data.choices?.[0]?.message?.content?.trim() ||
         data.output
           ?.flatMap((item) => item.content ?? [])
           .map((item) => item.text)
@@ -355,9 +332,69 @@ export class PlatformSupportService {
         null
       );
     } catch (error) {
-      this.logger.warn(`OpenAI support reply error: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(`AI support reply error: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
+  }
+
+  private callResponsesApi(baseUrl: string, apiKey: string, model: string, messages: Array<{ role: string; content: string }>) {
+    return fetch(`${baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        max_output_tokens: 320,
+        input: messages
+      })
+    });
+  }
+
+  private callChatCompletions(baseUrl: string, apiKey: string, model: string, messages: Array<{ role: string; content: string }>) {
+    return fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 320,
+        temperature: 0.6,
+        messages: messages.map((item) => ({
+          role: item.role === "developer" ? "system" : item.role,
+          content: item.content
+        }))
+      })
+    });
+  }
+
+  private buildAiSupportMessages(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string) {
+    return [
+      {
+        role: "developer",
+        content:
+          "你是 May猫饼电竞陪玩俱乐部客服。语气自然、温和、像真人客服，不要机械重复。优先解决客户问题，并主动给下一步。只回答平台流程、下单、试音、充值说明、账号绑定、陪玩入驻、提现规则、优惠说明。客户预算不确定时告诉他可以先提交需求，后续按候选陪玩报价确认。涉及余额修改、退款、提现完成、封号、投诉结论、订单强制改价时必须提示转人工，不能承诺已经处理。提醒用户不要泄露验证码、密码、后台 Token。"
+      },
+      ...history.flatMap((turn) => [
+        { role: "user", content: turn.message },
+        { role: "assistant", content: turn.answer }
+      ]),
+      ...(fallbackHint
+        ? [
+            {
+              role: "developer",
+              content: `如果用户问题很简单，可以参考这个业务答案，但请换成更自然、贴合上下文的表达：${fallbackHint}`
+            }
+          ]
+        : []),
+      {
+        role: "user",
+        content: message
+      }
+    ];
   }
 
   private async loadConversationHistory(input: { userId?: string; platform?: BotPlatform; platformUserId?: string }) {
