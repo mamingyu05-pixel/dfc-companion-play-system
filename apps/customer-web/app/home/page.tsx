@@ -11,6 +11,7 @@ type CustomerProfile = {
     email: string;
     role: string;
     displayName: string;
+    referralCode?: string | null;
   };
   wallet: {
     availableBalance: string;
@@ -141,6 +142,20 @@ export default function CustomerHomePage() {
           <StatCard label="我的可用余额" value={`¥${formatMoney(availableBalance)}`} hint="余额不足时先提交充值审核" />
           <StatCard label="我的进行中订单" value={String(pendingOrderCount)} hint="只统计当前账号订单" />
           <StatCard label="账号角色" value="客户" hint="客户、陪玩、管理员入口相互独立" />
+          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
+            <div className="text-xs text-dfc-muted">我的邀请码</div>
+            <div className="mt-2 break-all text-xl font-black text-dfc-blue">{profile.user.referralCode || "-"}</div>
+            <button
+              type="button"
+              onClick={() => {
+                if (profile.user.referralCode) void navigator.clipboard?.writeText(profile.user.referralCode);
+              }}
+              className="mt-3 rounded-dfc-control border border-dfc-border px-3 py-2 text-xs font-semibold text-dfc-subtext hover:text-dfc-blue"
+            >
+              复制邀请码
+            </button>
+            <div className="mt-2 text-xs leading-5 text-dfc-muted">分享给新用户注册填写，完成首单后按后台优惠配置发放奖励。</div>
+          </div>
         </div>
       </section>
 

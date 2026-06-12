@@ -628,6 +628,118 @@ export class AdminController {
     return this.getPromotionSettings();
   }
 
+  @Get("promotion-codes")
+  async listPromotionCodes() {
+    const codes = await this.prisma.promotionCode.findMany({ orderBy: { createdAt: "desc" } });
+    return codes.map((code) => ({
+      id: code.id,
+      code: code.code,
+      title: code.title,
+      minRecharge: code.minRecharge.toString(),
+      bonusAmount: code.bonusAmount.toString(),
+      bonusRate: code.bonusRate.toString(),
+      maxBonusAmount: code.maxBonusAmount?.toString() ?? null,
+      usageLimit: code.usageLimit,
+      usedCount: code.usedCount,
+      startsAt: code.startsAt,
+      endsAt: code.endsAt,
+      isActive: code.isActive
+    }));
+  }
+
+  @Post("promotion-codes")
+  async createPromotionCode(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body()
+    body: {
+      code: string;
+      title: string;
+      minRecharge?: string;
+      bonusAmount?: string;
+      bonusRate?: string;
+      maxBonusAmount?: string;
+      usageLimit?: number;
+      startsAt?: string;
+      endsAt?: string;
+    }
+  ) {
+    const code = normalizePromotionCode(body.code);
+    const title = body.title?.trim().slice(0, 80);
+    if (!code || !title) throw new BadRequestException("code and title are required");
+
+    const minRecharge = parseNonNegativeDecimal(body.minRecharge ?? "0", "minRecharge");
+    const bonusAmount = parseNonNegativeDecimal(body.bonusAmount ?? "0", "bonusAmount");
+    const bonusRate = parseNonNegativeDecimal(body.bonusRate ?? "0", "bonusRate");
+    const maxBonusAmount = body.maxBonusAmount ? parseNonNegativeDecimal(body.maxBonusAmount, "maxBonusAmount") : null;
+    if (bonusRate.gt(1)) throw new BadRequestException("bonusRate cannot be greater than 1");
+    if (bonusAmount.add(bonusRate).lte(0)) throw new BadRequestException("bonus must be greater than 0");
+    if (body.usageLimit !== undefined && (!Number.isInteger(body.usageLimit) || body.usageLimit <= 0)) {
+      throw new BadRequestException("usageLimit must be a positive integer");
+    }
+
+    const startsAt = parseOptionalDate(body.startsAt, "startsAt");
+    const endsAt = parseOptionalDate(body.endsAt, "endsAt");
+    if (startsAt && endsAt && startsAt >= endsAt) throw new BadRequestException("endsAt must be after startsAt");
+
+    try {
+      const created = await this.prisma.promotionCode.create({
+        data: {
+          code,
+          title,
+          minRecharge,
+          bonusAmount,
+          bonusRate,
+          maxBonusAmount,
+          usageLimit: body.usageLimit,
+          startsAt,
+          endsAt,
+          createdById: user.id
+        }
+      });
+
+      await this.prisma.adminLog.create({
+        data: {
+          actorId: user.id,
+          action: "CREATE_PROMOTION_CODE",
+          entityType: "PROMOTION_CODE",
+          entityId: created.id,
+          detail: { code, title, minRecharge: minRecharge.toString(), bonusAmount: bonusAmount.toString(), bonusRate: bonusRate.toString() }
+        }
+      });
+
+      return created;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new BadRequestException("Promotion code already exists");
+      }
+      throw error;
+    }
+  }
+
+  @Patch("promotion-codes/:id/status")
+  async updatePromotionCodeStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { isActive: boolean }
+  ) {
+    const updated = await this.prisma.promotionCode.update({
+      where: { id },
+      data: { isActive: Boolean(body.isActive) }
+    });
+
+    await this.prisma.adminLog.create({
+      data: {
+        actorId: user.id,
+        action: updated.isActive ? "ACTIVATE_PROMOTION_CODE" : "DISABLE_PROMOTION_CODE",
+        entityType: "PROMOTION_CODE",
+        entityId: id,
+        detail: { code: updated.code }
+      }
+    });
+
+    return updated;
+  }
+
   @Post("companions")
   async createCompanion(
     @CurrentUser() user: AuthenticatedUser,
@@ -892,6 +1004,19 @@ function parseCommissionRate(value: string) {
   const commissionRate = parseNonNegativeDecimal(value, "commissionRate");
   if (commissionRate.gt(1)) throw new BadRequestException("commissionRate cannot be greater than 1");
   return commissionRate;
+}
+
+function normalizePromotionCode(code: string | undefined) {
+  return code?.trim().toUpperCase().replace(/\s+/g, "").slice(0, 32) ?? "";
+}
+
+function parseOptionalDate(value: string | undefined, fieldName: string) {
+  if (!value?.trim()) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new BadRequestException(`${fieldName} must be a valid date`);
+  }
+  return date;
 }
 
 async function generateUniqueReferralCode(client: Prisma.TransactionClient | PrismaService, prefix: string) {

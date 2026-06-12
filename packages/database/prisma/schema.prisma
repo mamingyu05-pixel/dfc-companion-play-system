@@ -244,6 +244,7 @@ model User {
   adminLogs                  AdminLog[]          @relation("AdminLogActor")
   targetAdminLogs            AdminLog[]          @relation("AdminLogTarget")
   updatedPlatformSettings    PlatformSetting[]   @relation("PlatformSettingUpdater")
+  createdPromotionCodes      PromotionCode[]     @relation("PromotionCodeCreator")
   botEvents                  BotEvent[]          @relation("BotEventActor")
   externalAccounts           UserExternalAccount[]
   supportConversations       AiSupportConversation[]
@@ -512,7 +513,9 @@ model WalletTransaction {
 model RechargeRequest {
   id             String       @id @default(cuid())
   customerId     String
+  promotionCodeId String?
   amount         Decimal      @db.Decimal(12, 2)
+  promotionBonus Decimal      @default(0) @db.Decimal(12, 2)
   screenshotUrl  String
   note           String?
   status         ReviewStatus @default(PENDING)
@@ -523,10 +526,37 @@ model RechargeRequest {
   updatedAt      DateTime     @updatedAt
 
   customer       User         @relation("RechargeCustomer", fields: [customerId], references: [id])
+  promotionCode  PromotionCode? @relation(fields: [promotionCodeId], references: [id])
   reviewedBy     User?        @relation("RechargeReviewer", fields: [reviewedById], references: [id])
 
   @@index([status])
+  @@index([promotionCodeId])
   @@map("recharge_requests")
+}
+
+model PromotionCode {
+  id              String            @id @default(cuid())
+  code            String            @unique
+  title           String
+  minRecharge     Decimal           @default(0) @db.Decimal(12, 2)
+  bonusAmount     Decimal           @default(0) @db.Decimal(12, 2)
+  bonusRate       Decimal           @default(0) @db.Decimal(5, 4)
+  maxBonusAmount  Decimal?          @db.Decimal(12, 2)
+  usageLimit      Int?
+  usedCount       Int               @default(0)
+  startsAt        DateTime?
+  endsAt          DateTime?
+  isActive        Boolean           @default(true)
+  createdById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  createdBy       User?             @relation("PromotionCodeCreator", fields: [createdById], references: [id])
+  rechargeRequests RechargeRequest[]
+
+  @@index([isActive])
+  @@index([startsAt, endsAt])
+  @@map("promotion_codes")
 }
 
 model WithdrawalRequest {

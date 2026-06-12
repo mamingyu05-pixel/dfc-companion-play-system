@@ -68,6 +68,7 @@ export class WalletService {
       rechargeRequests: rechargeRequests.map((request) => ({
         id: request.id,
         amount: request.amount.toString(),
+        promotionBonus: request.promotionBonus.toString(),
         status: request.status,
         note: request.note,
         reviewNote: request.reviewNote,
@@ -175,7 +176,7 @@ export class WalletService {
 
   async createRechargeRequest(
     customerId: string,
-    body: { amount: string; screenshotUrl: string; note?: string }
+    body: { amount: string; screenshotUrl: string; note?: string; promotionCode?: string }
   ) {
     const amount = this.positiveDecimal(body.amount, "amount");
     if (!body.screenshotUrl) throw new BadRequestException("screenshotUrl is required");
@@ -188,10 +189,15 @@ export class WalletService {
     });
     if (!customer) throw new BadRequestException("Customer does not exist or is not active");
 
+    const promotion = body.promotionCode ? await this.findApplicablePromotionCode(body.promotionCode, amount) : null;
+    const promotionBonus = promotion ? calculatePromotionBonus(amount, promotion) : new Prisma.Decimal(0);
+
     return this.prisma.rechargeRequest.create({
       data: {
         customerId,
+        promotionCodeId: promotion?.id,
         amount,
+        promotionBonus,
         screenshotUrl: body.screenshotUrl,
         note: body.note
       }
@@ -331,7 +337,8 @@ export class WalletService {
       const firstRechargeBonus = approvedRechargeCount === 0
         ? await this.calculateFirstRechargeBonus(tx, request.amount)
         : new Prisma.Decimal(0);
-      const creditAmount = request.amount.add(firstRechargeBonus);
+      const promotionCodeBonus = request.promotionBonus ?? new Prisma.Decimal(0);
+      const creditAmount = request.amount.add(firstRechargeBonus).add(promotionCodeBonus);
 
       const wallet = await tx.wallet.update({
         where: { userId: request.customerId },
@@ -370,6 +377,29 @@ export class WalletService {
         });
       }
 
+      if (promotionCodeBonus.gt(0)) {
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            userId: request.customerId,
+            operatorId: reviewerId,
+            type: WalletTransactionType.PROMOTION_BONUS,
+            direction: TransactionDirection.CREDIT,
+            amount: promotionCodeBonus,
+            balanceAfter: wallet.availableBalance,
+            referenceType: "RECHARGE_PROMOTION_CODE",
+            referenceId: request.promotionCodeId,
+            note: "Recharge promotion code bonus"
+          }
+        });
+        if (request.promotionCodeId) {
+          await tx.promotionCode.update({
+            where: { id: request.promotionCodeId },
+            data: { usedCount: { increment: 1 } }
+          });
+        }
+      }
+
       await tx.adminLog.create({
         data: {
           actorId: reviewerId,
@@ -380,6 +410,8 @@ export class WalletService {
           detail: {
             amount: request.amount.toString(),
             firstRechargeBonus: firstRechargeBonus.toString(),
+            promotionCodeBonus: promotionCodeBonus.toString(),
+            promotionCodeId: request.promotionCodeId,
             totalCredit: creditAmount.toString(),
             note: body.note
           }
@@ -660,6 +692,36 @@ export class WalletService {
     return rechargeAmount.mul(rate).add(fixed).toDecimalPlaces(2);
   }
 
+  private async findApplicablePromotionCode(code: string, rechargeAmount: Prisma.Decimal) {
+    const normalizedCode = normalizePromotionCode(code);
+    if (!normalizedCode) return null;
+
+    const promotion = await this.prisma.promotionCode.findUnique({ where: { code: normalizedCode } });
+    const now = new Date();
+    if (!promotion || !promotion.isActive) {
+      throw new BadRequestException("Promotion code is invalid");
+    }
+    if (promotion.startsAt && promotion.startsAt > now) {
+      throw new BadRequestException("Promotion code is not active yet");
+    }
+    if (promotion.endsAt && promotion.endsAt < now) {
+      throw new BadRequestException("Promotion code is expired");
+    }
+    if (promotion.usageLimit !== null && promotion.usedCount >= promotion.usageLimit) {
+      throw new BadRequestException("Promotion code usage limit reached");
+    }
+    if (rechargeAmount.lt(promotion.minRecharge)) {
+      throw new BadRequestException("Recharge amount does not meet promotion code minimum");
+    }
+
+    const bonus = calculatePromotionBonus(rechargeAmount, promotion);
+    if (bonus.lte(0)) {
+      throw new BadRequestException("Promotion code has no bonus");
+    }
+
+    return promotion;
+  }
+
   private nonNegativeDecimal(value: string, fieldName: string) {
     let decimal: Prisma.Decimal;
     try {
@@ -707,6 +769,21 @@ function isPrismaErrorCode(error: unknown, code: string) {
 
 function sanitizeText(value: string | null | undefined, maxLength: number) {
   return (value ?? "").trim().slice(0, maxLength);
+}
+
+function normalizePromotionCode(code: string | undefined) {
+  return code?.trim().toUpperCase().replace(/\s+/g, "").slice(0, 32) ?? "";
+}
+
+function calculatePromotionBonus(
+  rechargeAmount: Prisma.Decimal,
+  promotion: { bonusAmount: Prisma.Decimal; bonusRate: Prisma.Decimal; maxBonusAmount: Prisma.Decimal | null }
+) {
+  let bonus = promotion.bonusAmount.add(rechargeAmount.mul(promotion.bonusRate));
+  if (promotion.maxBonusAmount && bonus.gt(promotion.maxBonusAmount)) {
+    bonus = promotion.maxBonusAmount;
+  }
+  return bonus.toDecimalPlaces(2);
 }
 
 function buildPayoutAccount(profile?: { payoutMethod: string | null; payoutAccountName: string | null; payoutAccountNo: string | null } | null) {

@@ -13,6 +13,7 @@ type RechargeSummary = {
   rechargeRequests: Array<{
     id: string;
     amount: string;
+    promotionBonus?: string | null;
     status: string;
     note?: string | null;
     reviewNote?: string | null;
@@ -26,6 +27,7 @@ export default function RechargePage() {
   const [screenshotUrl, setScreenshotUrl] = useState("");
   const [screenshotName, setScreenshotName] = useState("");
   const [note, setNote] = useState("");
+  const [promotionCode, setPromotionCode] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,7 +89,7 @@ export default function RechargePage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ amount, screenshotUrl, note })
+        body: JSON.stringify({ amount, screenshotUrl, note, promotionCode: promotionCode.trim() || undefined })
       });
       const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
       if (!response.ok) {
@@ -99,6 +101,7 @@ export default function RechargePage() {
       setScreenshotUrl("");
       setScreenshotName("");
       setNote("");
+      setPromotionCode("");
       setStatus("充值申请已提交，请等待管理员审核");
       await loadSummary();
     } catch (err) {
@@ -136,6 +139,9 @@ export default function RechargePage() {
                     <div className="text-xs text-dfc-blue">{toRechargeStatus(request.status)}</div>
                   </div>
                   <div className="mt-1 text-xs text-dfc-subtext">{new Date(request.createdAt).toLocaleString("zh-CN")}</div>
+                  {Number(request.promotionBonus || 0) > 0 ? (
+                    <div className="mt-2 text-xs text-dfc-success">优惠赠送：¥{formatMoney(request.promotionBonus || "0")}</div>
+                  ) : null}
                   {request.reviewNote ? <div className="mt-2 text-xs text-dfc-warning">审核备注：{request.reviewNote}</div> : null}
                 </div>
               ))
@@ -159,6 +165,17 @@ export default function RechargePage() {
               className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
               placeholder="例如 300"
             />
+          </label>
+          <label className="mt-4 block">
+            <span className="text-sm text-dfc-subtext">优惠码（选填）</span>
+            <input
+              value={promotionCode}
+              onChange={(event) => setPromotionCode(event.target.value.toUpperCase().replace(/\s+/g, ""))}
+              className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
+              placeholder="例如 NEW100"
+              maxLength={32}
+            />
+            <span className="mt-2 block text-xs text-dfc-muted">符合满额条件的优惠码会在管理员审核通过充值时自动赠送余额。</span>
           </label>
           <label className="mt-4 block">
             <span className="text-sm text-dfc-subtext">转账截图</span>
@@ -213,5 +230,10 @@ function toChineseError(message?: string) {
   if (message.includes("amount must be greater than 0")) return "充值金额必须大于 0";
   if (message.includes("screenshotUrl is required")) return "请上传转账截图";
   if (message.includes("screenshotUrl is too large")) return "截图太大，请压缩到 2MB 以内";
+  if (message.includes("Promotion code is invalid")) return "优惠码无效或已停用";
+  if (message.includes("Promotion code is expired")) return "优惠码已过期";
+  if (message.includes("Promotion code usage limit reached")) return "优惠码已被用完";
+  if (message.includes("Recharge amount does not meet promotion code minimum")) return "充值金额未达到优惠码最低要求";
+  if (message.includes("Promotion code has no bonus")) return "优惠码没有配置有效奖励";
   return message;
 }
