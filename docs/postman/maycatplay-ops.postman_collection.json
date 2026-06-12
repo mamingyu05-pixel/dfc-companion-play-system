@@ -1,0 +1,299 @@
+{
+  "info": {
+    "name": "May猫饼运营接口工具包",
+    "description": "May猫饼电竞生产环境常用排查接口。导入后先选择 May猫饼 Production 环境，再执行管理员登录。不要把 token、密码或验证码提交到 GitHub。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "基础检查",
+      "item": [
+        {
+          "name": "公开配置",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/public-config",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "public-config"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "登录",
+      "item": [
+        {
+          "name": "管理员登录并保存 Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data.accessToken) {",
+                  "  pm.environment.set('admin_token', data.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"你的管理员邮箱\",\n  \"password\": \"你的管理员密码\",\n  \"portal\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "检查当前管理员身份",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "用户管理",
+      "item": [
+        {
+          "name": "查询用户列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/users",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "给客户增加余额",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"10\",\n  \"direction\": \"CREDIT\",\n  \"note\": \"Postman 人工加余额测试\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/users/{{target_user_id}}/balance-adjustments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "users", "{{target_user_id}}", "balance-adjustments"]
+            }
+          }
+        },
+        {
+          "name": "扣减客户余额",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"10\",\n  \"direction\": \"DEBIT\",\n  \"note\": \"Postman 冲正测试\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/users/{{target_user_id}}/balance-adjustments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "users", "{{target_user_id}}", "balance-adjustments"]
+            }
+          }
+        },
+        {
+          "name": "把已有用户设为管理员",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"ADMIN\",\n  \"note\": \"邮箱误注册为客户，设置为管理员\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/users/{{target_user_id}}/role",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "users", "{{target_user_id}}", "role"]
+            }
+          }
+        },
+        {
+          "name": "重置用户密码",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"ChangeMe123!\",\n  \"note\": \"Postman 测试重置\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/users/{{target_user_id}}/password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "users", "{{target_user_id}}", "password"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "充值审核",
+      "item": [
+        {
+          "name": "查询充值申请",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/recharges",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "recharges"]
+            }
+          }
+        },
+        {
+          "name": "通过充值申请",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\",\n  \"note\": \"Postman 审核通过\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/recharges/{{recharge_id}}/review",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "recharges", "{{recharge_id}}", "review"]
+            }
+          }
+        },
+        {
+          "name": "拒绝充值申请",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"REJECTED\",\n  \"note\": \"截图不清晰，请重新提交\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/recharges/{{recharge_id}}/review",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "recharges", "{{recharge_id}}", "review"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "客户接口",
+      "item": [
+        {
+          "name": "客户钱包摘要",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/wallet/customer-summary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "wallet", "customer-summary"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
