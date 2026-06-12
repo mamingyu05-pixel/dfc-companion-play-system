@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, HttpCode, Post, UnauthorizedException, UseGuards } from "@nestjs/common";
+import { createDecipheriv } from "node:crypto";
 import { BotPlatform, OrderSourcePlatform } from "@prisma/client";
 import { BotInternalGuard } from "../bot/bot-internal.guard";
 import { BotNotificationService } from "../bot/bot-notification.service";
@@ -34,40 +35,41 @@ export class KookWebhookController {
   @Post("webhook")
   @HttpCode(200)
   async webhook(@Body() body: KookWebhookBody) {
-    const challenge = this.extractChallenge(body);
+    const webhookBody = this.decodeWebhookBody(body);
+    const challenge = this.extractChallenge(webhookBody);
     if (challenge) return { challenge };
 
     const expectedVerifyToken = process.env.KOOK_VERIFY_TOKEN;
-    const actualVerifyToken = body.d?.verify_token;
+    const actualVerifyToken = webhookBody.verify_token ?? webhookBody.d?.verify_token;
 
     if (expectedVerifyToken && actualVerifyToken !== expectedVerifyToken) {
       throw new UnauthorizedException("Invalid KOOK verify token");
     }
 
-    const actionValue = this.extractActionValue(body);
+    const actionValue = this.extractActionValue(webhookBody);
     if (actionValue?.startsWith("order-draft.apply.")) {
       const draftId = actionValue.replace("order-draft.apply.", "");
-      const kookUserId = this.extractKookUserId(body);
+      const kookUserId = this.extractKookUserId(webhookBody);
       if (!draftId || !kookUserId) {
         throw new BadRequestException("Missing KOOK order draft apply payload");
       }
       return this.orderDrafts.companionApplyFromPlatform(OrderSourcePlatform.KOOK, draftId, kookUserId, {
-        messageId: this.extractMessageId(body)
+        messageId: this.extractMessageId(webhookBody)
       });
     }
 
     if (!actionValue?.startsWith("order.accept.")) {
-      return this.handleSupportMessage(body);
+      return this.handleSupportMessage(webhookBody);
     }
 
     const orderId = actionValue.replace("order.accept.", "");
-    const kookUserId = this.extractKookUserId(body);
+    const kookUserId = this.extractKookUserId(webhookBody);
 
     if (!orderId || !kookUserId) {
       throw new BadRequestException("Missing KOOK order accept payload");
     }
 
-    return this.orders.acceptOrderFromPlatform(BotPlatform.KOOK, orderId, kookUserId, this.extractMessageId(body));
+    return this.orders.acceptOrderFromPlatform(BotPlatform.KOOK, orderId, kookUserId, this.extractMessageId(webhookBody));
   }
 
   @Post("support/messages")
@@ -142,6 +144,48 @@ export class KookWebhookController {
     return body.challenge ?? body.d?.challenge ?? body.d?.extra?.challenge;
   }
 
+  private decodeWebhookBody(body: KookWebhookBody): KookWebhookBody {
+    const encryptedPayload = body.encrypt?.trim();
+    if (!encryptedPayload) return body;
+
+    const encryptKey = process.env.KOOK_ENCRYPT_KEY;
+    if (!encryptKey) {
+      throw new BadRequestException("KOOK encrypted webhook requires KOOK_ENCRYPT_KEY");
+    }
+
+    const key = Buffer.from(encryptKey.padEnd(32, "\0").slice(0, 32), "utf8");
+    const encryptedBuffer = Buffer.from(encryptedPayload, "base64");
+
+    const attempts = [
+      () => {
+        const iv = encryptedBuffer.subarray(0, 16);
+        const cipherText = encryptedBuffer.subarray(16);
+        return this.decryptKookPayload(key, iv, cipherText);
+      },
+      () => {
+        const decoded = encryptedBuffer.toString("utf8");
+        const iv = Buffer.from(decoded.slice(0, 16), "utf8");
+        const cipherText = Buffer.from(decoded.slice(16), "base64");
+        return this.decryptKookPayload(key, iv, cipherText);
+      }
+    ];
+
+    for (const attempt of attempts) {
+      try {
+        return JSON.parse(attempt()) as KookWebhookBody;
+      } catch {
+        // Try the next documented KOOK encryption payload shape.
+      }
+    }
+
+    throw new BadRequestException("Invalid KOOK encrypted webhook payload");
+  }
+
+  private decryptKookPayload(key: Buffer, iv: Buffer, cipherText: Buffer): string {
+    const decipher = createDecipheriv("aes-256-cbc", key, iv);
+    return Buffer.concat([decipher.update(cipherText), decipher.final()]).toString("utf8");
+  }
+
   private extractKookUserId(body: KookWebhookBody): string | undefined {
     return body.d?.author_id ?? body.d?.extra?.user_id ?? body.d?.extra?.body?.user_id;
   }
@@ -166,6 +210,8 @@ export class KookWebhookController {
 interface KookWebhookBody {
   s?: number;
   challenge?: string;
+  encrypt?: string;
+  verify_token?: string;
   d?: {
     type?: number;
     channel_type?: string;
