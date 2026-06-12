@@ -4,72 +4,114 @@ const path = require("node:path");
 
 const KOOK_API_BASE_URL = "https://www.kookapp.cn";
 
-const messages = [
+const channelMessages = [
   {
     env: "KOOK_SUPPORT_CHANNEL_ID",
     title: "May猫饼客服接待",
-    content: [
-      "欢迎来到 May猫饼电竞客服接待。",
+    lines: [
+      "这里是客户咨询入口。你可以直接说需求，AI 客服会先整理信息，复杂问题会转人工。",
       "",
-      "你可以直接发送：",
-      "1. 找陪玩：游戏、模式、预计时长、是否试音、预算可不填。",
-      "2. 充值问题：金额、截图、账号邮箱或昵称。",
-      "3. 试音选人：说出偏好，客服会安排候选陪玩。",
-      "4. 退款投诉：订单号、问题说明、截图或录屏。",
+      "**找陪玩请按这个格式发：**",
+      "游戏：",
+      "模式：",
+      "预计时长：",
+      "预算：",
+      "是否需要试音：",
+      "语音偏好：",
+      "其他要求：",
       "",
-      "AI 客服会先回复常见问题；余额、退款、提现、封号和投诉结论必须由人工客服确认。"
-    ].join("\n")
+      "**充值/到账问题请发：** 注册邮箱或昵称、充值金额、转账截图、备注。",
+      "**退款/投诉请发：** 订单号、问题说明、截图或录屏。",
+      "",
+      "余额、退款、提现、封号、补偿等结果必须由人工客服确认，AI 不会直接改钱。"
+    ]
   },
   {
     env: "KOOK_DISPATCH_CHANNEL_ID",
-    title: "人工派单规则",
-    content: [
-      "这里是陪玩报名和人工派单频道。",
+    title: "人工派单频道",
+    lines: [
+      "这里用于客服或 AI 整理客户需求，陪玩报名，管理员最终确认。",
       "",
-      "客服会把客户需求整理成派单信息。",
-      "陪玩报名时请说明：可服务时间、报价、是否可试音、擅长模式。",
+      "**派单格式：**",
+      "客户：",
+      "游戏：",
+      "模式：",
+      "预计时长：",
+      "预算：",
+      "是否试音：",
+      "语音偏好：",
+      "特殊要求：",
       "",
-      "禁止抢单后失联；禁止私下绕过平台交易。"
-    ].join("\n")
+      "**陪玩报名格式：**",
+      "可服务时间：",
+      "报价：",
+      "擅长模式：",
+      "是否可试音：",
+      "备注：",
+      "",
+      "禁止私下绕过平台交易。报名不等于接单，最终以后台订单为准。"
+    ]
   },
   {
     env: "KOOK_RECHARGE_CHANNEL_ID",
-    title: "充值审核规则",
-    content: [
-      "这里记录人工充值提醒和审核。",
+    title: "充值审核频道",
+    lines: [
+      "这里记录人工充值审核提醒。",
       "",
-      "审核前确认：账号、金额、截图、备注、优惠码。",
-      "审核通过后由后台加余额，所有变动必须有钱包流水和管理员日志。"
-    ].join("\n")
+      "**审核前确认：**",
+      "1. 客户账号是否匹配",
+      "2. 金额是否一致",
+      "3. 截图是否清晰",
+      "4. 优惠码或活动是否有效",
+      "5. 后台加余额后是否生成钱包流水",
+      "",
+      "只允许管理员在后台加余额，禁止在频道里口头确认到账后不录入系统。"
+    ]
   },
   {
     env: "KOOK_WITHDRAWAL_CHANNEL_ID",
-    title: "提现审核规则",
-    content: [
-      "这里记录陪玩提现申请。",
+    title: "提现审核频道",
+    lines: [
+      "这里记录陪玩提现申请和人工打款确认。",
       "",
-      "审核前确认：陪玩账号、可提现收入、支付宝收款信息、订单结算状态。",
-      "打款完成后再在后台确认，禁止提前确认。"
-    ].join("\n")
+      "**审核前确认：**",
+      "陪玩账号、可提现收入、支付宝收款信息、订单是否已完成、是否存在投诉。",
+      "",
+      "人工打款完成后，再到后台确认提现完成并生成流水。禁止提前确认。"
+    ]
   },
   {
     env: "KOOK_COMPLAINT_CHANNEL_ID",
-    title: "投诉处理规则",
-    content: [
+    title: "投诉处理频道",
+    lines: [
       "这里处理退款、投诉和争议订单。",
       "",
-      "处理前先收集：订单号、聊天记录、截图/录屏、陪玩说明、客户诉求。",
-      "任何退款和补偿都必须后台操作并保留日志。"
-    ].join("\n")
+      "**处理前收集：**",
+      "订单号、聊天记录、截图或录屏、客户诉求、陪玩说明、处理建议。",
+      "",
+      "任何退款、补偿、封禁都必须在后台操作，并保留管理员日志。"
+    ]
   },
   {
     env: "KOOK_ADMIN_CHANNEL_ID",
-    title: "管理提醒",
-    content: [
-      "这里接收系统提醒、失败通知和管理员待办。",
+    title: "管理提醒频道",
+    lines: [
+      "这里接收系统提醒、失败通知、待办事项。",
       "",
-      "上线前建议每天检查：充值审核、提现审核、投诉处理、Bot 失败日志、数据库备份。"
-    ].join("\n")
+      "**每日建议检查：**",
+      "充值审核、提现审核、投诉处理、未派单订单、Bot 失败日志、数据库备份。",
+      "",
+      "如果发现 Bot 不回复，优先检查 api-server 日志、KOOK 回调地址、频道 ID 和 Bot 权限。"
+    ]
+  },
+  {
+    env: "KOOK_VOICE_WAITING_CHANNEL_ID",
+    title: "试音等候室",
+    lines: [
+      "客户需要试音时先进入这里，客服再安排候选陪玩进入。",
+      "",
+      "试音只确认声音、沟通风格和基础需求，不在语音里完成私下付款。"
+    ]
   }
 ];
 
@@ -83,19 +125,23 @@ async function main() {
   const token = env.KOOK_TOKEN;
   if (!token) throw new Error("KOOK_TOKEN is missing");
 
-  for (const item of messages) {
+  for (const item of channelMessages) {
     const channelId = env[item.env];
     if (!channelId) {
       console.log(`skip ${item.env}: not configured`);
       continue;
     }
 
-    const content = `**${item.title}**\n${item.content}`;
+    const content = buildMessage(item.title, item.lines);
     const result = await postKookMessage(token, channelId, content);
     console.log(`posted ${item.env} -> ${result.msg_id}`);
   }
 
-  console.log("\nDone. You can pin these messages in KOOK manually.");
+  console.log("\nDone. 建议在 KOOK 里把这些规则消息手动置顶。");
+}
+
+function buildMessage(title, lines) {
+  return [`**${title}**`, "", ...lines].join("\n");
 }
 
 function loadEnv(filePath) {
