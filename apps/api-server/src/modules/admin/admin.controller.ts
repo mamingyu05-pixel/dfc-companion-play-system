@@ -1,15 +1,19 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import {
   BotPlatform,
+  ComplaintStatus,
   CompanionProfileStatus,
   DeltaForceRank,
   GameCode,
   OnlineStatus,
+  OrderStatus,
   OrderSourcePlatform,
   Prisma,
+  ReviewStatus,
   UserRole,
   UserStatus,
-  VoicePreference
+  VoicePreference,
+  WithdrawalStatus
 } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/current-user.decorator";
@@ -36,6 +40,124 @@ export class AdminController {
     private readonly wallet: WalletService,
     private readonly externalAccounts: CompanionExternalAccountsService
   ) {}
+
+  @Get("dashboard")
+  async getDashboard() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [
+      todayOrderCount,
+      dispatchPendingCount,
+      pendingRechargeCount,
+      pendingWithdrawalCount,
+      activeComplaintCount,
+      pendingOrders,
+      pendingRecharges,
+      pendingWithdrawals,
+      recentLogs
+    ] = await this.prisma.$transaction([
+      this.prisma.order.count({ where: { createdAt: { gte: today } } }),
+      this.prisma.order.count({ where: { status: { in: [OrderStatus.PAID, OrderStatus.ASSIGNED] } } }),
+      this.prisma.rechargeRequest.count({ where: { status: ReviewStatus.PENDING } }),
+      this.prisma.withdrawalRequest.count({ where: { status: { in: [WithdrawalStatus.PENDING, WithdrawalStatus.APPROVED] } } }),
+      this.prisma.complaint.count({ where: { status: { in: [ComplaintStatus.OPEN, ComplaintStatus.IN_REVIEW] } } }),
+      this.prisma.order.findMany({
+        where: { status: { in: [OrderStatus.PAID, OrderStatus.ASSIGNED, OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS] } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: {
+          customer: { select: { email: true, displayName: true } },
+          companion: { select: { email: true, displayName: true } }
+        }
+      }),
+      this.prisma.rechargeRequest.findMany({
+        where: { status: ReviewStatus.PENDING },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: { customer: { select: { email: true, displayName: true } } }
+      }),
+      this.prisma.withdrawalRequest.findMany({
+        where: { status: { in: [WithdrawalStatus.PENDING, WithdrawalStatus.APPROVED] } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: { companion: { select: { email: true, displayName: true } } }
+      }),
+      this.prisma.adminLog.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        include: { actor: { select: { email: true, displayName: true } } }
+      })
+    ]);
+
+    return {
+      metrics: [
+        { label: "今日订单", value: String(todayOrderCount), hint: `${dispatchPendingCount} 个待派单` },
+        { label: "待充值审核", value: String(pendingRechargeCount), hint: "需要核对截图" },
+        { label: "待提现审核", value: String(pendingWithdrawalCount), hint: "待审核或待打款" },
+        { label: "投诉处理中", value: String(activeComplaintCount), hint: "需要管理员介入" }
+      ],
+      pendingOrders: pendingOrders.map((order) => ({
+        id: order.id,
+        orderNo: order.orderNo,
+        customer: displayUser(order.customer),
+        companion: order.companion ? displayUser(order.companion) : "待派单",
+        status: order.status,
+        amount: order.totalAmount.toString(),
+        createdAt: order.createdAt
+      })),
+      pendingReviews: [
+        ...pendingRecharges.map((request) => ({
+          type: "充值",
+          id: request.id,
+          subject: displayUser(request.customer),
+          amount: request.amount.toString(),
+          status: request.status,
+          createdAt: request.createdAt
+        })),
+        ...pendingWithdrawals.map((request) => ({
+          type: "提现",
+          id: request.id,
+          subject: displayUser(request.companion),
+          amount: request.amount.toString(),
+          status: request.status,
+          createdAt: request.createdAt
+        }))
+      ]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, 8),
+      recentLogs: recentLogs.map((log) => ({
+        id: log.id,
+        actor: displayUser(log.actor),
+        action: log.action,
+        target: log.entityId ?? log.targetUserId ?? "-",
+        entityType: log.entityType,
+        createdAt: log.createdAt
+      }))
+    };
+  }
+
+  @Get("logs")
+  listAdminLogs() {
+    return this.prisma.adminLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        actor: { select: { email: true, displayName: true } },
+        targetUser: { select: { email: true, displayName: true } }
+      }
+    }).then((logs) =>
+      logs.map((log) => ({
+        id: log.id,
+        actor: displayUser(log.actor),
+        action: log.action,
+        entityType: log.entityType,
+        entityId: log.entityId,
+        target: log.targetUser ? displayUser(log.targetUser) : (log.entityId ?? "-"),
+        createdAt: log.createdAt
+      }))
+    );
+  }
 
   @Get("users")
   listUsers() {
@@ -1019,6 +1141,10 @@ export class AdminController {
 function isDisplayNameUniqueError(error: Prisma.PrismaClientKnownRequestError) {
   const target = error.meta?.target;
   return Array.isArray(target) && target.includes("displayNameKey");
+}
+
+function displayUser(user: { email: string; displayName: string }) {
+  return user.displayName || user.email;
 }
 
 function promotionSettingDefaults(): Record<string, string> {
