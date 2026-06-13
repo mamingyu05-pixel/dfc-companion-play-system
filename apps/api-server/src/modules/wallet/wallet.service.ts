@@ -206,15 +206,35 @@ export class WalletService {
     }
 
     try {
-      return await this.prisma.rechargeRequest.create({
-        data: {
-          customerId,
-          promotionCodeId: promotion?.id,
-          amount,
-          promotionBonus,
-          screenshotUrl: body.screenshotUrl,
-          note: body.note
+      return await this.prisma.$transaction(async (tx) => {
+        if (promotion) {
+          if (promotion.usageLimit === null) {
+            await tx.promotionCode.update({
+              where: { id: promotion.id },
+              data: { usedCount: { increment: 1 } }
+            });
+          } else {
+            const reserved = await tx.promotionCode.updateMany({
+              where: {
+                id: promotion.id,
+                usedCount: { lt: promotion.usageLimit }
+              },
+              data: { usedCount: { increment: 1 } }
+            });
+            if (reserved.count !== 1) throw new BadRequestException("Promotion code usage limit reached");
+          }
         }
+
+        return tx.rechargeRequest.create({
+          data: {
+            customerId,
+            promotionCodeId: promotion?.id,
+            amount,
+            promotionBonus,
+            screenshotUrl: body.screenshotUrl,
+            note: body.note
+          }
+        });
       });
     } catch (error) {
       if (isPrismaErrorCode(error, "P2002")) {
@@ -334,6 +354,13 @@ export class WalletService {
       if (reviewed.count !== 1) throw new BadRequestException("Recharge request was already reviewed");
 
       if (status === ReviewStatus.REJECTED) {
+        if (request.promotionCodeId) {
+          await tx.promotionCode.updateMany({
+            where: { id: request.promotionCodeId, usedCount: { gt: 0 } },
+            data: { usedCount: { decrement: 1 } }
+          });
+        }
+
         await tx.adminLog.create({
           data: {
             actorId: reviewerId,
@@ -412,12 +439,6 @@ export class WalletService {
             note: "Recharge promotion code bonus"
           }
         });
-        if (request.promotionCodeId) {
-          await tx.promotionCode.update({
-            where: { id: request.promotionCodeId },
-            data: { usedCount: { increment: 1 } }
-          });
-        }
       }
 
       await tx.adminLog.create({

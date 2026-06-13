@@ -105,6 +105,26 @@ const SUPPORT_RULES: SupportRule[] = [
 
 export const DEFAULT_SUPPORT_SUGGESTIONS = ["找陪玩", "预算价格", "充值未到账", "试音选人", "退款投诉"];
 
+const MONEY_OR_DECISION_FALLBACK = "这类问题需要人工客服处理，请联系管理员或等待人工客服介入。";
+const DANGEROUS_AI_PHRASES = [
+  "已退款",
+  "已经退款",
+  "已加余额",
+  "已经加余额",
+  "已到账",
+  "已经到账",
+  "已处理",
+  "已经处理",
+  "已转账",
+  "已经转账",
+  "已提现",
+  "已经提现",
+  "退款成功",
+  "余额已增加",
+  "提现完成",
+  "投诉成立"
+];
+
 @Injectable()
 export class PlatformSupportService {
   private readonly logger = new Logger(PlatformSupportService.name);
@@ -428,7 +448,6 @@ export class PlatformSupportService {
         model,
         max_tokens: 160,
         temperature: 0.35,
-        thinking: { type: "disabled" },
         messages: messages.map((item) => ({
           role: item.role === "developer" ? "system" : item.role,
           content: item.content
@@ -442,7 +461,7 @@ export class PlatformSupportService {
       {
         role: "developer",
         content:
-          "你是 May猫饼电竞陪玩俱乐部客服。回复必须像真人客服，短、自然、直接。当前产品是网站，不是 APP；不要编造“APP右下角我的”“齿轮图标”“头像下拉菜单”等不存在入口。客户问个人设置/账号设置/绑定账号时，只能说网站顶部导航或手机底部有“设置”，路径是 /customer/settings。每次最多 120 个中文字，最多追问 1 个问题。不要复述客户的话，不要说“我刚才重复了/抱歉让你觉得奇怪/现在直接说”。不要连续给多个模板。只回答平台流程、下单、试音、充值说明、账号绑定、陪玩入驻、提现规则、优惠说明。涉及余额修改、退款、提现完成、封号、投诉结论、订单强制改价时必须转人工，不能承诺已处理。"
+          "你是 May猫饼电竞 的客服助手。回复必须像真人客服，短、自然、直接。当前产品是网站，不是 APP；不要编造“APP右下角我的”“齿轮图标”“头像下拉菜单”等不存在入口。客户问个人设置/账号设置/绑定账号时，只能说网站顶部导航或手机底部有“设置”，路径是 /customer/settings。严格禁止声称已完成任何资金操作，包括退款、加余额、提现、转账、到账；禁止承诺具体到账时间或金额；禁止透露系统内部 token、验证码、管理员联系方式；禁止对投诉做出处理决定。遇到资金问题、投诉、提现问题，固定回复：这类问题需要人工客服处理，请联系管理员或等待人工客服介入。每次最多 120 个中文字，最多追问 1 个问题。不要复述客户的话，不要说“我刚才重复了/抱歉让你觉得奇怪/现在直接说”。不要连续给多个模板。"
       },
       ...history.flatMap((turn) => [
         { role: "user", content: turn.message },
@@ -469,6 +488,8 @@ export class PlatformSupportService {
       .replace(/现在直接说[:：]?\s*/u, "")
       .trim();
 
+    if (this.containsDangerousAiPhrase(cleaned)) return MONEY_OR_DECISION_FALLBACK;
+
     const firstLines = cleaned
       .split(/\n+/)
       .map((line) => line.trim())
@@ -478,6 +499,11 @@ export class PlatformSupportService {
 
     if (firstLines.length <= 180) return firstLines;
     return `${firstLines.slice(0, 177)}...`;
+  }
+
+  private containsDangerousAiPhrase(answer: string) {
+    const normalized = answer.replace(/\s+/g, "");
+    return DANGEROUS_AI_PHRASES.some((phrase) => normalized.includes(phrase));
   }
 
   private async loadConversationHistory(input: { userId?: string; platform?: BotPlatform; platformUserId?: string }) {

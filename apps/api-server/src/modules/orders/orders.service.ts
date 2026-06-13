@@ -179,6 +179,7 @@ export class OrdersService {
           hours,
           unitPrice: pricing.unitPrice,
           totalAmount,
+          commissionRateSnapshot: pricing.commissionRate,
           status: OrderStatus.PAID,
           notes: body.notes,
           voiceTrialRequested: body.voiceTrialRequested ?? false,
@@ -250,6 +251,7 @@ export class OrdersService {
         data: {
           companionId,
           assignedById,
+          commissionRateSnapshot: companion.companionProfile?.commissionRate ?? this.defaultPlatformCommissionRate(),
           status: OrderStatus.ASSIGNED
         }
       });
@@ -314,7 +316,7 @@ export class OrdersService {
 
       const companionProfile = await tx.companionProfile.findUnique({
         where: { userId: externalAccount.userId },
-        select: { status: true }
+        select: { status: true, commissionRate: true }
       });
 
       if (companionProfile?.status !== CompanionProfileStatus.LISTED) {
@@ -343,6 +345,7 @@ export class OrdersService {
         },
         data: {
           companionId: externalAccount.userId,
+          commissionRateSnapshot: companionProfile.commissionRate,
           status: OrderStatus.ACCEPTED,
           acceptedAt: new Date()
         }
@@ -483,8 +486,6 @@ export class OrdersService {
   }
 
   async completeOrder(orderId: string, actorId: string) {
-    const defaultPlatformRate = new Prisma.Decimal(process.env.PLATFORM_COMMISSION_RATE ?? "0.2");
-
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -494,6 +495,7 @@ export class OrdersService {
           customerId: true,
           companionId: true,
           totalAmount: true,
+          commissionRateSnapshot: true,
           companion: {
             select: {
               companionProfile: { select: { commissionRate: true } }
@@ -514,7 +516,7 @@ export class OrdersService {
         }
       }
 
-      const platformRate = order.companion?.companionProfile?.commissionRate ?? defaultPlatformRate;
+      const platformRate = order.commissionRateSnapshot ?? order.companion?.companionProfile?.commissionRate ?? this.defaultPlatformCommissionRate();
       const platformFee = order.totalAmount.mul(platformRate);
       const companionIncome = order.totalAmount.sub(platformFee);
 
@@ -726,7 +728,7 @@ export class OrdersService {
       if (!configuredPrice) {
         throw new BadRequestException("PLATFORM_MATCH_UNIT_PRICE is not configured");
       }
-      return { unitPrice: this.positiveDecimal(configuredPrice, "PLATFORM_MATCH_UNIT_PRICE") };
+      return { unitPrice: this.positiveDecimal(configuredPrice, "PLATFORM_MATCH_UNIT_PRICE"), commissionRate: this.defaultPlatformCommissionRate() };
     }
 
     const companion = await this.prisma.companionProfile.findFirst({
@@ -741,11 +743,15 @@ export class OrdersService {
           }
         }
       },
-      select: { pricePerHour: true }
+      select: { pricePerHour: true, commissionRate: true }
     });
 
     if (!companion) throw new BadRequestException("Companion is not listed for selected game or does not exist");
-    return { unitPrice: companion.pricePerHour };
+    return { unitPrice: companion.pricePerHour, commissionRate: companion.commissionRate };
+  }
+
+  private defaultPlatformCommissionRate() {
+    return new Prisma.Decimal(process.env.PLATFORM_COMMISSION_RATE ?? "0.2");
   }
 
   private positiveDecimal(value: string, fieldName: string) {
@@ -771,6 +777,7 @@ export class OrdersService {
     hours: Prisma.Decimal;
     unitPrice: Prisma.Decimal;
     totalAmount: Prisma.Decimal;
+    commissionRateSnapshot?: Prisma.Decimal;
     platformFee: Prisma.Decimal;
     companionIncome: Prisma.Decimal;
     status: OrderStatus;
@@ -801,6 +808,7 @@ export class OrdersService {
       hours: order.hours.toString(),
       unitPrice: order.unitPrice.toString(),
       totalAmount: order.totalAmount.toString(),
+      commissionRateSnapshot: order.commissionRateSnapshot?.toString() ?? null,
       platformFee: order.platformFee.toString(),
       companionIncome: order.companionIncome.toString(),
       status: order.status,
