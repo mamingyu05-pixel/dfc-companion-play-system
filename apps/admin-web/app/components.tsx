@@ -20,9 +20,9 @@ const navItems = [
 
 export function AdminShell({ children }: { children: ReactNode }) {
   return (
-    <main className="min-h-screen bg-dfc-bg text-dfc-text">
-      <div className="grid min-h-screen lg:grid-cols-[240px_1fr]">
-        <aside className="hidden border-r border-dfc-border bg-dfc-surface lg:block">
+    <main className="min-h-screen overflow-x-hidden bg-dfc-bg text-dfc-text">
+      <div className="grid min-h-screen xl:grid-cols-[240px_1fr]">
+        <aside className="hidden border-r border-dfc-border bg-dfc-surface xl:block">
           <div className="border-b border-dfc-border p-5">
             <div className="text-lg font-black text-dfc-blue">May猫饼后台</div>
             <div className="mt-1 text-xs text-dfc-muted">电竞陪玩运营管理</div>
@@ -35,7 +35,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
             ))}
           </nav>
         </aside>
-        <section>
+        <section className="min-w-0">
           <header className="sticky top-0 z-20 flex items-center justify-between border-b border-dfc-border bg-dfc-bg/95 px-4 py-3 backdrop-blur md:px-6">
             <div>
               <div className="text-sm font-semibold">管理后台</div>
@@ -43,6 +43,19 @@ export function AdminShell({ children }: { children: ReactNode }) {
             </div>
             <span className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-3 py-2 text-xs text-dfc-subtext">SUPER_ADMIN</span>
           </header>
+          <nav className="border-b border-dfc-border bg-dfc-surface/80 px-3 py-2 xl:hidden">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {navItems.map(([label, href]) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="shrink-0 rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-2 text-xs font-semibold text-dfc-subtext"
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </nav>
           <div className="px-4 py-6 md:px-6">
             <AdminAuthGate>{children}</AdminAuthGate>
           </div>
