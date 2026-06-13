@@ -191,23 +191,22 @@ export class WalletService {
 
     const promotion = body.promotionCode ? await this.findApplicablePromotionCode(body.promotionCode, amount) : null;
     const promotionBonus = promotion ? calculatePromotionBonus(amount, promotion) : new Prisma.Decimal(0);
-    if (promotion) {
-      const existingUse = await this.prisma.rechargeRequest.findFirst({
-        where: {
-          customerId,
-          promotionCodeId: promotion.id,
-          status: { not: ReviewStatus.REJECTED }
-        },
-        select: { id: true }
-      });
-      if (existingUse) {
-        throw new BadRequestException("Promotion code can only be used once per customer");
-      }
-    }
 
     try {
       return await this.prisma.$transaction(async (tx) => {
         if (promotion) {
+          const existingUse = await tx.rechargeRequest.findFirst({
+            where: {
+              customerId,
+              promotionCodeId: promotion.id,
+              status: { not: ReviewStatus.REJECTED }
+            },
+            select: { id: true }
+          });
+          if (existingUse) {
+            throw new BadRequestException("Promotion code can only be used once per customer");
+          }
+
           if (promotion.usageLimit === null) {
             await tx.promotionCode.update({
               where: { id: promotion.id },
