@@ -247,6 +247,22 @@ export class OrderDraftsService {
     return this.companionApplyToDraft(platform, draft.id, platformUserId, body);
   }
 
+  async getDraftApplyInstruction(draftId: string) {
+    const draft = await this.prisma.orderDraft.findUnique({
+      where: { id: draftId },
+      select: { id: true, draftNo: true, status: true }
+    });
+    if (!draft) throw new NotFoundException("Order draft not found");
+    if (draft.status === OrderDraftStatus.CONVERTED || draft.status === OrderDraftStatus.CANCELLED) {
+      throw new BadRequestException("Order draft is closed");
+    }
+
+    return {
+      draftNo: draft.draftNo,
+      text: `请继续发送：报名 ${draft.draftNo} 段位/水平，报价，可服务时间，性格优势，是否可试音。只点按钮不会直接报名，后台会以这条报名信息给老板挑选。`
+    };
+  }
+
   private async companionApplyToDraft(
     platform: OrderSourcePlatform,
     draftId: string,
@@ -484,6 +500,28 @@ export class OrderDraftsService {
         content: body.note
       });
       await this.writeAdminLog(tx, adminId, draft.customerId, "CANCEL_ORDER_DRAFT", draftId, { note: body.note });
+      return updated;
+    });
+  }
+
+  async failDraft(adminId: string, draftId: string, body: { note?: string }) {
+    return this.prisma.$transaction(async (tx) => {
+      const draft = await this.assertEditableDraft(tx, draftId);
+      const note = `流单：${body.note?.trim() || "长时间无人报名或客户未继续确认"}`;
+      const updated = await tx.orderDraft.update({
+        where: { id: draftId },
+        data: { status: OrderDraftStatus.CANCELLED, note }
+      });
+      await this.writeDraftEvent(tx, {
+        draftId,
+        actorUserId: adminId,
+        actorType: OrderDraftActorType.ADMIN,
+        platform: draft.sourcePlatform,
+        platformUserId: draft.customerPlatformUserId,
+        eventType: OrderDraftEventType.DRAFT_CANCELLED,
+        content: note
+      });
+      await this.writeAdminLog(tx, adminId, draft.customerId, "FAIL_ORDER_DRAFT", draftId, { note });
       return updated;
     });
   }

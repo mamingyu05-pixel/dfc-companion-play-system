@@ -302,6 +302,20 @@ export default function OrderDraftsPage() {
     }
   }
 
+  async function failDraft() {
+    if (!selectedDraftId) return;
+    try {
+      await callApi(`/api/admin/order-drafts/${selectedDraftId}/fail`, {
+        method: "PATCH",
+        body: JSON.stringify({ note: "长时间无人报名或客户未继续确认" })
+      });
+      setStatus("已标记流单，草稿已关闭并保留后台日志。");
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "标记流单失败");
+    }
+  }
+
   return (
     <AdminShell>
       <SectionHeader eyebrow="Support Dispatch Desk" title="客服派单台" desc="AI 收集 KOOK / Discord 客户需求，客服可在这里确认、发布到派单频道、记录报名、推荐候选，客户确认后再转正式订单。" />
@@ -381,6 +395,7 @@ export default function OrderDraftsPage() {
           <ActionButton tone="secondary" onClick={() => void recommendCandidates()}>AI 推荐候选</ActionButton>
           <ActionButton tone="secondary" onClick={() => void confirmDraft()}>客户确认</ActionButton>
           <ActionButton onClick={() => void convertDraft()}>转正式订单</ActionButton>
+          <ActionButton tone="danger" onClick={() => void failDraft()}>标记流单</ActionButton>
           <ActionButton tone="danger" onClick={() => void cancelDraft()}>取消草稿</ActionButton>
         </div>
 
@@ -423,7 +438,7 @@ export default function OrderDraftsPage() {
             <Person key={`${draft.id}-source`} name={draft.sourcePlatform} sub={`语音：${draft.voiceRoomId || "-"}`} />,
             `${gameName(draft.game)} / ${draft.mode || "-"}`,
             `${draft.candidates.length} 人`,
-            <StatusBadge key={`${draft.id}-status`} tone={statusTone(draft.status)}>{toDraftStatus(draft.status)}</StatusBadge>,
+            <StatusBadge key={`${draft.id}-status`} tone={statusTone(draft.status)}>{toDraftStatus(draft.status, draft.note)}</StatusBadge>,
             draft.convertedOrder ? `${draft.convertedOrder.orderNo} / ${draft.convertedOrder.status}` : "-"
           ])}
         />
@@ -564,7 +579,8 @@ function statusTone(status: string): "default" | "warning" | "danger" | "success
   return "default";
 }
 
-function toDraftStatus(status: string) {
+function toDraftStatus(status: string, note?: string | null) {
+  if (status === "CANCELLED" && note?.startsWith("流单：")) return "已流单";
   const map: Record<string, string> = {
     NEW: "新草稿",
     CANDIDATES_NOTIFIED: "已通知候选",

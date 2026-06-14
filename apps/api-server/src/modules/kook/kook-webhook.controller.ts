@@ -63,9 +63,12 @@ export class KookWebhookController {
       if (!draftId || !kookUserId) {
         throw new BadRequestException("Missing KOOK order draft apply payload");
       }
-      return this.orderDrafts.companionApplyFromPlatform(OrderSourcePlatform.KOOK, draftId, kookUserId, {
-        messageId: this.extractMessageId(webhookBody)
-      });
+      const instruction = await this.orderDrafts.getDraftApplyInstruction(draftId);
+      const channelId = this.extractChannelId(webhookBody);
+      const notification = channelId
+        ? await this.botNotifications.sendKookChannelText(channelId, `(met)${kookUserId}(met) ${instruction.text}`)
+        : null;
+      return { prompted: true, draftNo: instruction.draftNo, notification };
     }
 
     if (!actionValue?.startsWith("order.accept.")) {

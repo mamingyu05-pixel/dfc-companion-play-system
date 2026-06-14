@@ -601,7 +601,7 @@ export class OrdersService {
       return tx.order.findUniqueOrThrow({ where: { id: orderId } });
     });
 
-    await this.botNotifications.syncKookCustomerMembershipLevel(result.customerId).catch(() => undefined);
+    await this.botNotifications.syncCustomerMembershipLevels(result.customerId).catch(() => undefined);
 
     return result;
   }

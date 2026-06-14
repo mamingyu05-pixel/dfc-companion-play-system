@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { BotEventStatus, BotEventType, BotPlatform, OrderStatus, ReviewStatus, UserRole, type Prisma } from "@prisma/client";
-import { getConfiguredKookCustomerLevelRoles, getCustomerMembershipLevel } from "../customer-membership";
+import { getConfiguredDiscordCustomerLevelRoles, getConfiguredKookCustomerLevelRoles, getCustomerMembershipLevel } from "../customer-membership";
 import { PrismaService } from "../prisma/prisma.service";
 
 interface OrderNotificationData {
@@ -131,6 +131,24 @@ export class BotNotificationService {
     }
   }
 
+  async syncCustomerMembershipLevels(userId: string): Promise<NotificationResult[]> {
+    const results = await Promise.allSettled([
+      this.syncKookCustomerMembershipLevel(userId),
+      this.syncDiscordCustomerMembershipLevel(userId)
+    ]);
+
+    return results.flatMap((result, index) => {
+      if (result.status === "fulfilled") return result.value ? [result.value] : [];
+      return [
+        {
+          platform: index === 0 ? BotPlatform.KOOK : BotPlatform.DISCORD,
+          status: BotEventStatus.FAILED,
+          error: this.errorMessage(result.reason)
+        }
+      ];
+    });
+  }
+
   async syncKookCustomerMembershipLevel(userId: string): Promise<NotificationResult | null> {
     const token = process.env.KOOK_TOKEN;
     const guildId = process.env.KOOK_GUILD_ID;
@@ -158,8 +176,9 @@ export class BotNotificationService {
     });
     const membership = getCustomerMembershipLevel(totalRecharge._sum.amount ?? 0);
     const targetRoleId = configuredRoles.find((item) => item.level === membership.level)?.roleId;
+    const customerRoleId = process.env.KOOK_CUSTOMER_ROLE_ID?.trim();
     const noOrderRoleId = process.env.KOOK_CUSTOMER_NO_ORDER_ROLE_ID?.trim();
-    if (!targetRoleId && !noOrderRoleId) return null;
+    if (!targetRoleId && !customerRoleId && !noOrderRoleId) return null;
 
     for (const role of configuredRoles) {
       if (role.roleId === targetRoleId) continue;
@@ -171,6 +190,14 @@ export class BotNotificationService {
     }
 
     try {
+      if (customerRoleId) {
+        await this.postKookAction("/api/v3/guild-role/grant", {
+          guild_id: guildId,
+          user_id: externalAccount.externalUserId,
+          role_id: Number(customerRoleId)
+        });
+      }
+
       if (targetRoleId) {
         await this.postKookAction("/api/v3/guild-role/grant", {
           guild_id: guildId,
@@ -193,6 +220,7 @@ export class BotNotificationService {
         kookUserId: externalAccount.externalUserId,
         level: membership.level,
         roleId: targetRoleId,
+        customerRoleId,
         noOrderRoleId,
         completedOrderCount
       } as unknown as Prisma.InputJsonValue, {
@@ -205,6 +233,80 @@ export class BotNotificationService {
         action: "SYNC_CUSTOMER_MEMBERSHIP_LEVEL",
         userId,
         kookUserId: externalAccount.externalUserId,
+        level: membership.level,
+        roleId: targetRoleId
+      } as unknown as Prisma.InputJsonValue, this.errorMessage(error));
+    }
+  }
+
+  async syncDiscordCustomerMembershipLevel(userId: string): Promise<NotificationResult | null> {
+    const token = process.env.DISCORD_TOKEN;
+    const guildId = process.env.DISCORD_GUILD_ID;
+    if (!token || !guildId) return null;
+
+    const configuredRoles = getConfiguredDiscordCustomerLevelRoles();
+    if (configuredRoles.length === 0) return null;
+
+    const externalAccount = await this.prisma.userExternalAccount.findFirst({
+      where: {
+        userId,
+        platform: BotPlatform.DISCORD,
+        user: { role: UserRole.CUSTOMER }
+      },
+      select: { externalUserId: true }
+    });
+    if (!externalAccount) return null;
+
+    const totalRecharge = await this.prisma.rechargeRequest.aggregate({
+      where: { customerId: userId, status: ReviewStatus.APPROVED },
+      _sum: { amount: true }
+    });
+    const completedOrderCount = await this.prisma.order.count({
+      where: { customerId: userId, status: OrderStatus.COMPLETED }
+    });
+    const membership = getCustomerMembershipLevel(totalRecharge._sum.amount ?? 0);
+    const targetRoleId = configuredRoles.find((item) => item.level === membership.level)?.roleId;
+    const customerRoleId = process.env.DISCORD_CUSTOMER_ROLE_ID?.trim();
+    const noOrderRoleId = process.env.DISCORD_CUSTOMER_NO_ORDER_ROLE_ID?.trim();
+    if (!targetRoleId && !customerRoleId && !noOrderRoleId) return null;
+
+    for (const role of configuredRoles) {
+      if (role.roleId === targetRoleId) continue;
+      await this.putOrDeleteDiscordRole("DELETE", guildId, externalAccount.externalUserId, role.roleId).catch(() => undefined);
+    }
+
+    try {
+      if (customerRoleId) {
+        await this.putOrDeleteDiscordRole("PUT", guildId, externalAccount.externalUserId, customerRoleId);
+      }
+
+      if (targetRoleId) {
+        await this.putOrDeleteDiscordRole("PUT", guildId, externalAccount.externalUserId, targetRoleId);
+      }
+
+      if (noOrderRoleId) {
+        await this.putOrDeleteDiscordRole(completedOrderCount > 0 ? "DELETE" : "PUT", guildId, externalAccount.externalUserId, noOrderRoleId);
+      }
+
+      await this.recordGenericBotEvent(BotPlatform.DISCORD, BotEventStatus.SENT, {
+        action: "SYNC_CUSTOMER_MEMBERSHIP_LEVEL",
+        userId,
+        discordUserId: externalAccount.externalUserId,
+        level: membership.level,
+        roleId: targetRoleId,
+        customerRoleId,
+        noOrderRoleId,
+        completedOrderCount
+      } as unknown as Prisma.InputJsonValue, {
+        platformGuildId: guildId,
+        platformUserId: externalAccount.externalUserId
+      });
+      return { platform: BotPlatform.DISCORD, status: BotEventStatus.SENT };
+    } catch (error) {
+      return this.recordGenericNotificationFailure(BotPlatform.DISCORD, {
+        action: "SYNC_CUSTOMER_MEMBERSHIP_LEVEL",
+        userId,
+        discordUserId: externalAccount.externalUserId,
         level: membership.level,
         roleId: targetRoleId
       } as unknown as Prisma.InputJsonValue, this.errorMessage(error));
@@ -454,6 +556,17 @@ export class BotNotificationService {
     const result = (await response.json()) as { code: number; message: string; data?: T };
     if (result.code !== 0) throw new Error(`KOOK API error ${result.code}: ${result.message}`);
     return result.data as T;
+  }
+
+  private async putOrDeleteDiscordRole(method: "PUT" | "DELETE", guildId: string, discordUserId: string, roleId: string) {
+    const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${discordUserId}/roles/${roleId}`, {
+      method,
+      headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` }
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Discord role API HTTP ${response.status}${text ? `: ${text}` : ""}`);
+    }
   }
 
   private toNotificationResults(results: PromiseSettledResult<NotificationResult>[]) {

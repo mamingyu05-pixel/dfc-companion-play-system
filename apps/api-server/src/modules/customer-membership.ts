@@ -51,9 +51,17 @@ export function getCustomerMembershipLevel(totalRecharge: Prisma.Decimal | strin
   };
 }
 
-export function getConfiguredKookCustomerLevelRoles() {
+function getConfiguredCustomerLevelRoles(platform: "KOOK" | "DISCORD") {
   return CUSTOMER_MEMBERSHIP_TIERS.map((tier) => ({
     level: tier.level,
-    roleId: process.env[tier.envVar]?.trim()
+    roleId: process.env[tier.envVar.replace("KOOK_", `${platform}_`)]?.trim()
   })).filter((item): item is { level: number; roleId: string } => Boolean(item.roleId));
+}
+
+export function getConfiguredKookCustomerLevelRoles() {
+  return getConfiguredCustomerLevelRoles("KOOK");
+}
+
+export function getConfiguredDiscordCustomerLevelRoles() {
+  return getConfiguredCustomerLevelRoles("DISCORD");
 }

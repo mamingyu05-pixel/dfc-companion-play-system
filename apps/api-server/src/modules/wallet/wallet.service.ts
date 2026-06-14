@@ -466,7 +466,7 @@ export class WalletService {
     });
 
     if (result.status === ReviewStatus.APPROVED) {
-      await this.botNotifications.syncKookCustomerMembershipLevel(result.customerId).catch(() => undefined);
+      await this.botNotifications.syncCustomerMembershipLevels(result.customerId).catch(() => undefined);
     }
 
     return result;

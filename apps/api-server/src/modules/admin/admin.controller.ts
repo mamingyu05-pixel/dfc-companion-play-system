@@ -696,6 +696,15 @@ export class AdminController {
     return this.orderDrafts.cancelDraft(user.id, id, body);
   }
 
+  @Patch("order-drafts/:id/fail")
+  failOrderDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { note?: string }
+  ) {
+    return this.orderDrafts.failDraft(user.id, id, body);
+  }
+
   @Post("order-drafts/:id/convert")
   convertOrderDraft(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.orderDrafts.convertDraftToOrder(user.id, id);
