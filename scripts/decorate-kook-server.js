@@ -26,7 +26,9 @@ const rolePlan = [
 const channelIntroPlan = [
   {
     env: "KOOK_SUPPORT_CHANNEL_ID",
-    title: "May猫饼客服接待",
+    name: "💬｜客服接待",
+    topic: "客户咨询、AI客服、人工接管、找陪玩需求入口",
+    title: "欢迎来到 May猫饼客服接待",
     lines: [
       "这里是客户咨询入口。你可以直接说需求，AI 客服会先整理信息，复杂问题会转人工。",
       "找陪玩请说清楚：游戏、模式、段位、时长、预算、是否试音、语音偏好。",
@@ -36,7 +38,9 @@ const channelIntroPlan = [
   },
   {
     env: "KOOK_DISPATCH_CHANNEL_ID",
-    title: "人工派单",
+    name: "📣｜人工派单",
+    topic: "客服发布需求，陪玩报名，管理员确认",
+    title: "May猫饼人工派单大厅",
     lines: [
       "客服或 AI 会在这里整理客户需求，陪玩按格式报名，管理员最终确认。",
       "陪玩报名建议包含：可服务时间、报价、擅长模式、是否可试音、备注。",
@@ -45,7 +49,9 @@ const channelIntroPlan = [
   },
   {
     env: "KOOK_RECHARGE_CHANNEL_ID",
-    title: "充值审核",
+    name: "💳｜充值审核",
+    topic: "人工充值提醒、截图核对、到账确认",
+    title: "May猫饼充值审核",
     lines: [
       "用于人工充值提醒和截图核对。",
       "审核前确认客户账号、金额、截图、备注、优惠码是否匹配。",
@@ -54,7 +60,9 @@ const channelIntroPlan = [
   },
   {
     env: "KOOK_WITHDRAWAL_CHANNEL_ID",
-    title: "提现审核",
+    name: "💸｜提现审核",
+    topic: "陪玩提现申请、支付宝信息核对、人工打款确认",
+    title: "May猫饼提现审核",
     lines: [
       "用于陪玩提现申请、支付宝收款信息核对和人工打款确认。",
       "打款前确认可提现收入、订单完成状态、是否存在投诉。",
@@ -63,7 +71,9 @@ const channelIntroPlan = [
   },
   {
     env: "KOOK_COMPLAINT_CHANNEL_ID",
-    title: "投诉处理",
+    name: "🧯｜投诉处理",
+    topic: "退款、投诉、争议订单处理",
+    title: "May猫饼投诉处理",
     lines: [
       "用于退款、投诉、争议订单处理。",
       "处理前收集订单号、聊天记录、截图或录屏、客户诉求、陪玩说明。",
@@ -72,7 +82,9 @@ const channelIntroPlan = [
   },
   {
     env: "KOOK_ADMIN_CHANNEL_ID",
-    title: "管理提醒",
+    name: "🛎️｜管理提醒",
+    topic: "系统异常、Bot失败日志、充值/提现/投诉待办",
+    title: "May猫饼管理提醒",
     lines: [
       "用于系统异常、Bot 失败日志、待审核充值、提现和投诉提醒。",
       "每日建议检查：未派单订单、充值审核、提现审核、投诉、数据库备份、Bot 日志。"
@@ -133,6 +145,18 @@ async function main() {
     console.log(`grant support role ${supportRoleId} to KOOK user ${userId}`);
   }
 
+  if (args.decorateChannels) {
+    console.log("\nDecorating channel names and topics...\n");
+    for (const item of channelIntroPlan) {
+      const channelId = env[item.env];
+      if (!channelId) {
+        console.log(`skip ${item.env}: not configured`);
+        continue;
+      }
+      await tryUpdateChannel(token, channelId, item);
+    }
+  }
+
   if (args.postWelcome) {
     console.log("\nPosting channel layout messages...\n");
     for (const item of channelIntroPlan) {
@@ -164,6 +188,7 @@ function parseArgs(argv) {
     adminUserIds: getFlagValues(argv, "--admin-user-id"),
     supportUserIds: getFlagValues(argv, "--support-user-id"),
     postWelcome: argv.includes("--post-welcome"),
+    decorateChannels: argv.includes("--decorate-channels"),
     botAsSupport: !argv.includes("--no-bot-support")
   };
 }
@@ -311,8 +336,35 @@ async function postChannelMessage(token, channelId, content) {
   });
 }
 
+async function tryUpdateChannel(token, channelId, item) {
+  try {
+    await kookRequest(token, "/api/v3/channel/update", {
+      method: "POST",
+      body: JSON.stringify({
+        channel_id: channelId,
+        name: item.name,
+        topic: item.topic
+      })
+    });
+    console.log(`updated ${channelId} -> ${item.name}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`warn update channel failed for ${item.env}: ${message}`);
+  }
+}
+
 function buildIntroMessage(item) {
-  return [`**${item.title}**`, "", ...item.lines.map((line) => `- ${line}`)].join("\n");
+  return [
+    `**${item.title}**`,
+    "",
+    "━━━━━━━━━━━━━━━━",
+    "",
+    ...item.lines.map((line) => `- ${line}`),
+    "",
+    "━━━━━━━━━━━━━━━━",
+    "",
+    "May猫饼电竞：下单、派单、充值、提现、投诉都以网站后台记录为准。"
+  ].join("\n");
 }
 
 async function kookRequest(token, apiPath, init) {

@@ -8,6 +8,7 @@
 - 创建或复用 `猫饼会员 Lv.1 - Lv.15`。
 - 创建或复用 `霓虹贵宾`、`May名人堂` 两个特殊等级。
 - 给站长 KOOK 账号授予 `总管理` 和 `管理员` 角色。
+- 可选：把核心频道改成更适合运营的命名和主题说明。
 - 可选：向客服、派单、充值、提现、投诉、管理频道发送排版说明。
 - 输出 `.env` 需要填写的 KOOK 角色 ID。
 
@@ -41,13 +42,13 @@ KOOK_ADMIN_CHANNEL_ID=3554887069392377
 cd /opt/companion-play-system
 sudo git pull origin main
 sudo docker compose build api-server
-sudo docker compose run --rm api-server node /app/scripts/decorate-kook-server.js 3189962583916682 1481361693 --post-welcome
+sudo docker compose run --rm api-server node /app/scripts/decorate-kook-server.js 3189962583916682 1481361693 --decorate-channels --post-welcome
 ```
 
 以后如果只想修角色分组，不想再次刷频道说明，去掉 `--post-welcome`：
 
 ```bash
-sudo docker compose run --rm api-server node /app/scripts/decorate-kook-server.js 3189962583916682 1481361693
+sudo docker compose run --rm api-server node /app/scripts/decorate-kook-server.js 3189962583916682 1481361693 --decorate-channels
 ```
 
 如果还有其他管理员或真人客服，也可以追加 KOOK 用户 ID：
@@ -107,6 +108,23 @@ May猫饼客服 Bot 的角色
 
 右侧成员列表会优先按角色顺序显示，所以管理员和客服要放在客户等级上方。
 
+## 推荐频道视觉
+
+脚本会尝试把已有频道改成：
+
+```text
+💬｜客服接待
+📣｜人工派单
+💳｜充值审核
+💸｜提现审核
+🧯｜投诉处理
+🛎️｜管理提醒
+```
+
+这套结构参考成熟社群常见做法：客户入口简洁、运营频道分工明确、审核频道只给管理看、派单频道独立承接需求。
+
+KOOK 如果不允许某些特殊符号，脚本会保留原频道并输出 warning，不会删除频道。
+
 ## 如果脚本报权限错误
 
 常见错误：
@@ -129,8 +147,9 @@ KOOK API HTTP 403
 1. KOOK 右侧列表里，站长 `mmy66#0961` 应显示管理员/总管理身份。
 2. `May猫饼客服` Bot 应显示在 `May客服` 分组，不应只落在 `在线`。
 3. 服务器设置里能看到会员等级角色。
-4. 客服、派单、充值、提现、投诉、管理频道里有对应说明消息。
-5. 网站充值审核通过后，绑定 KOOK 的客户会自动获得对应会员等级。
+4. 核心频道名称应变成 `💬｜客服接待`、`📣｜人工派单` 这种样式。
+5. 客服、派单、充值、提现、投诉、管理频道里有对应说明消息。
+6. 网站充值审核通过后，绑定 KOOK 的客户会自动获得对应会员等级。
 
 ## 右侧仍然显示在“在线”的原因
 
