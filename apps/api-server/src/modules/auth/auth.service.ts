@@ -401,6 +401,9 @@ export class AuthService {
 
   getPublicConfig() {
     return {
+      pricing: {
+        platformMatchUnitPrice: process.env.PLATFORM_MATCH_UNIT_PRICE || null
+      },
       support: {
         discordUrl: process.env.SUPPORT_DISCORD_URL || null,
         kookUrl: process.env.SUPPORT_KOOK_URL || null,

@@ -22,10 +22,17 @@ type WalletSummary = {
   wallet: { availableBalance: string } | null;
 };
 
+type PublicConfig = {
+  pricing?: {
+    platformMatchUnitPrice?: string | null;
+  };
+};
+
 export default function OrderPage() {
   const [game, setGame] = useState("DELTA_FORCE");
   const [companions, setCompanions] = useState<CompanionOption[]>([]);
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
+  const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [assignmentType, setAssignmentType] = useState<"DIRECT" | "MATCH">("DIRECT");
   const [companionId, setCompanionId] = useState("");
   const [mode, setMode] = useState("排位/上分");
@@ -63,12 +70,24 @@ export default function OrderPage() {
     void loadData(game).catch(() => setError("无法加载真实下单数据，请刷新页面"));
   }, [game]);
 
+  useEffect(() => {
+    void fetch("/api/auth/public-config")
+      .then(async (response) => {
+        if (!response.ok) return {};
+        return (await response.json()) as PublicConfig;
+      })
+      .then(setPublicConfig)
+      .catch(() => setPublicConfig({}));
+  }, []);
+
   const selectedGame = games.find((item) => item.code === game);
   const selectedCompanion = companions.find((item) => item.id === companionId);
-  const unitPrice = assignmentType === "MATCH" ? 100 : Number(selectedCompanion?.pricePerHour ?? 0);
+  const platformMatchUnitPrice = Number(publicConfig.pricing?.platformMatchUnitPrice ?? 0);
+  const unitPrice = assignmentType === "MATCH" ? platformMatchUnitPrice : Number(selectedCompanion?.pricePerHour ?? 0);
   const totalAmount = useMemo(() => unitPrice * Number(hours || 0), [hours, unitPrice]);
   const availableBalance = Number(wallet?.wallet?.availableBalance ?? 0);
   const balanceAfter = availableBalance - totalAmount;
+  const priceConfigured = unitPrice > 0;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -193,7 +212,7 @@ export default function OrderPage() {
           {error ? <Alert tone="danger">{error}</Alert> : null}
           {status ? <Alert tone="success">{status}</Alert> : null}
 
-          <button disabled={isSubmitting || totalAmount <= 0 || (assignmentType === "DIRECT" && !companionId)} className="mt-5 w-full rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">
+          <button disabled={isSubmitting || totalAmount <= 0 || !priceConfigured || (assignmentType === "DIRECT" && !companionId)} className="mt-5 w-full rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">
             {isSubmitting ? "提交中..." : "确认下单"}
           </button>
         </form>
@@ -202,16 +221,16 @@ export default function OrderPage() {
           <h2 className="text-base font-semibold">价格确认</h2>
           <div className="mt-4 space-y-3 text-sm">
             <Line label="游戏" value={selectedGame?.name ?? game} />
-            <Line label="陪玩单价" value={`¥${formatMoney(String(unitPrice))} / 小时`} />
+            <Line label={assignmentType === "MATCH" ? "人工挑人参考价" : "陪玩单价"} value={priceConfigured ? `¥${formatMoney(String(unitPrice))} / 小时` : "客服报价后确认"} />
             <Line label="选择时长" value={`${hours} 小时`} />
-            <Line label="订单总价" value={`¥${formatMoney(String(totalAmount))}`} strong />
+            <Line label="订单总价" value={priceConfigured ? `¥${formatMoney(String(totalAmount))}` : "待客服确认"} strong />
             <Line label="当前余额" value={`¥${formatMoney(String(availableBalance))}`} />
-            <Line label="下单后余额" value={`¥${formatMoney(String(balanceAfter))}`} />
+            <Line label="下单后余额" value={priceConfigured ? `¥${formatMoney(String(balanceAfter))}` : "待客服确认"} />
           </div>
-          <div className={`mt-4 rounded-dfc-control border px-3 py-2 text-xs ${balanceAfter >= 0 ? "border-dfc-success/40 bg-dfc-success/10 text-dfc-success" : "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger"}`}>
-            {balanceAfter >= 0 ? "余额充足，可提交订单。最终金额以后端计算为准。" : "余额不足，请先充值。"}
+          <div className={`mt-4 rounded-dfc-control border px-3 py-2 text-xs ${priceConfigured && balanceAfter >= 0 ? "border-dfc-success/40 bg-dfc-success/10 text-dfc-success" : "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger"}`}>
+            {!priceConfigured ? "当前价格待定，请先联系客服确认报价或选择已上架陪玩。" : balanceAfter >= 0 ? "余额充足，可提交订单。最终金额以后端计算为准。" : "余额不足，请先充值。"}
           </div>
-          {balanceAfter < 0 ? <Link href="/recharge" className="mt-3 inline-block text-sm font-semibold text-dfc-blue">去充值</Link> : null}
+          {priceConfigured && balanceAfter < 0 ? <Link href="/recharge" className="mt-3 inline-block text-sm font-semibold text-dfc-blue">去充值</Link> : null}
         </aside>
       </section>
     </CustomerShell>
