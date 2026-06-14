@@ -35,29 +35,69 @@ type OrderDraft = {
   customer?: { email: string; displayName: string } | null;
   convertedOrder?: { id: string; orderNo: string; status: string } | null;
   candidates: Array<{ id: string; status: string }>;
+  publishedPlatforms?: Array<{
+    platform: "DISCORD" | "KOOK" | string;
+    status: "SENT" | "FAILED" | string;
+    channelId?: string | null;
+    messageId?: string | null;
+    error?: string | null;
+    createdAt: string;
+  }>;
 };
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [drafts, setDrafts] = useState<OrderDraft[]>([]);
   const [error, setError] = useState("");
+  const [actioningDraftId, setActioningDraftId] = useState("");
+
+  async function loadOrders() {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    const [ordersResponse, draftsResponse] = await Promise.all([
+      fetch("/api/admin/orders", { headers }),
+      fetch("/api/admin/order-drafts", { headers })
+    ]);
+    if (!ordersResponse.ok || !draftsResponse.ok) throw new Error("无法加载订单");
+    setOrders((await ordersResponse.json()) as AdminOrder[]);
+    setDrafts((await draftsResponse.json()) as OrderDraft[]);
+  }
 
   useEffect(() => {
-    async function loadOrders() {
-      const token = localStorage.getItem("dfc_admin_token");
-      if (!token) return;
-      const headers = { Authorization: `Bearer ${token}` };
-      const [ordersResponse, draftsResponse] = await Promise.all([
-        fetch("/api/admin/orders", { headers }),
-        fetch("/api/admin/order-drafts", { headers })
-      ]);
-      if (!ordersResponse.ok || !draftsResponse.ok) throw new Error("无法加载订单");
-      setOrders((await ordersResponse.json()) as AdminOrder[]);
-      setDrafts((await draftsResponse.json()) as OrderDraft[]);
-    }
-
     void loadOrders().catch(() => setError("无法加载真实订单数据"));
   }, []);
+
+  async function failDraft(draftId: string) {
+    if (!window.confirm("确认把这条派单草稿标记为流单吗？适用于长时间无人接单、客户失联或需求取消。")) return;
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) {
+      setError("请先登录管理员账号");
+      return;
+    }
+    try {
+      setActioningDraftId(draftId);
+      setError("");
+      const response = await fetch(`/api/admin/order-drafts/${draftId}/fail`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ note: "长时间无人接单，人工标记流单" })
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        throw new Error(message || "标记流单失败");
+      }
+      await loadOrders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "标记流单失败");
+    } finally {
+      setActioningDraftId("");
+    }
+  }
 
   const stats = useMemo(() => {
     const paid = orders.filter((order) => order.status === "PAID").length;
@@ -92,17 +132,19 @@ export default function OrdersPage() {
           </Link>
         </div>
         <DataTable
-          columns={["草稿号", "来源", "客户", "游戏", "模式", "时长", "预算", "报名", "状态"]}
+          columns={["草稿号", "客户来源", "已发布", "客户", "游戏", "模式", "时长", "预算", "报名", "状态", "人工操作"]}
           rows={drafts.slice(0, 8).map((draft) => [
             <Link key={`${draft.id}-no`} href="/order-drafts" className="font-black text-cyan-200">{draft.draftNo}</Link>,
-            draft.sourcePlatform,
+            <PlatformBadge key={`${draft.id}-source`} platform={draft.sourcePlatform} />,
+            <PublishedPlatforms key={`${draft.id}-published`} platforms={draft.publishedPlatforms ?? []} />,
             draft.customer ? <Person key={`${draft.id}-customer`} name={draft.customer.displayName} email={draft.customer.email} /> : <Person key={`${draft.id}-platform-customer`} name={draft.customerDisplayName ?? "频道客户"} email={draft.customerPlatformUserId ?? "未绑定站内客户"} />,
             gameName(draft.game),
             draft.mode || "-",
             draft.hours ? `${formatMoney(draft.hours)}h` : "-",
             draft.budgetAmount ? <span key={`${draft.id}-budget`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(draft.budgetAmount)}</span> : <span key={`${draft.id}-budget-empty`} className="text-dfc-muted">按报价</span>,
             `${draft.candidates.length} 人`,
-            <StatusBadge key={`${draft.id}-status`} tone={draftStatusTone(draft.status)}>{toDraftStatus(draft.status)}</StatusBadge>
+            <StatusBadge key={`${draft.id}-status`} tone={draftStatusTone(draft.status)}>{toDraftStatus(draft.status)}</StatusBadge>,
+            <DraftActions key={`${draft.id}-actions`} draft={draft} actioningDraftId={actioningDraftId} onFail={() => void failDraft(draft.id)} />
           ])}
         />
       </section>
@@ -140,6 +182,43 @@ function Person({ name, email }: { name: string; email: string }) {
   );
 }
 
+function PlatformBadge({ platform }: { platform: string }) {
+  return <StatusBadge tone={platform === "KOOK" ? "warning" : platform === "DISCORD" ? "default" : "success"}>{platformLabel(platform)}</StatusBadge>;
+}
+
+function PublishedPlatforms({ platforms }: { platforms: NonNullable<OrderDraft["publishedPlatforms"]> }) {
+  if (!platforms.length) return <span className="text-dfc-muted">未记录</span>;
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {platforms.map((item) => (
+        <StatusBadge key={`${item.platform}-${item.messageId ?? item.createdAt}`} tone={item.status === "SENT" ? "success" : "danger"}>
+          {platformLabel(item.platform)} {item.status === "SENT" ? "已发" : "失败"}
+        </StatusBadge>
+      ))}
+    </div>
+  );
+}
+
+function DraftActions({ draft, actioningDraftId, onFail }: { draft: OrderDraft; actioningDraftId: string; onFail: () => void }) {
+  const closed = draft.status === "CONVERTED" || draft.status === "CANCELLED";
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Link href={`/order-drafts?draftId=${draft.id}`} className="rounded-dfc-control border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100 hover:border-cyan-300/60">
+        处理
+      </Link>
+      <button
+        type="button"
+        disabled={closed || actioningDraftId === draft.id}
+        onClick={onFail}
+        className="rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-xs font-black text-dfc-danger transition hover:bg-dfc-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {actioningDraftId === draft.id ? "处理中" : "流单"}
+      </button>
+    </div>
+  );
+}
+
 function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" | "purple" }) {
   const styles = {
     cyan: "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
@@ -167,6 +246,13 @@ function formatMoney(value: string) {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function platformLabel(platform: string) {
+  if (platform === "DISCORD") return "Discord";
+  if (platform === "KOOK") return "KOOK";
+  if (platform === "WEB") return "后台";
+  return platform;
 }
 
 function gameName(code: string) {

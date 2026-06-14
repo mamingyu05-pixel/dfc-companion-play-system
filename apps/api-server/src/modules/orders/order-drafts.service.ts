@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  BotEventStatus,
+  BotEventType,
   CompanionProfileStatus,
   GameCode,
   OrderDraftActorType,
@@ -79,7 +81,31 @@ export class OrderDraftsService {
       }
     });
 
-    return drafts.map((draft) => this.serializeDraft(draft));
+    const draftIds = new Set(drafts.map((draft) => draft.id));
+    const notificationEvents = await this.prisma.botEvent.findMany({
+      where: { type: BotEventType.ADMIN_ALERT_SENT },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+      select: {
+        platform: true,
+        status: true,
+        platformChannelId: true,
+        platformMessageId: true,
+        error: true,
+        payload: true,
+        createdAt: true
+      }
+    });
+    const notificationsByDraftId = new Map<string, typeof notificationEvents>();
+    for (const event of notificationEvents) {
+      const draftId = this.getPayloadDraftId(event.payload);
+      if (!draftId || !draftIds.has(draftId)) continue;
+      const current = notificationsByDraftId.get(draftId) ?? [];
+      current.push(event);
+      notificationsByDraftId.set(draftId, current);
+    }
+
+    return drafts.map((draft) => this.serializeDraft(draft, notificationsByDraftId.get(draft.id) ?? []));
   }
 
   async createDraft(adminId: string, body: CreateDraftBody) {
@@ -694,7 +720,15 @@ export class OrderDraftsService {
       createdAt: Date;
       actor?: { id: string; email: string; displayName: string } | null;
     }>;
-  }) {
+  }, notificationEvents: Array<{
+    platform: string;
+    status: BotEventStatus;
+    platformChannelId: string | null;
+    platformMessageId: string | null;
+    error: string | null;
+    payload: Prisma.JsonValue;
+    createdAt: Date;
+  }> = []) {
     return {
       ...draft,
       hours: draft.hours?.toString() ?? null,
@@ -714,8 +748,40 @@ export class OrderDraftsService {
             : null
         }
       })) ?? [],
-      events: draft.events ?? []
+      events: draft.events ?? [],
+      publishedPlatforms: this.serializeDraftNotifications(notificationEvents)
     };
+  }
+
+  private serializeDraftNotifications(events: Array<{
+    platform: string;
+    status: BotEventStatus;
+    platformChannelId: string | null;
+    platformMessageId: string | null;
+    error: string | null;
+    createdAt: Date;
+  }>) {
+    const latestByPlatform = new Map<string, (typeof events)[number]>();
+    for (const event of events) {
+      if (!latestByPlatform.has(event.platform)) {
+        latestByPlatform.set(event.platform, event);
+      }
+    }
+
+    return [...latestByPlatform.values()].map((event) => ({
+      platform: event.platform,
+      status: event.status,
+      channelId: event.platformChannelId,
+      messageId: event.platformMessageId,
+      error: event.error,
+      createdAt: event.createdAt
+    }));
+  }
+
+  private getPayloadDraftId(payload: Prisma.JsonValue) {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const draftId = (payload as { draftId?: unknown }).draftId;
+    return typeof draftId === "string" ? draftId : null;
   }
 
   private positiveDecimal(value: string, fieldName: string) {
