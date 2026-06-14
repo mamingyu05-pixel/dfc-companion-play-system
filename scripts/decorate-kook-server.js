@@ -90,7 +90,12 @@ async function main() {
   const env = { ...loadEnv(path.resolve(process.cwd(), ".env")), ...process.env };
   const token = env.KOOK_TOKEN;
   const guildId = args.guildId || env.KOOK_GUILD_ID;
-  const adminUserId = args.adminUserId || env.KOOK_ADMIN_USER_ID || "1481361693";
+  const adminUserIds = unique([
+    args.adminUserId || env.KOOK_ADMIN_USER_ID || "1481361693",
+    ...args.adminUserIds,
+    ...splitIds(env.KOOK_ADMIN_USER_IDS)
+  ]);
+  const supportUserIds = unique([...args.supportUserIds, ...splitIds(env.KOOK_SUPPORT_USER_IDS)]);
 
   if (!token) throw new Error("KOOK_TOKEN is missing in .env");
   if (!guildId) throw new Error("KOOK_GUILD_ID is missing in .env. Example: node scripts/decorate-kook-server.js 3189962583916682");
@@ -103,13 +108,29 @@ async function main() {
 
   for (const item of rolePlan) {
     const role = await ensureRole(token, guildId, existingRoles, item);
+    await tryUpdateRoleDisplay(token, guildId, role, item);
     roleOutput[item.env] = role.id;
     console.log(`${role.created ? "create" : "reuse"} ${item.name} -> ${role.id}`);
+  }
 
-    if (item.grantToAdmin && adminUserId) {
-      await grantRole(token, guildId, adminUserId, role.id);
-      console.log(`  grant to KOOK user ${adminUserId}`);
+  const adminRoleIds = [roleOutput.KOOK_SUPER_ADMIN_ROLE_ID, roleOutput.KOOK_ADMIN_ROLE_ID].filter(Boolean);
+  for (const userId of adminUserIds) {
+    for (const roleId of adminRoleIds) {
+      await grantRole(token, guildId, userId, roleId);
+      console.log(`grant admin role ${roleId} to KOOK user ${userId}`);
     }
+  }
+
+  const supportRoleId = roleOutput.KOOK_SUPPORT_ROLE_ID;
+  if (supportRoleId && args.botAsSupport) {
+    const botUserId = await tryGetCurrentBotUserId(token);
+    if (botUserId) {
+      supportUserIds.unshift(botUserId);
+    }
+  }
+  for (const userId of unique(supportUserIds)) {
+    await grantRole(token, guildId, userId, supportRoleId);
+    console.log(`grant support role ${supportRoleId} to KOOK user ${userId}`);
   }
 
   if (args.postWelcome) {
@@ -136,11 +157,57 @@ async function main() {
 }
 
 function parseArgs(argv) {
+  const positional = getPositionalValues(argv);
   return {
-    guildId: argv.find((value) => !value.startsWith("--")),
-    adminUserId: argv.find((value, index) => index > 0 && !value.startsWith("--")),
-    postWelcome: argv.includes("--post-welcome")
+    guildId: positional[0],
+    adminUserId: positional[1],
+    adminUserIds: getFlagValues(argv, "--admin-user-id"),
+    supportUserIds: getFlagValues(argv, "--support-user-id"),
+    postWelcome: argv.includes("--post-welcome"),
+    botAsSupport: !argv.includes("--no-bot-support")
   };
+}
+
+function getPositionalValues(argv) {
+  const values = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (value.startsWith("--")) {
+      if (argv[index + 1] && !argv[index + 1].startsWith("--")) {
+        index += 1;
+      }
+      continue;
+    }
+    values.push(value);
+  }
+  return values;
+}
+
+function getFlagValues(argv, flag) {
+  const values = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (value === flag && argv[index + 1] && !argv[index + 1].startsWith("--")) {
+      values.push(argv[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (value.startsWith(`${flag}=`)) {
+      values.push(value.slice(flag.length + 1));
+    }
+  }
+  return values.flatMap(splitIds);
+}
+
+function splitIds(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function loadEnv(filePath) {
@@ -190,6 +257,36 @@ async function ensureRole(token, guildId, existingRoles, item) {
   };
   existingRoles.push(role);
   return role;
+}
+
+async function tryUpdateRoleDisplay(token, guildId, role, item) {
+  try {
+    await kookRequest(token, "/api/v3/guild-role/update", {
+      method: "POST",
+      body: JSON.stringify({
+        guild_id: guildId,
+        role_id: Number(role.id),
+        name: item.name,
+        color: item.color,
+        hoist: 1,
+        mentionable: 0
+      })
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`warn update role display failed for ${item.name}: ${message}`);
+  }
+}
+
+async function tryGetCurrentBotUserId(token) {
+  try {
+    const data = await kookRequest(token, "/api/v3/user/me", { method: "GET" });
+    return data?.id ? String(data.id) : undefined;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`warn cannot detect bot user id: ${message}`);
+    return undefined;
+  }
 }
 
 async function grantRole(token, guildId, userId, roleId) {

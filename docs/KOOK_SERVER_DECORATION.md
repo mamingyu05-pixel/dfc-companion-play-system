@@ -44,6 +44,18 @@ sudo docker compose build api-server
 sudo docker compose run --rm api-server node /app/scripts/decorate-kook-server.js 3189962583916682 1481361693 --post-welcome
 ```
 
+以后如果只想修角色分组，不想再次刷频道说明，去掉 `--post-welcome`：
+
+```bash
+sudo docker compose run --rm api-server node /app/scripts/decorate-kook-server.js 3189962583916682 1481361693
+```
+
+如果还有其他管理员或真人客服，也可以追加 KOOK 用户 ID：
+
+```bash
+sudo docker compose run --rm api-server node /app/scripts/decorate-kook-server.js 3189962583916682 1481361693 --admin-user-id 另一个管理员ID --support-user-id 客服ID
+```
+
 脚本输出的 `KOOK_...ROLE_ID=...` 复制到服务器 `.env`。
 
 ```bash
@@ -115,9 +127,31 @@ KOOK API HTTP 403
 ## 验证
 
 1. KOOK 右侧列表里，站长 `mmy66#0961` 应显示管理员/总管理身份。
-2. 服务器设置里能看到会员等级角色。
-3. 客服、派单、充值、提现、投诉、管理频道里有对应说明消息。
-4. 网站充值审核通过后，绑定 KOOK 的客户会自动获得对应会员等级。
+2. `May猫饼客服` Bot 应显示在 `May客服` 分组，不应只落在 `在线`。
+3. 服务器设置里能看到会员等级角色。
+4. 客服、派单、充值、提现、投诉、管理频道里有对应说明消息。
+5. 网站充值审核通过后，绑定 KOOK 的客户会自动获得对应会员等级。
+
+## 右侧仍然显示在“在线”的原因
+
+KOOK 右侧成员列表不会按昵称自动分类，只看角色：
+
+1. 该成员有没有对应角色。
+2. 该角色是否开启独立显示。
+3. 该角色排序是否高于普通角色。
+4. Bot 自己的角色是否高于它要授予的业务角色。
+
+如果脚本运行后还是在 `在线`：
+
+1. 到 `服务器设置 -> 角色权限`。
+2. 点 `👑 总管理`、`🛡️ 管理员`、`💬 May客服`。
+3. 确认开启类似 `与在线成员分开显示 / 独立显示` 的选项。
+4. 把角色拖到推荐顺序。
+5. 如果是某个真人客服没分类，重新运行脚本并追加：
+
+```bash
+sudo docker compose run --rm api-server node /app/scripts/decorate-kook-server.js 3189962583916682 1481361693 --support-user-id 这个客服的KOOK用户ID
+```
 
 ## 注意
 
