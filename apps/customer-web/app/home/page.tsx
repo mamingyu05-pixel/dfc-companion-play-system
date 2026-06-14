@@ -1,10 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { MaycatSignalArtwork } from "../brand";
 import { CompanionCard, CustomerShell, SectionHeader, StatCard } from "../components";
 import { games } from "../data";
+
+type Platform = "DISCORD" | "KOOK";
+
+type PublicConfig = {
+  support?: {
+    discordUrl?: string | null;
+    kookUrl?: string | null;
+  };
+};
 
 type CustomerProfile = {
   user: {
@@ -37,6 +47,12 @@ type CustomerProfile = {
     balanceAfter: string;
     createdAt: string;
   }>;
+  externalAccounts: Array<{
+    platform: Platform;
+    externalUserId: string;
+    displayName: string | null;
+    createdAt: string;
+  }>;
 };
 
 type ApiCompanion = {
@@ -55,6 +71,7 @@ type ApiCompanion = {
 export default function CustomerHomePage() {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [companions, setCompanions] = useState<ApiCompanion[]>([]);
+  const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -80,6 +97,16 @@ export default function CustomerHomePage() {
         if (data) setProfile(data);
       })
       .catch(() => setError("无法加载客户资料，请刷新页面或重新登录"));
+  }, []);
+
+  useEffect(() => {
+    void fetch("/api/auth/public-config")
+      .then(async (response) => {
+        if (!response.ok) return {};
+        return (await response.json()) as PublicConfig;
+      })
+      .then(setPublicConfig)
+      .catch(() => setPublicConfig({}));
   }, []);
 
   useEffect(() => {
@@ -111,6 +138,8 @@ export default function CustomerHomePage() {
   const availableBalance = profile.wallet?.availableBalance ?? "0";
   const pendingOrderCount = profile.recentOrders.filter((order) => ["PAID", "ASSIGNED", "ACCEPTED", "IN_PROGRESS"].includes(order.status)).length;
   const onlineCompanionCount = companions.filter((companion) => companion.onlineStatus === "ONLINE").length;
+  const platformRouting = getPlatformRouting(profile.externalAccounts ?? [], publicConfig);
+  const boundPlatformLabel = platformRouting.singlePlatform ? platformName(platformRouting.singlePlatform) : "";
 
   return (
     <CustomerShell>
@@ -154,14 +183,53 @@ export default function CustomerHomePage() {
                   <div className="mt-1 text-lg font-black text-white">KOOK / DC 试音后再派单</div>
                 </div>
                 <Link href="/settings" className="rounded-dfc-control border border-dfc-success/50 bg-dfc-success/10 px-3 py-2 text-xs font-black text-dfc-success hover:border-dfc-success hover:bg-dfc-success/20">
-                  去绑定
+                  管理绑定
                 </Link>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                <Link href="/support" className="rounded-dfc-control bg-cyan-300/10 px-2 py-2 text-cyan-100 hover:bg-cyan-300/20">客服</Link>
-                <Link href="/order" className="rounded-dfc-control bg-fuchsia-400/10 px-2 py-2 text-fuchsia-100 hover:bg-fuchsia-400/20">试音</Link>
-                <Link href="/order" className="rounded-dfc-control bg-dfc-gold/10 px-2 py-2 text-dfc-gold hover:bg-dfc-gold/20">派单</Link>
+                <ActionLink href="/support" className="rounded-dfc-control bg-cyan-300/10 px-2 py-2 text-cyan-100 hover:bg-cyan-300/20">
+                  客服
+                </ActionLink>
+                <ActionLink
+                  href={platformRouting.primaryHref ?? "/support"}
+                  external={platformRouting.isExternal}
+                  className="rounded-dfc-control bg-fuchsia-400/10 px-2 py-2 text-fuchsia-100 hover:bg-fuchsia-400/20"
+                  ariaLabel={boundPlatformLabel ? `前往 ${boundPlatformLabel} 试音` : "选择平台后试音"}
+                >
+                  {boundPlatformLabel ? `试音 ${boundPlatformLabel}` : "试音"}
+                </ActionLink>
+                <ActionLink
+                  href={platformRouting.primaryHref ?? "/support"}
+                  external={platformRouting.isExternal}
+                  className="rounded-dfc-control bg-dfc-gold/10 px-2 py-2 text-dfc-gold hover:bg-dfc-gold/20"
+                  ariaLabel={boundPlatformLabel ? `前往 ${boundPlatformLabel} 派单` : "选择平台后派单"}
+                >
+                  {boundPlatformLabel ? `派单 ${boundPlatformLabel}` : "派单"}
+                </ActionLink>
               </div>
+              {platformRouting.showChoice ? (
+                <div className="mt-3">
+                  <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-cyan-100/60">选择平台</div>
+                  <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                    <ActionLink
+                      href={platformRouting.kookHref ?? "/support"}
+                      external={Boolean(platformRouting.kookHref)}
+                      className="rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-2 py-2 font-black text-cyan-100 hover:bg-cyan-300/20 focus:outline-none focus:ring-2 focus:ring-cyan-300/60"
+                      ariaLabel="前往 KOOK 平台"
+                    >
+                      去 KOOK
+                    </ActionLink>
+                    <ActionLink
+                      href={platformRouting.discordHref ?? "/support"}
+                      external={Boolean(platformRouting.discordHref)}
+                      className="rounded-dfc-control border border-fuchsia-300/25 bg-fuchsia-400/10 px-2 py-2 font-black text-fuchsia-100 hover:bg-fuchsia-400/20 focus:outline-none focus:ring-2 focus:ring-fuchsia-300/60"
+                      ariaLabel="前往 Discord 平台"
+                    >
+                      去 Discord
+                    </ActionLink>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </aside>
         </div>
@@ -283,6 +351,63 @@ function FlowStep({ step, title, desc }: { step: string; title: string; desc: st
       <p className="mt-2 text-sm leading-6 text-dfc-subtext">{desc}</p>
     </article>
   );
+}
+
+function ActionLink({
+  href,
+  external = false,
+  className,
+  ariaLabel,
+  children
+}: {
+  href: string;
+  external?: boolean;
+  className: string;
+  ariaLabel?: string;
+  children: ReactNode;
+}) {
+  if (external) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className={className} aria-label={ariaLabel}>
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={href} className={className} aria-label={ariaLabel}>
+      {children}
+    </Link>
+  );
+}
+
+function getPlatformRouting(accounts: CustomerProfile["externalAccounts"], config: PublicConfig) {
+  const boundPlatforms = Array.from(
+    new Set(accounts.map((account) => account.platform).filter((platform): platform is Platform => platform === "KOOK" || platform === "DISCORD"))
+  );
+  const kookHref = config.support?.kookUrl || undefined;
+  const discordHref = config.support?.discordUrl || undefined;
+  const hrefByPlatform: Record<Platform, string | undefined> = {
+    KOOK: kookHref,
+    DISCORD: discordHref
+  };
+  const singlePlatform = boundPlatforms.length === 1 ? boundPlatforms[0] : null;
+  const primaryHref = singlePlatform ? hrefByPlatform[singlePlatform] : undefined;
+
+  return {
+    singlePlatform,
+    primaryHref,
+    isExternal: Boolean(primaryHref),
+    showChoice: !primaryHref,
+    kookHref,
+    discordHref
+  };
+}
+
+function platformName(platform: Platform | null) {
+  if (platform === "KOOK") return "KOOK";
+  if (platform === "DISCORD") return "Discord";
+  return "";
 }
 
 function formatMoney(value: string) {
