@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { MaycatLogo } from "./brand";
+import { MaycatLogo, MaycatSignalArtwork } from "./brand";
 
 type Mode = "register" | "login" | "forgot";
 
@@ -21,6 +21,8 @@ type AuthResponse = {
 type PublicConfig = {
   support?: {
     wechatId?: string | null;
+    kookUrl?: string | null;
+    discordUrl?: string | null;
   };
 };
 
@@ -162,32 +164,36 @@ export function CustomerAuthForm() {
         <section className="flex flex-col justify-center py-6">
           <div className="max-w-3xl">
             <MaycatLogo />
-            <div className="maycat-chip mt-8 px-3 py-1 text-xs font-semibold">Maycat Club · 人工审核 · KOOK / Discord 客服</div>
+            <div className="maycat-chip mt-8 px-3 py-1 text-xs font-semibold">Maycat Club · 已接入 KOOK / Discord · 人工试音派单</div>
             <h1 className="maycat-text-glow mt-5 text-4xl font-black leading-tight text-white md:text-6xl">May猫饼电竞</h1>
-            <p className="mt-3 text-xl font-black text-cyan-200 md:text-2xl">霓虹电竞陪玩俱乐部，先试音，再下单。</p>
+            <p className="mt-3 text-xl font-black text-cyan-200 md:text-2xl">先接待，再试音，确认舒服了再下单。</p>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
-              支持多款热门游戏陪玩。充值人工审核，余额下单，订单、钱包、投诉都会保留后台记录。新用户可以使用邮箱验证码注册，也可以后续接入 KOOK / Discord 快捷登录。
+              平台已接入 KOOK 和 Discord：客户可以快捷登录、联系客服、进入试音频道；管理员可在后台记录充值、派单、订单、钱包和投诉，整个服务流程可追踪。
             </p>
 
             <div className="mt-6 overflow-hidden rounded-dfc border border-cyan-300/20 md:max-w-2xl">
-              <div className="maycat-hero-panel min-h-56 p-5 md:min-h-72">
-                <div className="max-w-sm">
-                  <div className="maycat-chip px-3 py-1 text-xs font-semibold">Maycat Club</div>
-                  <div className="mt-3 text-2xl font-black text-white">从客服接待到人工派单，全流程可追踪</div>
-                  <div className="mt-3 text-sm leading-6 text-cyan-50/80">客户可联系客服、选择陪玩、试音确认；管理员可审核充值、派单、处理投诉。</div>
+              <div className="grid gap-4 p-4 md:grid-cols-[1fr_220px] md:p-5">
+                <div className="flex flex-col justify-center">
+                  <div className="maycat-chip px-3 py-1 text-xs font-semibold">Maycat Signal Desk</div>
+                  <div className="mt-3 text-2xl font-black text-white">客服、KOOK、Discord、后台派单连成一条线</div>
+                  <div className="mt-3 text-sm leading-6 text-cyan-50/80">
+                    客户先说需求，客服整理信息，KOOK / DC 试音确认，管理员再转正式订单。
+                  </div>
                 </div>
+                <MaycatSignalArtwork compact />
               </div>
             </div>
 
-            <div className="mt-5 inline-flex rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-sm text-dfc-subtext">
-              VX 客服：
-              <span className="ml-1 font-semibold text-cyan-300">{publicConfig.support?.wechatId || "暂未配置"}</span>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <PlatformPill label="KOOK" value="客服 / 试音 / 绑定" active={Boolean(publicConfig.support?.kookUrl)} />
+              <PlatformPill label="Discord" value="客服 / 试音 / 登录" active={Boolean(publicConfig.support?.discordUrl)} />
+              <PlatformPill label="VX 客服" value={publicConfig.support?.wechatId || "暂未配置"} active={Boolean(publicConfig.support?.wechatId)} />
             </div>
 
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
               <Feature label="人工充值" value="截图审核，到账留痕" />
-              <Feature label="试音选人" value="先确认声音和风格" />
-              <Feature label="平台派单" value="客服协助匹配陪玩" />
+              <Feature label="试音选人" value="先确认声音和沟通风格" />
+              <Feature label="后台派单" value="订单、钱包、投诉可追踪" />
             </div>
           </div>
         </section>
@@ -198,7 +204,7 @@ export function CustomerAuthForm() {
               <h2 className="maycat-text-glow text-xl font-black text-white">
                 {mode === "forgot" ? "重置密码" : mode === "login" ? "登录 May猫饼" : "加入 May猫饼"}
               </h2>
-              <p className="mt-1 text-xs text-dfc-muted">客户入口 · 注册后进入个人中心</p>
+              <p className="mt-1 text-xs text-dfc-muted">客户入口 · 支持邮箱、KOOK、Discord</p>
             </div>
             <MaycatLogo compact />
           </div>
@@ -226,7 +232,7 @@ export function CustomerAuthForm() {
               onClick={() => switchMode("forgot")}
               className={`text-xs font-semibold ${mode === "forgot" ? "text-cyan-300" : "text-dfc-subtext hover:text-cyan-300"}`}
             >
-              忘记密码？邮箱验证码重置
+              忘记密码？用邮箱验证码重置
             </button>
           </div>
 
@@ -234,8 +240,8 @@ export function CustomerAuthForm() {
             {mode !== "forgot" ? (
               <>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 注册/登录" />
-                  <OAuthButton href="/api/auth/oauth/kook/start" label="KOOK 注册/登录" />
+                  <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 登录" />
+                  <OAuthButton href="/api/auth/oauth/kook/start" label="KOOK 登录" />
                 </div>
                 <div className="flex items-center gap-3 text-xs text-dfc-muted">
                   <span className="h-px flex-1 bg-cyan-300/15" />
@@ -350,7 +356,7 @@ export function CustomerAuthForm() {
           </form>
 
           <div className="mt-4 flex items-center justify-between gap-3 text-xs text-dfc-muted">
-            <span>管理员和陪玩请走独立入口</span>
+            <span>管理端和陪玩端请走独立入口</span>
             <div className="flex gap-3">
               <a href="/admin/" className="font-semibold text-cyan-300">
                 管理端
@@ -458,6 +464,15 @@ function Feature({ label, value }: { label: string; value: string }) {
     <div className="maycat-card p-3">
       <div className="text-xs text-dfc-muted">{label}</div>
       <div className="mt-1 text-sm font-black text-white">{value}</div>
+    </div>
+  );
+}
+
+function PlatformPill({ label, value, active }: { label: string; value: string; active: boolean }) {
+  return (
+    <div className={`rounded-dfc-control border px-3 py-2 text-xs ${active ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/5 text-dfc-muted"}`}>
+      <span className="font-black text-white">{label}</span>
+      <span className="ml-2">{value}</span>
     </div>
   );
 }

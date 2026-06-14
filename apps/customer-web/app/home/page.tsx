@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { MaycatSignalArtwork } from "../brand";
 import { CompanionCard, CustomerShell, SectionHeader, StatCard } from "../components";
 import { games } from "../data";
 
@@ -102,7 +103,7 @@ export default function CustomerHomePage() {
   if (!profile) {
     return (
       <CustomerShell>
-        <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">正在加载你的客户资料...</div>
+        <div className="maycat-card p-4 text-sm text-dfc-subtext">正在加载你的客户资料...</div>
       </CustomerShell>
     );
   }
@@ -117,12 +118,12 @@ export default function CustomerHomePage() {
         <div className="grid min-h-[520px] gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:p-8">
           <div className="flex flex-col justify-between gap-8">
             <div>
-              <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Club Live Lobby</div>
+              <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">KOOK / Discord Ready</div>
               <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-none text-white sm:text-5xl lg:text-7xl">
-                {profile.user.displayName}，今晚进场开黑。
+                {profile.user.displayName}，今晚进场先试音。
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-cyan-50/80 sm:text-base">
-                先看在线陪玩，再试音确认风格。余额充值、人工派单、订单进度、售后投诉都在 May猫饼电竞后台留痕，适合稳定复购的陪玩俱乐部。
+                May猫饼电竞已接入 KOOK 和 Discord。你可以先找客服说需求，进入语音频道试音，确认陪玩风格后再下单；充值、派单、订单、钱包和投诉都会在后台留痕。
               </p>
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Link href="/companions" className="maycat-button px-5 py-3 text-center text-sm font-black">
@@ -131,8 +132,8 @@ export default function CustomerHomePage() {
                 <Link href="/order" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
                   直接提交需求
                 </Link>
-                <Link href="/recharge" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
-                  充值余额
+                <Link href="/support" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
+                  联系 KOOK / DC 客服
                 </Link>
               </div>
             </div>
@@ -145,25 +146,19 @@ export default function CustomerHomePage() {
           </div>
 
           <aside className="maycat-brand-frame self-end">
-            <img
-              src="/customer/brand/maycat-club-neon.jpg"
-              alt="Maycat Club 霓虹电竞猫品牌视觉"
-              width={1200}
-              height={1024}
-              className="h-full min-h-72 w-full object-cover"
-            />
+            <MaycatSignalArtwork />
             <div className="absolute inset-x-4 bottom-4 rounded-dfc border border-cyan-300/20 bg-[#050711]/80 p-4 backdrop-blur-xl">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-200">Neon Dispatch</div>
-                  <div className="mt-1 text-lg font-black text-white">试音后再下单</div>
+                  <div className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-200">Signal Dispatch</div>
+                  <div className="mt-1 text-lg font-black text-white">KOOK / DC 试音后再派单</div>
                 </div>
                 <span className="rounded-dfc-control border border-dfc-success/50 bg-dfc-success/10 px-3 py-2 text-xs font-black text-dfc-success">
-                  在线
+                  已接入
                 </span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                <div className="rounded-dfc-control bg-cyan-300/10 px-2 py-2 text-cyan-100">选人</div>
+                <div className="rounded-dfc-control bg-cyan-300/10 px-2 py-2 text-cyan-100">客服</div>
                 <div className="rounded-dfc-control bg-fuchsia-400/10 px-2 py-2 text-fuchsia-100">试音</div>
                 <div className="rounded-dfc-control bg-dfc-gold/10 px-2 py-2 text-dfc-gold">派单</div>
               </div>
@@ -188,20 +183,20 @@ export default function CustomerHomePage() {
           >
             复制邀请码
           </button>
-          <div className="mt-2 text-xs leading-5 text-dfc-muted">分享给新用户注册填写，完成首单后按后台优惠配置发放奖励。</div>
+          <div className="mt-2 text-xs leading-5 text-dfc-muted">分享给新用户注册填写，奖励以后后台活动配置为准。</div>
         </div>
       </section>
 
       <section className="mt-10 grid gap-3 md:grid-cols-4">
-        <FlowStep step="01" title="充值余额" desc="提交凭证，管理员审核到账。" />
-        <FlowStep step="02" title="挑选陪玩" desc="按游戏、价格、在线状态筛选。" />
-        <FlowStep step="03" title="试音确认" desc="先确认声音、沟通和打法。" />
-        <FlowStep step="04" title="开始服务" desc="订单完成后自动进入结算。" />
+        <FlowStep step="01" title="说需求" desc="在网页、KOOK 或 Discord 找客服说明游戏、模式、时长和预算。" />
+        <FlowStep step="02" title="进试音" desc="客服安排语音频道，先确认声音、沟通和打法节奏。" />
+        <FlowStep step="03" title="充值下单" desc="充值人工审核到账后，用余额提交正式订单。" />
+        <FlowStep step="04" title="后台派单" desc="管理员派单并通知陪玩，服务和投诉记录都可追踪。" />
       </section>
 
       <section className="mt-10">
         <div className="flex items-end justify-between gap-4">
-          <SectionHeader title="推荐陪玩" desc="优先展示在线、评分高、资料完整的陪玩。" />
+          <SectionHeader title="推荐陪玩" desc="优先展示在线、资料完整、适合先试音的陪玩。" />
           <Link href="/companions" className="hidden text-sm font-semibold text-dfc-blue md:block">
             查看全部
           </Link>
@@ -210,9 +205,7 @@ export default function CustomerHomePage() {
           {companions.length ? (
             companions.map((companion) => <CompanionCard key={companion.id} companion={toCardCompanion(companion)} />)
           ) : (
-            <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext md:col-span-3">
-              暂无已上架陪玩。管理员审核上架后会显示在这里。
-            </div>
+            <div className="maycat-card p-4 text-sm text-dfc-subtext md:col-span-3">暂无已上架陪玩。管理员审核上架后会显示在这里。</div>
           )}
         </div>
       </section>
@@ -226,7 +219,9 @@ export default function CustomerHomePage() {
                 <div key={order.id} className="flex items-center justify-between gap-3 border-b border-dfc-border pb-3 last:border-b-0 last:pb-0">
                   <div>
                     <div className="text-sm font-medium">{order.orderNo}</div>
-                    <div className="mt-1 text-xs text-dfc-subtext">{order.companionName} · {order.mode}</div>
+                    <div className="mt-1 text-xs text-dfc-subtext">
+                      {order.companionName} / {order.mode}
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-semibold">¥{formatMoney(order.totalAmount)}</div>
@@ -236,7 +231,7 @@ export default function CustomerHomePage() {
               ))
             ) : (
               <div className="rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 px-3 py-3 text-sm text-dfc-subtext">
-                你还没有订单，先选择陪玩或提交平台匹配订单。
+                你还没有订单，可以先选择陪玩，或找客服在 KOOK / Discord 帮你匹配。
               </div>
             )}
           </div>
@@ -251,7 +246,9 @@ export default function CustomerHomePage() {
                     <div className="text-sm font-medium">{transaction.type}</div>
                     <div className="mt-1 text-xs text-dfc-subtext">余额：¥{formatMoney(transaction.balanceAfter)}</div>
                   </div>
-                  <div className="text-sm font-semibold">{transaction.direction === "CREDIT" ? "+" : "-"}¥{formatMoney(transaction.amount)}</div>
+                  <div className="text-sm font-semibold">
+                    {transaction.direction === "CREDIT" ? "+" : "-"}¥{formatMoney(transaction.amount)}
+                  </div>
                 </div>
               ))
             ) : (

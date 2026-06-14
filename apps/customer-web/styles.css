@@ -49,7 +49,7 @@ body {
   background-image:
     linear-gradient(90deg, rgba(5, 7, 17, 0.98) 0%, rgba(5, 7, 17, 0.72) 44%, rgba(5, 7, 17, 0.9) 100%),
     linear-gradient(180deg, rgba(5, 7, 17, 0.08), rgba(5, 7, 17, 0.96)),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
   background-position: center;
   background-size: cover;
   opacity: 0.58;
@@ -105,7 +105,7 @@ body {
     linear-gradient(90deg, rgba(5, 7, 17, 0.96) 0%, rgba(5, 7, 17, 0.86) 45%, rgba(5, 7, 17, 0.62) 100%),
     radial-gradient(circle at 18% 18%, rgba(236, 72, 153, 0.22), transparent 34%),
     radial-gradient(circle at 84% 16%, rgba(34, 211, 238, 0.22), transparent 28%),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
   box-shadow:
     0 28px 90px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -155,7 +155,7 @@ body {
     linear-gradient(90deg, rgba(5, 7, 17, 0.94), rgba(7, 17, 31, 0.84)),
     radial-gradient(circle at 14% 22%, rgba(236, 72, 153, 0.2), transparent 32%),
     radial-gradient(circle at 80% 18%, rgba(34, 211, 238, 0.2), transparent 30%),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
 }
 
 .maycat-lobby-hero::after {
@@ -199,7 +199,7 @@ body {
     linear-gradient(90deg, rgba(5, 7, 17, 0.95), rgba(7, 17, 31, 0.84)),
     radial-gradient(circle at 18% 18%, rgba(34, 211, 238, 0.2), transparent 30%),
     radial-gradient(circle at 76% 20%, rgba(236, 72, 153, 0.2), transparent 30%),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
 }
 
 .maycat-order-hero::after {
@@ -248,7 +248,7 @@ body {
     linear-gradient(90deg, rgba(5, 7, 17, 0.96), rgba(7, 17, 31, 0.84)),
     radial-gradient(circle at 16% 18%, rgba(245, 196, 81, 0.16), transparent 28%),
     radial-gradient(circle at 76% 18%, rgba(34, 211, 238, 0.2), transparent 30%),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
 }
 
 .maycat-recharge-hero::after {
@@ -305,7 +305,7 @@ body {
     linear-gradient(90deg, rgba(5, 7, 17, 0.95), rgba(7, 17, 31, 0.84)),
     radial-gradient(circle at 18% 18%, rgba(236, 72, 153, 0.2), transparent 30%),
     radial-gradient(circle at 76% 18%, rgba(34, 211, 238, 0.2), transparent 30%),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
 }
 
 .maycat-profile-hero::after {
@@ -331,7 +331,7 @@ body {
     linear-gradient(90deg, rgba(5, 7, 17, 0.96), rgba(7, 17, 31, 0.84)),
     radial-gradient(circle at 18% 18%, rgba(34, 211, 238, 0.2), transparent 30%),
     radial-gradient(circle at 78% 18%, rgba(245, 196, 81, 0.14), transparent 28%),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
 }
 
 .maycat-support-hero::after {
@@ -345,7 +345,7 @@ body {
     linear-gradient(90deg, rgba(5, 7, 17, 0.96), rgba(7, 17, 31, 0.84)),
     radial-gradient(circle at 18% 18%, rgba(245, 158, 11, 0.16), transparent 30%),
     radial-gradient(circle at 78% 18%, rgba(239, 68, 68, 0.14), transparent 28%),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
 }
 
 .maycat-complaint-hero::after {
@@ -359,7 +359,7 @@ body {
     linear-gradient(90deg, rgba(5, 7, 17, 0.96), rgba(7, 17, 31, 0.84)),
     radial-gradient(circle at 18% 18%, rgba(34, 211, 238, 0.2), transparent 30%),
     radial-gradient(circle at 78% 18%, rgba(139, 92, 246, 0.16), transparent 28%),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
 }
 
 .maycat-settings-hero::after {
@@ -491,7 +491,7 @@ body {
 .maycat-hero-panel {
   background-image:
     linear-gradient(90deg, rgba(5, 7, 17, 0.98) 0%, rgba(5, 7, 17, 0.78) 46%, rgba(5, 7, 17, 0.28) 100%),
-    url("/customer/brand/maycat-club-neon.jpg");
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
   background-position: center;
   background-size: cover;
 }
@@ -511,4 +511,174 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* Maycat owned visual system: no external/original bitmap dependency. */
+.maycat-neon-bg::before {
+  background-image:
+    linear-gradient(90deg, rgba(5, 7, 17, 0.98) 0%, rgba(5, 7, 17, 0.78) 48%, rgba(5, 7, 17, 0.94) 100%),
+    repeating-linear-gradient(90deg, rgba(34, 211, 238, 0.055) 0 1px, transparent 1px 72px),
+    repeating-linear-gradient(0deg, rgba(236, 72, 153, 0.045) 0 1px, transparent 1px 72px),
+    radial-gradient(circle at 18% 20%, rgba(236, 72, 153, 0.34), transparent 32%),
+    radial-gradient(circle at 78% 18%, rgba(34, 211, 238, 0.25), transparent 34%),
+    linear-gradient(135deg, #080b18, #050711 64%, #10071a);
+  opacity: 1;
+}
+
+.maycat-home-hero {
+  --maycat-hero-bg:
+    linear-gradient(90deg, rgba(5, 7, 17, 0.97) 0%, rgba(5, 7, 17, 0.88) 52%, rgba(5, 7, 17, 0.64) 100%),
+    radial-gradient(circle at 20% 18%, rgba(236, 72, 153, 0.28), transparent 34%),
+    radial-gradient(circle at 86% 14%, rgba(34, 211, 238, 0.28), transparent 30%),
+    linear-gradient(135deg, #080b18, #10162a 56%, #19071b);
+}
+
+.maycat-lobby-hero,
+.maycat-order-hero,
+.maycat-recharge-hero,
+.maycat-profile-hero,
+.maycat-support-hero,
+.maycat-complaint-hero,
+.maycat-settings-hero {
+  --maycat-hero-bg:
+    linear-gradient(90deg, rgba(5, 7, 17, 0.96), rgba(7, 17, 31, 0.86)),
+    repeating-linear-gradient(90deg, rgba(125, 211, 252, 0.045) 0 1px, transparent 1px 56px),
+    radial-gradient(circle at 18% 18%, rgba(34, 211, 238, 0.2), transparent 30%),
+    radial-gradient(circle at 78% 18%, rgba(236, 72, 153, 0.18), transparent 30%),
+    linear-gradient(135deg, #070b17, #10172a);
+}
+
+.maycat-hero-panel {
+  background-image:
+    linear-gradient(90deg, rgba(5, 7, 17, 0.98) 0%, rgba(5, 7, 17, 0.76) 50%, rgba(5, 7, 17, 0.42) 100%),
+    repeating-linear-gradient(90deg, rgba(34, 211, 238, 0.08) 0 1px, transparent 1px 46px),
+    repeating-linear-gradient(0deg, rgba(236, 72, 153, 0.07) 0 1px, transparent 1px 46px),
+    radial-gradient(circle at 72% 34%, rgba(236, 72, 153, 0.38), transparent 32%),
+    radial-gradient(circle at 84% 76%, rgba(34, 211, 238, 0.28), transparent 34%),
+    linear-gradient(135deg, #060a16, #11172b);
+}
+
+.maycat-brand-frame {
+  display: flex;
+  min-height: 420px;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.maycat-brand-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, transparent 0 22%, rgba(34, 211, 238, 0.28) 22.08%, transparent 22.42%),
+    linear-gradient(292deg, transparent 0 76%, rgba(236, 72, 153, 0.3) 76.08%, transparent 76.44%);
+}
+
+.maycat-signal-art {
+  position: relative;
+  min-height: 100%;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 24% 22%, rgba(236, 72, 153, 0.34), transparent 32%),
+    radial-gradient(circle at 78% 16%, rgba(34, 211, 238, 0.28), transparent 30%),
+    linear-gradient(135deg, rgba(8, 12, 28, 0.98), rgba(15, 20, 40, 0.96) 54%, rgba(29, 9, 31, 0.96));
+}
+
+.maycat-signal-art-compact {
+  min-height: 280px;
+}
+
+.maycat-art-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.86), transparent 96%);
+}
+
+.maycat-art-rail {
+  position: absolute;
+  height: 4px;
+  border-radius: 999px;
+  filter: drop-shadow(0 0 14px currentColor);
+}
+
+.maycat-art-rail-left {
+  left: -10%;
+  top: 24%;
+  width: 54%;
+  color: #ec4899;
+  background: currentColor;
+  transform: rotate(-24deg);
+}
+
+.maycat-art-rail-right {
+  right: -8%;
+  top: 54%;
+  width: 62%;
+  color: #22d3ee;
+  background: currentColor;
+  transform: rotate(-18deg);
+}
+
+.maycat-art-chip {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  border-radius: 999px;
+  background: rgba(5, 7, 17, 0.72);
+  padding: 8px 12px;
+  color: #dffbff;
+  font-size: 12px;
+  font-weight: 900;
+  box-shadow:
+    0 0 24px rgba(34, 211, 238, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.maycat-art-chip-kook {
+  left: 18px;
+  top: 18px;
+}
+
+.maycat-art-chip-dc {
+  right: 18px;
+  top: 72px;
+  border-color: rgba(236, 72, 153, 0.38);
+}
+
+.maycat-art-core {
+  position: absolute;
+  inset: 62px 24px 82px;
+  display: grid;
+  place-items: center;
+  filter:
+    drop-shadow(0 0 22px rgba(34, 211, 238, 0.28))
+    drop-shadow(0 0 30px rgba(236, 72, 153, 0.18));
+}
+
+.maycat-art-caption {
+  position: absolute;
+  inset-inline: 16px;
+  bottom: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.maycat-art-caption span {
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 8px;
+  background: rgba(5, 7, 17, 0.66);
+  padding: 10px 8px;
+  color: #cffafe;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
 }
