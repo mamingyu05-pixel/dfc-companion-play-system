@@ -85,75 +85,88 @@ export default function NewCompanionPage() {
 
   return (
     <AdminShell>
-      <SectionHeader title="添加陪玩" desc="创建真实陪玩账号、钱包和资料。新陪玩默认进入待审核状态，上架后客户才能下单。" />
+      <SectionHeader eyebrow="Roster Intake" title="添加陪玩" desc="创建真实陪玩账号、钱包和资料。新陪玩默认进入待审核状态，上架后客户才能下单。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
-      <form onSubmit={submit} className="max-w-3xl rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="邮箱" value={email} onChange={setEmail} type="email" required />
-          <Field label="初始密码" value={password} onChange={setPassword} type="password" required />
-          <Field label="昵称" value={nickname} onChange={setNickname} required />
-          <Field label="头像 URL" value={avatarUrl} onChange={setAvatarUrl} />
-          <Field label="每小时价格" value={pricePerHour} onChange={setPricePerHour} required />
-          <label className="block">
-            <span className="text-sm text-dfc-subtext">游戏</span>
-            <select value={game} onChange={(event) => setGame(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
-              {gameOptions.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-            </select>
+
+      <section className="grid gap-5 xl:grid-cols-[1fr_320px]">
+        <form onSubmit={submit} className="admin-panel">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="邮箱" value={email} onChange={setEmail} type="email" required />
+            <Field label="初始密码" value={password} onChange={setPassword} type="password" required />
+            <Field label="昵称" value={nickname} onChange={setNickname} required />
+            <Field label="头像 URL" value={avatarUrl} onChange={setAvatarUrl} />
+            <Field label="每小时价格" value={pricePerHour} onChange={setPricePerHour} required />
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-dfc-muted">游戏</span>
+              <select value={game} onChange={(event) => setGame(event.target.value)} className="input">
+                {gameOptions.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-dfc-muted">段位/水平</span>
+              <select value={deltaForceRank} onChange={(event) => setDeltaForceRank(event.target.value)} className="input">
+                <option value="UNRANKED">UNRANKED</option>
+                <option value="BRONZE">BRONZE</option>
+                <option value="SILVER">SILVER</option>
+                <option value="GOLD">GOLD</option>
+                <option value="PLATINUM">PLATINUM</option>
+                <option value="DIAMOND">DIAMOND</option>
+                <option value="ASCENDANT">ASCENDANT</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-dfc-muted">语音偏好</span>
+              <select value={voicePreference} onChange={(event) => setVoicePreference(event.target.value)} className="input">
+                <option value="REQUIRED">必须语音</option>
+                <option value="OPTIONAL">可语音</option>
+                <option value="TEXT_ONLY">仅文字</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="mt-4 block">
+            <span className="mb-2 block text-xs font-black text-dfc-muted">擅长模式，用逗号分隔</span>
+            <input value={skillModes} onChange={(event) => setSkillModes(event.target.value)} className="input" />
           </label>
-          <label className="block">
-            <span className="text-sm text-dfc-subtext">段位/水平</span>
-            <select value={deltaForceRank} onChange={(event) => setDeltaForceRank(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
-              <option value="UNRANKED">UNRANKED</option>
-              <option value="BRONZE">BRONZE</option>
-              <option value="SILVER">SILVER</option>
-              <option value="GOLD">GOLD</option>
-              <option value="PLATINUM">PLATINUM</option>
-              <option value="DIAMOND">DIAMOND</option>
-              <option value="ASCENDANT">ASCENDANT</option>
-            </select>
+          <label className="mt-4 block">
+            <span className="mb-2 block text-xs font-black text-dfc-muted">个人简介</span>
+            <textarea value={bio} onChange={(event) => setBio(event.target.value)} className="input min-h-28" />
           </label>
-          <label className="block">
-            <span className="text-sm text-dfc-subtext">语音偏好</span>
-            <select value={voicePreference} onChange={(event) => setVoicePreference(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
-              <option value="REQUIRED">REQUIRED</option>
-              <option value="OPTIONAL">OPTIONAL</option>
-              <option value="TEXT_ONLY">TEXT_ONLY</option>
-            </select>
-          </label>
-        </div>
-        <label className="mt-4 block">
-          <span className="text-sm text-dfc-subtext">擅长模式，用逗号分隔</span>
-          <input value={skillModes} onChange={(event) => setSkillModes(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" />
-        </label>
-        <label className="mt-4 block">
-          <span className="text-sm text-dfc-subtext">个人简介</span>
-          <textarea value={bio} onChange={(event) => setBio(event.target.value)} className="mt-2 min-h-28 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" />
-        </label>
-        <button className="mt-5 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">创建陪玩</button>
-      </form>
+          <button className="mt-5 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200">
+            创建陪玩
+          </button>
+        </form>
+
+        <aside className="admin-panel">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">Checklist</div>
+          <h2 className="mt-2 text-lg font-black text-white">建档前检查</h2>
+          <div className="mt-4 space-y-3">
+            <GuideItem title="资料真实" desc="昵称、价格、段位和擅长模式会影响客户选择。" />
+            <GuideItem title="先建后审" desc="新陪玩创建后不会自动上架，需要到陪玩管理页审核。" />
+            <GuideItem title="平台绑定" desc="KOOK / Discord 绑定后，派单通知才更稳定。" />
+          </div>
+        </aside>
+      </section>
     </AdminShell>
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  required
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  required?: boolean;
-}) {
+function Field({ label, value, onChange, type = "text", required }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
   return (
     <label className="block">
-      <span className="text-sm text-dfc-subtext">{label}</span>
-      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" />
+      <span className="mb-2 block text-xs font-black text-dfc-muted">{label}</span>
+      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="input" />
     </label>
+  );
+}
+
+function GuideItem({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div className="admin-queue-item">
+      <div className="text-sm font-black text-white">{title}</div>
+      <div className="mt-1 text-xs leading-5 text-dfc-subtext">{desc}</div>
+    </div>
   );
 }
 

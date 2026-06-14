@@ -109,54 +109,94 @@ export default function CustomerHomePage() {
 
   const availableBalance = profile.wallet?.availableBalance ?? "0";
   const pendingOrderCount = profile.recentOrders.filter((order) => ["PAID", "ASSIGNED", "ACCEPTED", "IN_PROGRESS"].includes(order.status)).length;
+  const onlineCompanionCount = companions.filter((companion) => companion.onlineStatus === "ONLINE").length;
 
   return (
     <CustomerShell>
-      <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="py-2">
-          <SectionHeader
-            title={`${profile.user.displayName} 的客户中心`}
-            desc={`账号：${profile.user.email}。这里显示你的余额、订单和钱包流水。充值、派单、接单、结算都会保留后台记录。`}
-          />
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Link href="/companions" className="rounded-dfc-control bg-dfc-blue px-5 py-3 text-center text-sm font-semibold text-slate-950">
-              选择陪玩
-            </Link>
-            <Link href="/recharge" className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-5 py-3 text-center text-sm font-semibold text-dfc-text">
-              余额充值
-            </Link>
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.removeItem("dfc_customer_token");
-                localStorage.removeItem("dfc_customer_user");
-                window.location.href = "/customer/";
-              }}
-              className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-5 py-3 text-center text-sm font-semibold text-dfc-subtext"
-            >
-              退出登录
-            </button>
+      <section className="maycat-home-hero overflow-hidden rounded-dfc border border-cyan-300/20">
+        <div className="grid min-h-[520px] gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:p-8">
+          <div className="flex flex-col justify-between gap-8">
+            <div>
+              <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Club Live Lobby</div>
+              <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-none text-white sm:text-5xl lg:text-7xl">
+                {profile.user.displayName}，今晚进场开黑。
+              </h1>
+              <p className="mt-5 max-w-2xl text-sm leading-7 text-cyan-50/80 sm:text-base">
+                先看在线陪玩，再试音确认风格。余额充值、人工派单、订单进度、售后投诉都在 May猫饼电竞后台留痕，适合稳定复购的陪玩俱乐部。
+              </p>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <Link href="/companions" className="maycat-button px-5 py-3 text-center text-sm font-black">
+                  进入陪玩大厅
+                </Link>
+                <Link href="/order" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
+                  直接提交需求
+                </Link>
+                <Link href="/recharge" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
+                  充值余额
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <HeroMetric label="钱包余额" value={`¥${formatMoney(availableBalance)}`} />
+              <HeroMetric label="进行中订单" value={String(pendingOrderCount)} />
+              <HeroMetric label="在线推荐" value={String(onlineCompanionCount)} />
+            </div>
           </div>
+
+          <aside className="maycat-brand-frame self-end">
+            <img
+              src="/customer/brand/maycat-club-neon.jpg"
+              alt="Maycat Club 霓虹电竞猫品牌视觉"
+              width={1200}
+              height={1024}
+              className="h-full min-h-72 w-full object-cover"
+            />
+            <div className="absolute inset-x-4 bottom-4 rounded-dfc border border-cyan-300/20 bg-[#050711]/80 p-4 backdrop-blur-xl">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-200">Neon Dispatch</div>
+                  <div className="mt-1 text-lg font-black text-white">试音后再下单</div>
+                </div>
+                <span className="rounded-dfc-control border border-dfc-success/50 bg-dfc-success/10 px-3 py-2 text-xs font-black text-dfc-success">
+                  在线
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-dfc-control bg-cyan-300/10 px-2 py-2 text-cyan-100">选人</div>
+                <div className="rounded-dfc-control bg-fuchsia-400/10 px-2 py-2 text-fuchsia-100">试音</div>
+                <div className="rounded-dfc-control bg-dfc-gold/10 px-2 py-2 text-dfc-gold">派单</div>
+              </div>
+            </div>
+          </aside>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-          <StatCard label="我的可用余额" value={`¥${formatMoney(availableBalance)}`} hint="余额不足时先提交充值审核" />
-          <StatCard label="我的进行中订单" value={String(pendingOrderCount)} hint="只统计当前账号订单" />
-          <StatCard label="账号角色" value="客户" hint="客户、陪玩、管理员入口相互独立" />
-          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-            <div className="text-xs text-dfc-muted">我的邀请码</div>
-            <div className="mt-2 break-all text-xl font-black text-dfc-blue">{profile.user.referralCode || "-"}</div>
-            <button
-              type="button"
-              onClick={() => {
-                if (profile.user.referralCode) void navigator.clipboard?.writeText(profile.user.referralCode);
-              }}
-              className="mt-3 rounded-dfc-control border border-dfc-border px-3 py-2 text-xs font-semibold text-dfc-subtext hover:text-dfc-blue"
-            >
-              复制邀请码
-            </button>
-            <div className="mt-2 text-xs leading-5 text-dfc-muted">分享给新用户注册填写，完成首单后按后台优惠配置发放奖励。</div>
-          </div>
+      </section>
+
+      <section className="mt-6 grid gap-3 md:grid-cols-4">
+        <StatCard label="我的可用余额" value={`¥${formatMoney(availableBalance)}`} hint="余额不足时先提交充值审核" />
+        <StatCard label="我的进行中订单" value={String(pendingOrderCount)} hint="待接单、服务中订单都会统计" />
+        <StatCard label="账号角色" value="客户" hint={`账号：${profile.user.email}`} />
+        <div className="maycat-card p-4">
+          <div className="text-xs text-dfc-muted">我的邀请码</div>
+          <div className="mt-2 break-all text-xl font-black text-cyan-200">{profile.user.referralCode || "-"}</div>
+          <button
+            type="button"
+            onClick={() => {
+              if (profile.user.referralCode) void navigator.clipboard?.writeText(profile.user.referralCode);
+            }}
+            className="maycat-button-secondary mt-3 px-3 py-2 text-xs font-semibold"
+          >
+            复制邀请码
+          </button>
+          <div className="mt-2 text-xs leading-5 text-dfc-muted">分享给新用户注册填写，完成首单后按后台优惠配置发放奖励。</div>
         </div>
+      </section>
+
+      <section className="mt-10 grid gap-3 md:grid-cols-4">
+        <FlowStep step="01" title="充值余额" desc="提交凭证，管理员审核到账。" />
+        <FlowStep step="02" title="挑选陪玩" desc="按游戏、价格、在线状态筛选。" />
+        <FlowStep step="03" title="试音确认" desc="先确认声音、沟通和打法。" />
+        <FlowStep step="04" title="开始服务" desc="订单完成后自动进入结算。" />
       </section>
 
       <section className="mt-10">
@@ -178,7 +218,7 @@ export default function CustomerHomePage() {
       </section>
 
       <section className="mt-10 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
+        <div className="maycat-card p-4">
           <h2 className="text-base font-semibold">我的最近订单</h2>
           <div className="mt-4 space-y-3">
             {profile.recentOrders.length ? (
@@ -195,13 +235,13 @@ export default function CustomerHomePage() {
                 </div>
               ))
             ) : (
-              <div className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-subtext">
+              <div className="rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 px-3 py-3 text-sm text-dfc-subtext">
                 你还没有订单，先选择陪玩或提交平台匹配订单。
               </div>
             )}
           </div>
         </div>
-        <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
+        <div className="maycat-card p-4">
           <h2 className="text-base font-semibold">我的钱包流水</h2>
           <div className="mt-4 space-y-3">
             {profile.walletTransactions.length ? (
@@ -215,7 +255,7 @@ export default function CustomerHomePage() {
                 </div>
               ))
             ) : (
-              <div className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-subtext">
+              <div className="rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 px-3 py-3 text-sm text-dfc-subtext">
                 暂无流水。充值审核通过、订单支付和退款都会显示在这里。
               </div>
             )}
@@ -223,6 +263,28 @@ export default function CustomerHomePage() {
         </div>
       </section>
     </CustomerShell>
+  );
+}
+
+function HeroMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-dfc border border-cyan-300/20 bg-[#07111f]/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur">
+      <div className="text-xs text-dfc-muted">{label}</div>
+      <div className="mt-2 text-2xl font-black tabular-nums text-white">{value}</div>
+    </div>
+  );
+}
+
+function FlowStep({ step, title, desc }: { step: string; title: string; desc: string }) {
+  return (
+    <article className="maycat-card p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-black text-fuchsia-300">{step}</span>
+        <span className="h-px flex-1 bg-cyan-300/20" />
+      </div>
+      <h2 className="mt-4 text-base font-black text-white">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-dfc-subtext">{desc}</p>
+    </article>
   );
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { CompanionShell, SectionHeader } from "../components";
+import { CompanionShell, SectionHeader, StatusBadge } from "../components";
 
 type CompanionMe = {
   user: {
@@ -103,74 +103,56 @@ export default function ProfilePage() {
   if (!profile) {
     return (
       <CompanionShell>
-        <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">正在加载真实陪玩资料...</div>
+        <div className="companion-card p-4 text-sm text-dfc-subtext">正在加载真实陪玩资料...</div>
       </CompanionShell>
     );
   }
 
   return (
     <CompanionShell>
-      <SectionHeader
-        title="我的资料"
-        desc="这里显示数据库里的真实陪玩资料。入驻、头像、价格和上架状态由客服考核后在后台维护。"
-      />
+      <SectionHeader eyebrow="Profile Center" title="我的资料" desc="这里显示数据库里的真实陪玩资料。入驻、头像、价格和上架状态由客服考核后在后台维护。" />
 
-      <section className="mt-6 grid gap-4 rounded-dfc border border-dfc-border bg-dfc-surface p-4 md:grid-cols-[160px_1fr]">
-        <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-dfc border border-dfc-border bg-dfc-elevated text-3xl font-black text-dfc-blue">
-          {profile.companionProfile?.avatarUrl ? (
-            <img src={profile.companionProfile.avatarUrl} alt="陪玩头像" className="h-full w-full object-cover" />
-          ) : (
-            profile.user.displayName.slice(0, 1)
-          )}
+      <section className="companion-card mt-6 grid gap-4 p-4 md:grid-cols-[160px_1fr]">
+        <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-dfc border border-cyan-300/20 bg-[#101827] text-3xl font-black text-cyan-200">
+          {profile.companionProfile?.avatarUrl ? <img src={profile.companionProfile.avatarUrl} alt="陪玩头像" className="h-full w-full object-cover" /> : profile.user.displayName.slice(0, 1)}
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="昵称" value={profile.companionProfile?.nickname ?? profile.user.displayName} />
-          <Field label="账号" value={formatAccountEmail(profile.user.email)} />
-          <Field label="我的推荐码" value={profile.user.referralCode ?? "未生成"} />
-          <Field label="游戏" value={profile.companionProfile?.game ?? "未设置"} />
-          <Field label="资料状态" value={toProfileStatus(profile.companionProfile?.status)} />
-          <Field label="在线状态" value={toOnlineStatus(profile.companionProfile?.onlineStatus)} />
-          <Field label="每小时价格" value={`¥${Number(profile.companionProfile?.pricePerHour ?? "0").toFixed(2)}`} />
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-black text-white">{profile.companionProfile?.nickname ?? profile.user.displayName}</h2>
+            <StatusBadge tone={profile.companionProfile?.status === "LISTED" ? "success" : profile.companionProfile?.status === "BANNED" ? "danger" : "warning"}>
+              {toProfileStatus(profile.companionProfile?.status)}
+            </StatusBadge>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <Field label="账号" value={formatAccountEmail(profile.user.email)} />
+            <Field label="我的推荐码" value={profile.user.referralCode ?? "未生成"} />
+            <Field label="游戏" value={gameName(profile.companionProfile?.game ?? "")} />
+            <Field label="在线状态" value={toOnlineStatus(profile.companionProfile?.onlineStatus)} />
+            <Field label="每小时价格" value={`¥${Number(profile.companionProfile?.pricePerHour ?? "0").toFixed(2)}`} />
+          </div>
         </div>
       </section>
 
-      <form onSubmit={savePayout} className="mt-6 rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-        <h2 className="text-base font-semibold">支付宝收款资料</h2>
+      <form onSubmit={savePayout} className="companion-card mt-6 p-4">
+        <h2 className="text-base font-black text-white">支付宝收款资料</h2>
         <p className="mt-1 text-sm text-dfc-subtext">用于以后人工提现打款。请填写真实姓名和支付宝账号，管理员打款时会看到这份资料。</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="block">
-            <span className="text-sm text-dfc-subtext">支付宝姓名</span>
-            <input
-              required
-              value={payoutAccountName}
-              onChange={(event) => setPayoutAccountName(event.target.value)}
-              className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
-              placeholder="与支付宝实名一致"
-            />
+            <span className="mb-2 block text-xs font-black text-dfc-muted">支付宝姓名</span>
+            <input required value={payoutAccountName} onChange={(event) => setPayoutAccountName(event.target.value)} className="input" placeholder="与支付宝实名一致" />
           </label>
           <label className="block">
-            <span className="text-sm text-dfc-subtext">支付宝账号</span>
-            <input
-              required
-              value={payoutAccountNo}
-              onChange={(event) => setPayoutAccountNo(event.target.value)}
-              className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
-              placeholder="手机号或邮箱"
-            />
+            <span className="mb-2 block text-xs font-black text-dfc-muted">支付宝账号</span>
+            <input required value={payoutAccountNo} onChange={(event) => setPayoutAccountNo(event.target.value)} className="input" placeholder="手机号或邮箱" />
           </label>
         </div>
         <label className="mt-4 block">
-          <span className="text-sm text-dfc-subtext">收款码图片地址（选填）</span>
-          <input
-            value={payoutQrCodeUrl}
-            onChange={(event) => setPayoutQrCodeUrl(event.target.value)}
-            className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
-            placeholder="以后接入上传后可自动填入"
-          />
+          <span className="mb-2 block text-xs font-black text-dfc-muted">收款码图片地址（选填）</span>
+          <input value={payoutQrCodeUrl} onChange={(event) => setPayoutQrCodeUrl(event.target.value)} className="input" placeholder="以后接入上传后可自动填入" />
         </label>
         {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
         {status ? <div className="mt-4 rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
-        <button disabled={isSaving} className="mt-5 rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">
+        <button disabled={isSaving} className="mt-5 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
           {isSaving ? "保存中..." : "保存收款资料"}
         </button>
       </form>
@@ -180,9 +162,9 @@ export default function ProfilePage() {
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-dfc-control border border-dfc-border bg-dfc-bg p-3">
+    <div className="rounded-dfc-control border border-cyan-300/15 bg-[#050711]/60 p-3">
       <div className="text-xs text-dfc-muted">{label}</div>
-      <div className="mt-1 break-all text-sm font-semibold text-dfc-text">{value}</div>
+      <div className="mt-1 break-all text-sm font-black text-white">{value}</div>
     </div>
   );
 }
@@ -200,6 +182,11 @@ function toOnlineStatus(status?: string) {
   if (status === "BUSY") return "忙碌";
   if (status === "OFFLINE") return "离线";
   return "未设置";
+}
+
+function gameName(code: string) {
+  if (code === "DELTA_FORCE") return "三角洲行动";
+  return code || "未设置";
 }
 
 function formatAccountEmail(email: string) {

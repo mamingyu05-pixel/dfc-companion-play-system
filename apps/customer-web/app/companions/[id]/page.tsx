@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Badge, CompanionAvatar, CustomerShell, SectionHeader } from "../../components";
+import { Badge, CompanionAvatar, CustomerShell } from "../../components";
 import { games } from "../../data";
 
 type ApiCompanion = {
@@ -39,7 +39,12 @@ export default function CompanionDetailPage() {
   if (error) {
     return (
       <CustomerShell>
-        <div className="rounded-dfc border border-dfc-danger/40 bg-dfc-danger/10 p-4 text-sm text-dfc-danger">{error}</div>
+        <div className="maycat-card border-dfc-danger/40 bg-dfc-danger/10 p-4 text-sm text-dfc-danger">
+          <div>{error}</div>
+          <Link href="/companions" className="maycat-button-secondary mt-4 inline-block px-4 py-2 text-sm font-black text-dfc-text">
+            返回陪玩大厅
+          </Link>
+        </div>
       </CustomerShell>
     );
   }
@@ -47,69 +52,148 @@ export default function CompanionDetailPage() {
   if (!companion) {
     return (
       <CustomerShell>
-        <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">正在加载陪玩资料...</div>
+        <CompanionDetailSkeleton />
       </CustomerShell>
     );
   }
 
+  const isOnline = companion.onlineStatus === "ONLINE";
+  const canVoice = companion.voicePreference !== "TEXT_ONLY";
+
   return (
     <CustomerShell>
-      <section className="grid gap-6 lg:grid-cols-[1fr_340px]">
-        <div>
-          <SectionHeader title={companion.nickname} desc={companion.bio || "该陪玩资料来自后台真实上架信息。"} />
-
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Badge tone={companion.onlineStatus === "ONLINE" ? "gold" : "default"}>{toOnlineStatus(companion.onlineStatus)}</Badge>
-            <Badge>{gameName(companion.game)}</Badge>
-            <Badge>{companion.deltaForceRank}</Badge>
-            <Badge>{toVoice(companion.voicePreference)}</Badge>
-            {companion.skillModes.map((mode) => (
-              <Badge key={mode}>{mode}</Badge>
-            ))}
+      <section className="maycat-profile-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 sm:p-6">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div>
+            <Link href="/companions" className="text-sm font-semibold text-cyan-300 hover:text-cyan-100">
+              返回陪玩大厅
+            </Link>
+            <div className="maycat-chip mt-5 px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Companion Profile</div>
+            <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-6xl">
+              {companion.nickname}
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
+              {companion.bio || "该陪玩资料来自后台真实上架信息。你可以先试音确认沟通体验，再提交订单。"}
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Badge tone={isOnline ? "gold" : "default"}>{toOnlineStatus(companion.onlineStatus)}</Badge>
+              <Badge>{gameName(companion.game)}</Badge>
+              <Badge>{companion.deltaForceRank}</Badge>
+              <Badge>{toVoice(companion.voicePreference)}</Badge>
+              {companion.skillModes.map((mode) => (
+                <Badge key={mode}>{mode}</Badge>
+              ))}
+            </div>
           </div>
 
-          <section className="mt-8 rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-            <h2 className="text-base font-semibold">服务特点</h2>
+          <aside className="maycat-profile-card p-4">
+            <div className="flex items-start gap-4">
+              <CompanionAvatar nickname={companion.nickname} avatarUrl={companion.avatarUrl} size="lg" />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-dfc-muted">每小时</div>
+                <div className="mt-1 text-3xl font-black tabular-nums text-cyan-300">¥{Number(companion.pricePerHour).toFixed(2)}</div>
+                <div className="mt-2 text-sm text-dfc-subtext">{toOnlineStatus(companion.onlineStatus)} · {toVoice(companion.voicePreference)}</div>
+              </div>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <DetailMetric label="游戏" value={gameName(companion.game)} />
+              <DetailMetric label="段位" value={companion.deltaForceRank} />
+              <DetailMetric label="语音" value={canVoice ? "支持" : "文字"} />
+              <DetailMetric label="状态" value={toOnlineStatus(companion.onlineStatus)} />
+            </div>
+            <Link href={`/order?companion=${companion.id}&game=${companion.game}`} className="maycat-button mt-5 block px-4 py-3 text-center text-sm font-black">
+              立即下单
+            </Link>
+            <Link href={`/order?companion=${companion.id}&game=${companion.game}&trial=1`} className="maycat-button-secondary mt-3 block px-4 py-3 text-center text-sm font-black">
+              申请试音
+            </Link>
+          </aside>
+        </div>
+      </section>
+
+      <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
+        <div className="space-y-6">
+          <section className="maycat-card p-4">
+            <h2 className="text-lg font-black text-white">服务特点</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               {(companion.skillModes.length ? companion.skillModes : ["平台审核", "可派单", "资料真实"]).map((tag) => (
-                <div key={tag} className="rounded-dfc-control border border-dfc-border bg-dfc-bg p-3 text-sm text-dfc-subtext">
+                <div key={tag} className="rounded-dfc-control border border-cyan-300/20 bg-[#07111f]/70 p-3 text-sm font-semibold text-cyan-50/80">
                   {tag}
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="mt-4 rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-            <h2 className="text-base font-semibold">下单说明</h2>
-            <ul className="mt-3 space-y-2 text-sm leading-6 text-dfc-subtext">
-              <li>只有后台已上架陪玩会出现在客户列表。</li>
-              <li>可申请进入临时语音频道试音，试音不代表订单开始。</li>
-              <li>陪玩接单后订单开始前仍可联系客服处理异常。</li>
-              <li>金额由后端按单价和时长计算，前端仅展示确认信息。</li>
-            </ul>
+          <section className="maycat-card p-4">
+            <h2 className="text-lg font-black text-white">适合你吗</h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <TrustPoint title="先试音再决定" desc={canVoice ? "可申请进入临时语音频道，确认声音、沟通和节奏。" : "该陪玩偏文字沟通，下单前请在备注里写清楚需求。"} />
+              <TrustPoint title="后台真实上架" desc="只有管理员审核上架后的陪玩会出现在客户列表。" />
+              <TrustPoint title="金额后端计算" desc="前端只展示单价，最终订单金额以后端冻结为准。" />
+              <TrustPoint title="异常可找客服" desc="接单前后如需改时间、沟通异常，可走客服处理。" />
+            </div>
           </section>
         </div>
 
-        <aside className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <CompanionAvatar nickname={companion.nickname} avatarUrl={companion.avatarUrl} size="lg" />
-          <div className="mt-4 text-sm text-dfc-muted">每小时</div>
-          <div className="text-3xl font-semibold text-dfc-blue">¥{Number(companion.pricePerHour).toFixed(2)}</div>
-          <div className="mt-2 text-sm text-dfc-subtext">{toOnlineStatus(companion.onlineStatus)} · {toVoice(companion.voicePreference)}</div>
-          <Link
-            href={`/order?companion=${companion.id}&game=${companion.game}`}
-            className="mt-5 block rounded-dfc-control bg-dfc-blue px-4 py-3 text-center text-sm font-semibold text-slate-950"
-          >
-            立即下单
-          </Link>
-          <Link
-            href={`/order?companion=${companion.id}&game=${companion.game}&trial=1`}
-            className="mt-3 block rounded-dfc-control border border-dfc-blue/50 px-4 py-3 text-center text-sm font-semibold text-dfc-blue"
-          >
-            申请试音
-          </Link>
+        <aside className="maycat-price-console p-4 lg:sticky lg:top-24 lg:self-start">
+          <h2 className="text-base font-black text-white">下单说明</h2>
+          <div className="mt-4 space-y-3 text-sm leading-6 text-dfc-subtext">
+            <RuleLine text="选择试音时，管理员可创建临时 Discord/KOOK 语音房。" />
+            <RuleLine text="试音只确认沟通体验，不代表订单开始或收益结算。" />
+            <RuleLine text="陪玩接单后，订单开始前仍可联系客服处理异常。" />
+            <RuleLine text="订单金额按单价和时长由后端计算并冻结余额。" />
+          </div>
+          <div className={`mt-4 rounded-dfc-control border px-3 py-2 text-xs leading-5 ${isOnline ? "border-dfc-success/40 bg-dfc-success/10 text-dfc-success" : "border-dfc-warning/40 bg-dfc-warning/10 text-dfc-warning"}`}>
+            {isOnline ? "当前显示在线，适合优先试音或下单。" : "当前不是在线状态，下单后可能需要管理员协调时间。"}
+          </div>
         </aside>
       </section>
     </CustomerShell>
+  );
+}
+
+function DetailMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 p-3">
+      <div className="text-xs text-dfc-muted">{label}</div>
+      <div className="mt-1 truncate text-sm font-black text-white">{value}</div>
+    </div>
+  );
+}
+
+function TrustPoint({ title, desc }: { title: string; desc: string }) {
+  return (
+    <article className="rounded-dfc-control border border-cyan-300/20 bg-[#07111f]/70 p-3">
+      <h3 className="text-sm font-black text-white">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-dfc-subtext">{desc}</p>
+    </article>
+  );
+}
+
+function RuleLine({ text }: { text: string }) {
+  return (
+    <div className="flex gap-3">
+      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function CompanionDetailSkeleton() {
+  return (
+    <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="maycat-card min-h-96 animate-pulse p-6">
+        <div className="h-4 w-32 rounded bg-cyan-300/10" />
+        <div className="mt-6 h-12 max-w-md rounded bg-cyan-300/10" />
+        <div className="mt-4 h-4 max-w-xl rounded bg-cyan-300/10" />
+        <div className="mt-3 h-4 max-w-lg rounded bg-cyan-300/10" />
+      </div>
+      <div className="maycat-card min-h-96 animate-pulse p-4">
+        <div className="h-28 w-28 rounded-dfc bg-cyan-300/10" />
+        <div className="mt-5 h-10 w-32 rounded bg-cyan-300/10" />
+        <div className="mt-5 h-12 rounded-dfc-control bg-cyan-300/10" />
+      </div>
+    </div>
   );
 }
 

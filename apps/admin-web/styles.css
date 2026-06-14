@@ -2,8 +2,142 @@
 @tailwind components;
 @tailwind utilities;
 
+* {
+  box-sizing: border-box;
+}
+
+*:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.9);
+  outline-offset: 3px;
+}
+
+html {
+  min-height: 100%;
+  background: #050711;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  background: #050711;
+}
+
 @layer components {
   .input {
-    @apply w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-text outline-none placeholder:text-dfc-muted focus:shadow-dfc-focus;
+    @apply w-full rounded-dfc-control border border-cyan-300/20 bg-[#070d19] px-3 py-3 text-sm text-dfc-text outline-none placeholder:text-dfc-muted focus:border-cyan-300/60 focus:shadow-dfc-focus;
+  }
+}
+
+.admin-console-bg {
+  position: relative;
+  background:
+    radial-gradient(circle at 10% 8%, rgba(236, 72, 153, 0.12), transparent 30%),
+    radial-gradient(circle at 88% 4%, rgba(34, 211, 238, 0.14), transparent 28%),
+    linear-gradient(180deg, #050711 0%, #080a0f 54%, #050711 100%);
+}
+
+.admin-console-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+    linear-gradient(112deg, transparent 0 18%, rgba(236, 72, 153, 0.14) 18.1%, transparent 18.36%),
+    linear-gradient(292deg, transparent 0 78%, rgba(34, 211, 238, 0.16) 78.08%, transparent 78.32%);
+  background-size: 56px 56px, 56px 56px, 100% 100%, 100% 100%;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.82), transparent 88%);
+}
+
+.admin-console-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+.admin-sidebar {
+  border-right: 1px solid rgba(125, 211, 252, 0.15);
+  background:
+    linear-gradient(180deg, rgba(13, 18, 32, 0.96), rgba(5, 7, 17, 0.98)),
+    #080a0f;
+  box-shadow:
+    18px 0 60px rgba(0, 0, 0, 0.26),
+    inset -1px 0 0 rgba(255, 255, 255, 0.025);
+}
+
+.admin-nav-item {
+  display: block;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 9px 12px;
+  color: #aab3c5;
+  font-size: 14px;
+  font-weight: 700;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.admin-nav-item:hover {
+  border-color: rgba(34, 211, 238, 0.28);
+  background: rgba(34, 211, 238, 0.08);
+  color: #f4f7fb;
+  transform: translateX(1px);
+}
+
+.admin-status-pill {
+  border-width: 1px;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-metric-card,
+.admin-panel,
+.admin-table-wrap {
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(17, 24, 39, 0.82), rgba(5, 7, 17, 0.88)),
+    rgba(7, 17, 31, 0.78);
+  box-shadow:
+    0 18px 54px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.admin-metric-card {
+  padding: 16px;
+}
+
+.admin-panel {
+  padding: 16px;
+}
+
+.admin-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.admin-queue-item {
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 8px;
+  background: rgba(7, 17, 31, 0.64);
+  padding: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }

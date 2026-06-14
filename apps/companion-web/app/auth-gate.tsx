@@ -36,7 +36,7 @@ export function CompanionAuthGate({ children }: { children: ReactNode }) {
   }, []);
 
   if (status === "checking") {
-    return <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">正在验证陪玩身份...</div>;
+    return <div className="companion-card p-4 text-sm text-dfc-subtext">正在验证陪玩身份...</div>;
   }
 
   return <>{children}</>;

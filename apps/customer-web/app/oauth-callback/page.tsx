@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { MaycatLogo } from "../brand";
 
 export default function OAuthCallbackPage() {
@@ -36,11 +36,11 @@ export default function OAuthCallbackPage() {
   }, []);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-dfc-bg px-4 text-dfc-text">
-      <section className="w-full max-w-md rounded-dfc border border-dfc-border bg-dfc-surface p-5 shadow-dfc-card">
+    <main className="flex min-h-screen items-center justify-center bg-[#050711] px-4 text-dfc-text">
+      <section className="maycat-card w-full max-w-md p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-black">May猫饼电竞</h1>
+            <h1 className="text-xl font-black text-white">May猫饼电竞</h1>
             <p className="mt-1 text-xs text-dfc-muted">Discord / KOOK 登录</p>
           </div>
           <MaycatLogo compact />
@@ -49,7 +49,7 @@ export default function OAuthCallbackPage() {
           {message}
         </div>
         {failed ? (
-          <Link href="/" className="mt-4 block rounded-dfc-control bg-dfc-blue px-4 py-3 text-center text-sm font-semibold text-slate-950">
+          <Link href="/customer/" className="maycat-button mt-4 block px-4 py-3 text-center text-sm font-black">
             返回登录页
           </Link>
         ) : null}

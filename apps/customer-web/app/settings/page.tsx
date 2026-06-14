@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { CustomerShell, SectionHeader, StatCard } from "../components";
+import { CustomerShell } from "../components";
 
 type ExternalAccount = {
   platform: "DISCORD" | "KOOK";
@@ -115,22 +115,26 @@ export default function CustomerSettingsPage() {
 
   return (
     <CustomerShell>
-      <SectionHeader
-        title="个人设置"
-        desc="查看你的账号资料、邀请码、平台绑定、钱包状态和人工客服入口。这里不会显示后台密码或任何敏感 Token。"
-      />
+      <section className="maycat-settings-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 sm:p-6">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div>
+            <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Account Console</div>
+            <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-5xl">
+              账号控制台。
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
+              查看账号资料、邀请码、平台绑定、钱包状态和人工客服入口。这里不会显示后台密码、Token 或其他敏感凭据。
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <SettingsMetric label="当前账号" value={profile?.user.displayName ?? "加载中"} hint={formatAccountEmail(profile?.user.email)} />
+            <SettingsMetric label="可用余额" value={`¥${formatMoney(profile?.wallet?.availableBalance ?? "0")}`} hint="充值审核通过后增加" />
+            <SettingsMetric label="会员等级" value={profile?.customerMembership?.name ?? "新人"} hint={`累计充值 ¥${formatMoney(profile?.customerMembership?.totalApprovedRecharge ?? "0")}`} />
+          </div>
+        </div>
+      </section>
 
       {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
-
-      <section className="mt-6 grid gap-4 md:grid-cols-3">
-        <StatCard label="当前账号" value={profile?.user.displayName ?? "加载中"} hint={formatAccountEmail(profile?.user.email)} />
-        <StatCard label="可用余额" value={`¥${formatMoney(profile?.wallet?.availableBalance ?? "0")}`} hint="充值审核通过后增加" />
-        <StatCard
-          label="会员等级"
-          value={profile?.customerMembership?.name ?? "新人"}
-          hint={`累计充值 ¥${formatMoney(profile?.customerMembership?.totalApprovedRecharge ?? "0")}`}
-        />
-      </section>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_1fr]">
         <Panel title="账号资料">
@@ -156,7 +160,7 @@ export default function CustomerSettingsPage() {
               type="button"
               onClick={copyReferralCode}
               disabled={!profile?.user.referralCode}
-              className="mt-4 rounded-dfc-control bg-dfc-blue px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50"
+              className="maycat-button mt-4 px-4 py-2 text-sm font-black disabled:cursor-not-allowed disabled:opacity-50"
             >
               {copied ? "已复制" : "复制邀请码"}
             </button>
@@ -170,10 +174,10 @@ export default function CustomerSettingsPage() {
           <PlatformAccount account={kookAccount} platform="KOOK" />
           <PlatformAccount account={discordAccount} platform="DISCORD" />
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <a href="/api/auth/oauth/kook/start?portal=customer" className="maycat-button-secondary px-3 py-3 text-center text-sm font-semibold">
+            <a href="/api/auth/oauth/kook/start?portal=customer" className="maycat-button-secondary px-3 py-3 text-center text-sm font-black">
               绑定 KOOK
             </a>
-            <a href="/api/auth/oauth/discord/start?portal=customer" className="maycat-button-secondary px-3 py-3 text-center text-sm font-semibold">
+            <a href="/api/auth/oauth/discord/start?portal=customer" className="maycat-button-secondary px-3 py-3 text-center text-sm font-black">
               绑定 Discord
             </a>
           </div>
@@ -183,9 +187,9 @@ export default function CustomerSettingsPage() {
         </Panel>
 
         <Panel title="客服与账号安全">
-          <div className="rounded-dfc-control border border-dfc-border bg-dfc-bg p-3 text-sm text-dfc-subtext">
+          <div className="rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 p-3 text-sm text-dfc-subtext">
             <div>
-              VX 客服：<span className="font-semibold text-dfc-blue">{publicConfig.support?.wechatId || "暂未配置"}</span>
+              VX 客服：<span className="font-black text-cyan-200">{publicConfig.support?.wechatId || "暂未配置"}</span>
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <SupportLink href={publicConfig.support?.kookUrl ?? undefined} label="KOOK 客服" />
@@ -195,7 +199,7 @@ export default function CustomerSettingsPage() {
               <img
                 src={publicConfig.support.wechatQrUrl}
                 alt="VX 客服二维码"
-                className="mt-3 h-32 w-32 rounded-dfc-control border border-dfc-border bg-white object-cover p-2"
+                className="mt-3 h-32 w-32 rounded-dfc-control border border-cyan-300/20 bg-white object-cover p-2"
               />
             ) : null}
           </div>
@@ -205,7 +209,7 @@ export default function CustomerSettingsPage() {
         </Panel>
       </section>
 
-      <section className="mt-6 rounded-dfc border border-dfc-border bg-dfc-surface p-4">
+      <section className="maycat-card mt-6 p-4">
         <h2 className="text-base font-black text-white">账号操作</h2>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link href="/recharge" className="maycat-button px-4 py-3 text-sm font-black">
@@ -225,7 +229,7 @@ export default function CustomerSettingsPage() {
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
+    <section className="maycat-card p-4">
       <h2 className="text-base font-black text-white">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
@@ -243,7 +247,7 @@ function InfoLine({ label, value, mono }: { label: string; value: string; mono?:
 
 function PlatformAccount({ account, platform }: { account?: ExternalAccount; platform: ExternalAccount["platform"] }) {
   return (
-    <div className="mb-3 rounded-dfc-control border border-dfc-border bg-dfc-bg p-3">
+    <div className="mb-3 rounded-dfc-control border border-cyan-300/20 bg-[#07111f]/70 p-3">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-dfc-text">{platformLabels[platform]}</div>
@@ -259,13 +263,23 @@ function PlatformAccount({ account, platform }: { account?: ExternalAccount; pla
 
 function SupportLink({ href, label }: { href?: string; label: string }) {
   if (!href) {
-    return <span className="rounded-dfc-control border border-dfc-border px-3 py-2 text-center text-xs text-dfc-muted">{label}未配置</span>;
+    return <span className="rounded-dfc-control border border-cyan-300/15 px-3 py-2 text-center text-xs text-dfc-muted">{label}未配置</span>;
   }
 
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="rounded-dfc-control bg-dfc-blue px-3 py-2 text-center text-xs font-semibold text-slate-950">
+    <a href={href} target="_blank" rel="noreferrer" className="maycat-button px-3 py-2 text-center text-xs font-black">
       {label}
     </a>
+  );
+}
+
+function SettingsMetric({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="rounded-dfc border border-cyan-300/20 bg-[#07111f]/70 p-4 backdrop-blur">
+      <div className="text-xs text-dfc-muted">{label}</div>
+      <div className="mt-2 truncate text-2xl font-black tabular-nums text-white">{value}</div>
+      <div className="mt-1 truncate text-xs text-cyan-100/70">{hint}</div>
+    </div>
   );
 }
 

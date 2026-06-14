@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CompanionShell, OrderCard, SectionHeader } from "../components";
+import { useEffect, useMemo, useState } from "react";
+import { CompanionShell, MetricCard, OrderCard, SectionHeader } from "../components";
 
 type Order = {
   id: string;
@@ -51,11 +51,25 @@ export default function AvailableOrdersPage() {
     await loadOrders();
   }
 
+  const stats = useMemo(() => {
+    const amount = orders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+    const hours = orders.reduce((sum, order) => sum + Number(order.hours || 0), 0);
+    return { amount, hours };
+  }, [orders]);
+
   return (
     <CompanionShell>
-      <SectionHeader title="可接订单" desc="这里只显示派给你的订单，或平台人工匹配开放给已上架陪玩的订单。" />
+      <SectionHeader eyebrow="Order Queue" title="可接订单" desc="这里只显示派给你，或平台人工匹配开放给已上架陪玩的订单。接单后请及时进入语音/游戏服务。" />
+
+      <section className="mt-5 grid gap-4 md:grid-cols-3">
+        <MetricCard label="可接订单" value={String(orders.length)} hint="当前队列" />
+        <MetricCard label="订单金额" value={`¥${formatMoney(String(stats.amount))}`} hint="队列合计" tone="gold" />
+        <MetricCard label="预计时长" value={`${formatMoney(String(stats.hours))}h`} hint="队列合计" tone="green" />
+      </section>
+
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
+
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         {orders.length ? (
           orders.map((order) => (
@@ -63,7 +77,8 @@ export default function AvailableOrdersPage() {
               key={order.id}
               order={{
                 id: order.orderNo,
-                mode: `${order.mode}${order.customer ? ` / ${order.customer.displayName}` : ""}`,
+                mode: order.mode,
+                customer: order.customer ? `${order.customer.displayName} / ${order.customer.email}` : undefined,
                 hours: Number(order.hours),
                 amount: Number(order.totalAmount),
                 status: order.status
@@ -73,7 +88,7 @@ export default function AvailableOrdersPage() {
             />
           ))
         ) : (
-          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">暂无可接订单。</div>
+          <div className="companion-card p-4 text-sm text-dfc-subtext">暂无可接订单。</div>
         )}
       </div>
     </CompanionShell>
@@ -83,4 +98,8 @@ export default function AvailableOrdersPage() {
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
   const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
   return <div className={`mt-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+}
+
+function formatMoney(value: string) {
+  return Number(value || 0).toFixed(2);
 }

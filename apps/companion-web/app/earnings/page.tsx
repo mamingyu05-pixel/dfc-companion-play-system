@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CompanionShell, MetricCard, SectionHeader } from "../components";
+import { useEffect, useMemo, useState } from "react";
+import { CompanionShell, MetricCard, SectionHeader, StatusBadge } from "../components";
 
 type CompanionWalletSummary = {
   wallet: {
@@ -40,33 +40,43 @@ export default function EarningsPage() {
   }, []);
 
   const wallet = summary?.wallet;
+  const creditAmount = useMemo(
+    () => wallet?.transactions.filter((item) => item.direction === "CREDIT").reduce((sum, item) => sum + Number(item.amount || 0), 0) ?? 0,
+    [wallet]
+  );
 
   return (
     <CompanionShell>
-      <SectionHeader title="我的收益明细" desc="这里只显示当前陪玩账号的可提现收益、待结算收益和钱包流水。" />
+      <SectionHeader eyebrow="Income Ledger" title="我的收益明细" desc="这里只显示当前陪玩账号的可提现收益、待结算收益、提现中金额和钱包流水。" />
       {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
-      <section className="mt-6 grid gap-4 md:grid-cols-3">
-        <MetricCard label="可提现收益" value={`¥${formatMoney(wallet?.availableIncome ?? "0")}`} hint="当前账号可提交提现" />
+
+      <section className="mt-6 grid gap-4 md:grid-cols-4">
+        <MetricCard label="可提现收益" value={`¥${formatMoney(wallet?.availableIncome ?? "0")}`} hint="当前账号可提交提现" tone="gold" />
         <MetricCard label="待结算收益" value={`¥${formatMoney(wallet?.pendingIncome ?? "0")}`} hint="订单完成后释放" />
-        <MetricCard label="提现中" value={`¥${formatMoney(summary?.withdrawingAmount ?? "0")}`} hint="等待人工打款" />
+        <MetricCard label="提现中" value={`¥${formatMoney(summary?.withdrawingAmount ?? "0")}`} hint="等待人工打款" tone="green" />
+        <MetricCard label="累计入账" value={`¥${formatMoney(String(creditAmount))}`} hint="当前流水入账合计" />
       </section>
-      <section className="mt-6 rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-        <h2 className="text-base font-semibold">我的收益流水</h2>
+
+      <section className="companion-card mt-6 p-4">
+        <h2 className="text-base font-black text-white">我的收益流水</h2>
         <div className="mt-4 space-y-3">
           {wallet?.transactions.length ? (
             wallet.transactions.map((item) => (
-              <div key={item.id} className="flex items-center justify-between border-b border-dfc-border pb-3 last:border-b-0 last:pb-0">
+              <div key={item.id} className="companion-queue-item flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-medium">{item.type}</div>
-                  <div className="mt-1 text-xs text-dfc-subtext">余额：¥{formatMoney(item.balanceAfter)}</div>
+                  <div className="text-sm font-black text-white">{toTransactionType(item.type)}</div>
+                  <div className="mt-1 text-xs text-dfc-muted">余额 ¥{formatMoney(item.balanceAfter)} / {formatDateTime(item.createdAt)}</div>
                 </div>
-                <div className="font-semibold">{item.direction === "CREDIT" ? "+" : "-"}¥{formatMoney(item.amount)}</div>
+                <div className="text-right">
+                  <div className={`font-black tabular-nums ${item.direction === "CREDIT" ? "text-dfc-success" : "text-dfc-gold"}`}>
+                    {item.direction === "CREDIT" ? "+" : "-"}¥{formatMoney(item.amount)}
+                  </div>
+                  <StatusBadge tone="success">已记录</StatusBadge>
+                </div>
               </div>
             ))
           ) : (
-            <div className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-subtext">
-              当前账号暂无收益流水。
-            </div>
+            <div className="rounded-dfc-control border border-cyan-300/15 bg-[#050711]/60 px-3 py-3 text-sm text-dfc-subtext">当前账号暂无收益流水。</div>
           )}
         </div>
       </section>
@@ -75,5 +85,18 @@ export default function EarningsPage() {
 }
 
 function formatMoney(value: string) {
-  return Number(value).toFixed(2);
+  return Number(value || 0).toFixed(2);
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function toTransactionType(type: string) {
+  const map: Record<string, string> = {
+    ORDER_SETTLEMENT: "订单结算",
+    WITHDRAWAL: "提现",
+    ADMIN_ADJUSTMENT: "管理员调账"
+  };
+  return map[type] ?? type;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 
 type Companion = {
@@ -61,7 +61,7 @@ export default function CompanionsPage() {
       setError(message ?? "更新陪玩状态失败");
       return;
     }
-    setStatus(`陪玩状态已更新为 ${nextStatus}`);
+    setStatus(`陪玩状态已更新为 ${toCompanionStatus(nextStatus)}`);
     await loadCompanions();
   }
 
@@ -88,36 +88,49 @@ export default function CompanionsPage() {
     await loadCompanions();
   }
 
+  const stats = useMemo(() => {
+    const listed = companions.filter((item) => item.status === "LISTED").length;
+    const online = companions.filter((item) => item.onlineStatus === "ONLINE").length;
+    const pendingIncome = companions.reduce((sum, item) => sum + Number(item.pendingIncome || 0), 0);
+    return { listed, online, pendingIncome };
+  }, [companions]);
+
   return (
     <AdminShell>
-      <SectionHeader title="陪玩管理" desc="管理真实陪玩资料、上架状态、价格、平台抽成比例和 KOOK / Discord 绑定。" />
+      <SectionHeader eyebrow="Companion Roster" title="陪玩管理" desc="管理真实陪玩资料、上架状态、价格、平台抽成比例和 KOOK / Discord 绑定。上架后客户才可下单。" />
+
+      <section className="mb-5 grid gap-4 md:grid-cols-3">
+        <Signal label="已上架" value={String(stats.listed)} hint="可被客户选择" tone="green" />
+        <Signal label="当前在线" value={String(stats.online)} hint="派单优先队列" tone="cyan" />
+        <Signal label="待结算收益" value={`¥${formatMoney(String(stats.pendingIncome))}`} hint="完成后进入钱包流水" tone="gold" />
+      </section>
+
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
+
       <DataTable
         columns={["ID", "资料", "游戏", "账号", "段位", "价格/抽成", "资料状态", "在线", "收益", "操作"]}
         rows={companions.map((item) => [
-          item.userId,
+          shortId(item.userId),
           <div key={`${item.userId}-profile`} className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-dfc border border-dfc-border bg-dfc-elevated text-sm font-black text-dfc-blue">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-dfc border border-cyan-300/20 bg-[#101827] text-sm font-black text-cyan-200">
               {item.avatarUrl ? <img src={item.avatarUrl} alt={`${item.nickname} 头像`} className="h-full w-full object-cover" /> : item.nickname.slice(0, 1)}
             </div>
             <div>
-              <div className="font-medium text-dfc-text">{item.nickname}</div>
-              <div className="mt-1 text-xs text-dfc-muted">{platformSummary(item.externalAccounts)}</div>
+              <div className="font-semibold text-white">{item.nickname}</div>
+              <div className="mt-1 max-w-56 truncate text-xs text-dfc-muted">{platformSummary(item.externalAccounts)}</div>
             </div>
           </div>,
           gameName(item.game),
           formatAccountEmail(item.email),
           item.deltaForceRank,
-          <CompanionCommissionEditor
-            key={`${item.userId}-commission`}
-            pricePerHour={item.pricePerHour}
-            commissionRate={item.commissionRate}
-            onSave={(value) => void updateCommission(item.userId, value)}
-          />,
-          <StatusBadge key={`${item.userId}-s`} tone={item.status === "LISTED" ? "success" : item.status === "BANNED" ? "danger" : "warning"}>{item.status}</StatusBadge>,
-          item.onlineStatus,
-          `可提 ¥${formatMoney(item.availableIncome)} / 待结 ¥${formatMoney(item.pendingIncome)}`,
+          <CompanionCommissionEditor key={`${item.userId}-commission`} pricePerHour={item.pricePerHour} commissionRate={item.commissionRate} onSave={(value) => void updateCommission(item.userId, value)} />,
+          <StatusBadge key={`${item.userId}-s`} tone={item.status === "LISTED" ? "success" : item.status === "BANNED" ? "danger" : "warning"}>{toCompanionStatus(item.status)}</StatusBadge>,
+          <StatusBadge key={`${item.userId}-online`} tone={item.onlineStatus === "ONLINE" ? "success" : "default"}>{toOnlineStatus(item.onlineStatus)}</StatusBadge>,
+          <div key={`${item.userId}-income`} className="text-xs leading-5">
+            <div className="font-black text-dfc-gold">可提 ¥{formatMoney(item.availableIncome)}</div>
+            <div className="text-dfc-muted">待结 ¥{formatMoney(item.pendingIncome)}</div>
+          </div>,
           <div key={`${item.userId}-a`} className="flex flex-wrap gap-2">
             <ActionButton onClick={() => void updateStatus(item.userId, "LISTED")}>上架</ActionButton>
             <ActionButton tone="secondary" onClick={() => void updateStatus(item.userId, "UNLISTED")}>下架</ActionButton>
@@ -129,31 +142,33 @@ export default function CompanionsPage() {
   );
 }
 
-function CompanionCommissionEditor({
-  pricePerHour,
-  commissionRate,
-  onSave
-}: {
-  pricePerHour: string;
-  commissionRate: string;
-  onSave: (value: string) => void;
-}) {
+function CompanionCommissionEditor({ pricePerHour, commissionRate, onSave }: { pricePerHour: string; commissionRate: string; onSave: (value: string) => void }) {
   const [value, setValue] = useState(commissionRate);
   return (
     <div className="min-w-44 text-xs">
-      <div>价格 ¥{formatMoney(pricePerHour)}/h</div>
+      <div className="font-black text-dfc-gold">¥{formatMoney(pricePerHour)}/h</div>
       <div className="mt-2 flex items-center gap-2">
-        <input
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          className="w-20 rounded-dfc-control border border-dfc-border bg-dfc-bg px-2 py-1 outline-none focus:shadow-dfc-focus"
-          inputMode="decimal"
-        />
-        <button type="button" onClick={() => onSave(value)} className="rounded-dfc-control bg-dfc-blue px-2 py-1 font-semibold text-slate-950">
+        <input value={value} onChange={(event) => setValue(event.target.value)} className="w-20 rounded-dfc-control border border-cyan-300/20 bg-[#070d19] px-2 py-1 outline-none focus:shadow-dfc-focus" inputMode="decimal" />
+        <button type="button" onClick={() => onSave(value)} className="rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-2 py-1 font-black text-slate-950">
           保存
         </button>
       </div>
       <div className="mt-1 text-dfc-muted">平台抽成 {formatPercent(commissionRate)}</div>
+    </div>
+  );
+}
+
+function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" }) {
+  const styles = {
+    cyan: "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
+    gold: "border-dfc-gold/30 bg-dfc-gold/10 text-dfc-gold",
+    green: "border-dfc-success/30 bg-dfc-success/10 text-dfc-success"
+  };
+  return (
+    <div className={`rounded-dfc border p-4 ${styles[tone]}`}>
+      <div className="text-xs font-black">{label}</div>
+      <div className="mt-2 text-3xl font-black tabular-nums">{value}</div>
+      <div className="mt-1 text-xs opacity-80">{hint}</div>
     </div>
   );
 }
@@ -171,6 +186,10 @@ function formatPercent(value: string) {
   return `${Math.round(Number(value || 0) * 10000) / 100}%`;
 }
 
+function shortId(id: string) {
+  return id.length > 12 ? `${id.slice(0, 8)}...` : id;
+}
+
 function formatAccountEmail(email: string) {
   return email.endsWith("@oauth.maycatplay.local") ? "第三方注册" : email;
 }
@@ -186,6 +205,20 @@ function toFriendlyError(message?: string) {
   if (message.includes("commissionRate cannot be negative")) return "抽成比例不能小于 0";
   if (message.includes("commissionRate must be a valid amount")) return "请输入正确抽成比例，例如 0.2";
   return message;
+}
+
+function toCompanionStatus(status: string) {
+  if (status === "LISTED") return "已上架";
+  if (status === "UNLISTED") return "已下架";
+  if (status === "BANNED") return "已封禁";
+  return status;
+}
+
+function toOnlineStatus(status: string) {
+  if (status === "ONLINE") return "在线";
+  if (status === "BUSY") return "忙碌";
+  if (status === "OFFLINE") return "离线";
+  return status;
 }
 
 function gameName(code: string) {

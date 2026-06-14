@@ -90,35 +90,58 @@ export default function CompanionDashboardPage() {
   if (!profile) {
     return (
       <CompanionShell>
-        <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">正在加载你的陪玩工作台...</div>
+        <div className="companion-card p-4 text-sm text-dfc-subtext">正在加载你的陪玩工作台...</div>
       </CompanionShell>
     );
   }
 
   const activeOrderCount = profile.companionOrders.filter((order) => ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"].includes(order.status)).length;
+  const nickname = profile.companionProfile?.nickname ?? profile.user.displayName;
 
   return (
     <CompanionShell>
-      <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <SectionHeader
-          title={`${profile.companionProfile?.nickname ?? profile.user.displayName} 的陪玩工作台`}
-          desc={`账号：${formatAccountEmail(profile.user.email)}。这里只显示当前陪玩账号的资料、收益和订单。`}
-        />
-        <Link href="/profile" className="rounded-dfc-control border border-dfc-border bg-dfc-surface px-4 py-2 text-sm font-semibold text-dfc-text">
-          编辑资料
-        </Link>
+      <section className="companion-hero p-5 md:p-6">
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          <div>
+            <SectionHeader
+              eyebrow="Maycat Companion Console"
+              title={`${nickname}，准备接单。`}
+              desc={`账号：${formatAccountEmail(profile.user.email)}。这里显示当前陪玩账号的资料、收益、可接订单和服务中的订单。`}
+            />
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Link href="/available-orders" className="rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">
+                查看可接订单
+              </Link>
+              <Link href="/withdrawals" className="rounded-dfc-control border border-cyan-300/20 bg-[#101827] px-4 py-3 text-sm font-black text-dfc-text">
+                申请提现
+              </Link>
+              <Link href="/profile" className="rounded-dfc-control border border-cyan-300/20 bg-[#101827] px-4 py-3 text-sm font-black text-dfc-text">
+                收款资料
+              </Link>
+            </div>
+          </div>
+          <div className="companion-queue-item">
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">Status</div>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <MiniSignal label="资料" value={toProfileStatus(profile.companionProfile?.status)} />
+              <MiniSignal label="在线" value={toOnlineStatus(profile.companionProfile?.onlineStatus)} />
+              <MiniSignal label="价格" value={`¥${formatMoney(profile.companionProfile?.pricePerHour ?? "0")}/h`} />
+              <MiniSignal label="进行中" value={`${activeOrderCount} 单`} />
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section className="mt-6 grid gap-4 md:grid-cols-4">
+      <section className="mt-5 grid gap-4 md:grid-cols-4">
         <MetricCard label="资料状态" value={toProfileStatus(profile.companionProfile?.status)} hint={toOnlineStatus(profile.companionProfile?.onlineStatus)} />
-        <MetricCard label="可提现收益" value={`¥${formatMoney(profile.wallet?.availableIncome ?? "0")}`} hint="当前账号可提现" />
+        <MetricCard label="可提现收益" value={`¥${formatMoney(profile.wallet?.availableIncome ?? "0")}`} hint="当前账号可提交提现" tone="gold" />
         <MetricCard label="待结算收益" value={`¥${formatMoney(profile.wallet?.pendingIncome ?? "0")}`} hint="订单完成后结算" />
-        <MetricCard label="我的进行中订单" value={String(activeOrderCount)} hint="只统计当前陪玩账号" />
+        <MetricCard label="进行中订单" value={String(activeOrderCount)} hint="当前陪玩账号订单" tone="green" />
       </section>
 
-      <section className="mt-8 grid gap-4 lg:grid-cols-2">
+      <section className="mt-8 grid gap-5 lg:grid-cols-2">
         <div>
-          <SectionHeader title="可接订单" desc="显示派给你的真实订单，或平台人工匹配开放给已上架陪玩的订单。" />
+          <SectionHeader title="可接订单" desc="显示派给你或平台开放给已上架陪玩的真实订单。" />
           <div className="mt-4 space-y-4">
             {availableOrders.length ? (
               availableOrders.map((order) => (
@@ -126,7 +149,8 @@ export default function CompanionDashboardPage() {
                   key={order.id}
                   order={{
                     id: order.orderNo,
-                    mode: `${order.mode}${order.customer ? ` / ${order.customer.displayName}` : ""}`,
+                    mode: order.mode,
+                    customer: order.customer?.displayName,
                     hours: Number(order.hours),
                     amount: Number(order.totalAmount),
                     status: order.status
@@ -135,12 +159,12 @@ export default function CompanionDashboardPage() {
                 />
               ))
             ) : (
-              <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">暂无可接订单。</div>
+              <EmptyState text="暂无可接订单。" />
             )}
           </div>
         </div>
         <div>
-          <SectionHeader title="我的订单" />
+          <SectionHeader title="我的订单" desc="已接单、服务中和历史订单会显示在这里。" />
           <div className="mt-4 space-y-4">
             {profile.companionOrders.length ? (
               profile.companionOrders.map((order) => (
@@ -148,7 +172,8 @@ export default function CompanionDashboardPage() {
                   key={order.id}
                   order={{
                     id: order.orderNo,
-                    mode: `${order.customerName} · ${order.mode}`,
+                    mode: order.mode,
+                    customer: order.customerName,
                     hours: Number(order.hours),
                     amount: Number(order.companionIncome || order.totalAmount),
                     status: order.status
@@ -157,9 +182,7 @@ export default function CompanionDashboardPage() {
                 />
               ))
             ) : (
-              <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">
-                当前账号还没有订单。
-              </div>
+              <EmptyState text="当前账号还没有订单。" />
             )}
           </div>
         </div>
@@ -168,8 +191,21 @@ export default function CompanionDashboardPage() {
   );
 }
 
+function EmptyState({ text }: { text: string }) {
+  return <div className="companion-card p-4 text-sm text-dfc-subtext">{text}</div>;
+}
+
+function MiniSignal({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-dfc-control border border-cyan-300/15 bg-[#050711]/60 p-3">
+      <div className="text-xs text-dfc-muted">{label}</div>
+      <div className="mt-1 text-sm font-black text-white">{value}</div>
+    </div>
+  );
+}
+
 function formatMoney(value: string) {
-  return Number(value).toFixed(2);
+  return Number(value || 0).toFixed(2);
 }
 
 function toProfileStatus(status?: string) {
@@ -184,7 +220,7 @@ function toOnlineStatus(status?: string) {
   if (status === "ONLINE") return "在线";
   if (status === "BUSY") return "忙碌";
   if (status === "OFFLINE") return "离线";
-  return "未设置在线状态";
+  return "未设置";
 }
 
 function formatAccountEmail(email: string) {

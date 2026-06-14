@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { CompanionShell, MetricCard, SectionHeader } from "../components";
+import { CompanionShell, MetricCard, SectionHeader, StatusBadge } from "../components";
 
 type CompanionWalletSummary = {
   wallet: {
@@ -104,62 +104,44 @@ export default function WithdrawalsPage() {
 
   return (
     <CompanionShell>
-      <SectionHeader
-        title="我的提现申请"
-        desc="这里只显示当前陪玩账号的提现余额和记录。第一阶段由管理员审核后人工打款。"
-      />
+      <SectionHeader eyebrow="Payout Desk" title="我的提现申请" desc="这里只显示当前陪玩账号的提现余额和记录。第一阶段由管理员审核后人工打款。" />
       <section className="mt-6 grid gap-4 md:grid-cols-3">
-        <MetricCard label="可提现收益" value={`¥${formatMoney(wallet?.availableIncome ?? "0")}`} hint="当前账号可提交提现" />
+        <MetricCard label="可提现收益" value={`¥${formatMoney(wallet?.availableIncome ?? "0")}`} hint="当前账号可提交提现" tone="gold" />
         <MetricCard label="提现中" value={`¥${formatMoney(summary?.withdrawingAmount ?? "0")}`} hint="等待审核或打款" />
-        <MetricCard label="冻结收益" value={`¥${formatMoney(wallet?.frozenIncome ?? "0")}`} hint="提现申请会先冻结" />
+        <MetricCard label="冻结收益" value={`¥${formatMoney(wallet?.frozenIncome ?? "0")}`} hint="提现申请会先冻结" tone="green" />
       </section>
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">我的提现记录</h2>
+        <div className="companion-card p-4">
+          <h2 className="text-base font-black text-white">我的提现记录</h2>
           <div className="mt-4 space-y-3">
             {summary?.withdrawalRequests.length ? (
               summary.withdrawalRequests.map((request) => (
-                <div key={request.id} className="rounded-dfc-control border border-dfc-border bg-dfc-bg p-3">
+                <div key={request.id} className="companion-queue-item">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold">¥{formatMoney(request.amount)}</div>
-                    <div className="text-xs text-dfc-blue">{toWithdrawalStatus(request.status)}</div>
+                    <div className="text-lg font-black tabular-nums text-dfc-gold">¥{formatMoney(request.amount)}</div>
+                    <StatusBadge tone={withdrawalTone(request.status)}>{toWithdrawalStatus(request.status)}</StatusBadge>
                   </div>
-                  <div className="mt-1 text-xs text-dfc-subtext">{new Date(request.createdAt).toLocaleString("zh-CN")}</div>
+                  <div className="mt-1 text-xs text-dfc-subtext">{formatDateTime(request.createdAt)}</div>
                   <div className="mt-2 break-all text-xs text-dfc-muted">收款：{request.payoutAccount}</div>
                   {request.reviewNote ? <div className="mt-2 text-xs text-dfc-warning">审核备注：{request.reviewNote}</div> : null}
                 </div>
               ))
             ) : (
-              <div className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm text-dfc-subtext">
-                当前账号还没有提现申请。
-              </div>
+              <div className="rounded-dfc-control border border-cyan-300/15 bg-[#050711]/60 px-3 py-3 text-sm text-dfc-subtext">当前账号还没有提现申请。</div>
             )}
           </div>
         </div>
 
-        <form onSubmit={submit} className="rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-          <h2 className="text-base font-semibold">提交我的提现申请</h2>
+        <form onSubmit={submit} className="companion-card p-4">
+          <h2 className="text-base font-black text-white">提交提现申请</h2>
           <label className="mt-4 block">
-            <span className="text-sm text-dfc-subtext">提现金额</span>
-            <input
-              required
-              inputMode="decimal"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
-              placeholder={`最多 ¥${formatMoney(wallet?.availableIncome ?? "0")}`}
-            />
+            <span className="mb-2 block text-xs font-black text-dfc-muted">提现金额</span>
+            <input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} className="input" placeholder={`最多 ¥${formatMoney(wallet?.availableIncome ?? "0")}`} />
           </label>
           <label className="mt-4 block">
-            <span className="text-sm text-dfc-subtext">收款账户</span>
-            <input
-              required
-              value={payoutAccount}
-              onChange={(event) => setPayoutAccount(event.target.value)}
-              className="mt-2 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
-              placeholder="先到资料页设置支付宝收款资料"
-            />
+            <span className="mb-2 block text-xs font-black text-dfc-muted">收款账户</span>
+            <input required value={payoutAccount} onChange={(event) => setPayoutAccount(event.target.value)} className="input" placeholder="先到资料页设置支付宝收款资料" />
           </label>
           {!buildPayoutAccount(payoutProfile) ? (
             <div className="mt-3 rounded-dfc-control border border-dfc-warning/40 bg-dfc-warning/10 px-3 py-2 text-xs text-dfc-warning">
@@ -167,17 +149,12 @@ export default function WithdrawalsPage() {
             </div>
           ) : null}
           <label className="mt-4 block">
-            <span className="text-sm text-dfc-subtext">备注</span>
-            <textarea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              className="mt-2 min-h-24 w-full rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus"
-              placeholder="例如：本次提现全部收益"
-            />
+            <span className="mb-2 block text-xs font-black text-dfc-muted">备注</span>
+            <textarea value={note} onChange={(event) => setNote(event.target.value)} className="input min-h-24" placeholder="例如：本次提现全部收益" />
           </label>
           {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
           {status ? <div className="mt-4 rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
-          <button disabled={isSubmitting} className="mt-5 w-full rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">
+          <button disabled={isSubmitting} className="mt-5 w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
             {isSubmitting ? "提交中..." : "提交提现申请"}
           </button>
         </form>
@@ -192,7 +169,18 @@ function buildPayoutAccount(profile?: PayoutProfile | null) {
 }
 
 function formatMoney(value: string) {
-  return Number(value).toFixed(2);
+  return Number(value || 0).toFixed(2);
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function withdrawalTone(status: string): "default" | "warning" | "danger" | "success" {
+  if (status === "PAID") return "success";
+  if (status === "REJECTED") return "danger";
+  if (status === "PENDING" || status === "APPROVED") return "warning";
+  return "default";
 }
 
 function toWithdrawalStatus(status: string) {

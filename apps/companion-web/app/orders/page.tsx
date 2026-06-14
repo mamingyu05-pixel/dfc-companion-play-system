@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CompanionShell, OrderCard, SectionHeader } from "../components";
+import { useEffect, useMemo, useState } from "react";
+import { CompanionShell, MetricCard, OrderCard, SectionHeader } from "../components";
 
 type Order = {
   id: string;
@@ -51,11 +51,26 @@ export default function CompanionOrdersPage() {
     await loadOrders();
   }
 
+  const stats = useMemo(() => {
+    const accepted = orders.filter((order) => order.status === "ACCEPTED").length;
+    const active = orders.filter((order) => order.status === "IN_PROGRESS").length;
+    const completed = orders.filter((order) => order.status === "COMPLETED").length;
+    return { accepted, active, completed };
+  }, [orders]);
+
   return (
     <CompanionShell>
-      <SectionHeader title="我的订单" desc="进入语音/游戏服务后开始订单。服务完成后再点击完成，系统会结算收益。" />
+      <SectionHeader eyebrow="My Service" title="我的订单" desc="进入语音/游戏服务后开始订单。服务完成后再点击完成，系统会结算收益。" />
+
+      <section className="mt-5 grid gap-4 md:grid-cols-3">
+        <MetricCard label="待开始" value={String(stats.accepted)} hint="已接单，待开始服务" tone="cyan" />
+        <MetricCard label="服务中" value={String(stats.active)} hint="需要按时完成" tone="gold" />
+        <MetricCard label="已完成" value={String(stats.completed)} hint="完成后进入收益流水" tone="green" />
+      </section>
+
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
+
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         {orders.length ? (
           orders.map((order) => {
@@ -65,7 +80,8 @@ export default function CompanionOrdersPage() {
                 key={order.id}
                 order={{
                   id: order.orderNo,
-                  mode: `${order.mode}${order.customer ? ` / ${order.customer.displayName}` : ""}`,
+                  mode: order.mode,
+                  customer: order.customer ? `${order.customer.displayName} / ${order.customer.email}` : undefined,
                   hours: Number(order.hours),
                   amount: Number(order.totalAmount),
                   status: order.status
@@ -76,7 +92,7 @@ export default function CompanionOrdersPage() {
             );
           })
         ) : (
-          <div className="rounded-dfc border border-dfc-border bg-dfc-surface p-4 text-sm text-dfc-subtext">暂无订单。</div>
+          <div className="companion-card p-4 text-sm text-dfc-subtext">暂无订单。</div>
         )}
       </div>
     </CompanionShell>

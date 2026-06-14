@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 
 type AdminOrder = {
@@ -77,73 +77,136 @@ export default function DispatchPage() {
       return;
     }
 
-    setStatus("派单成功，系统已尝试通知 Discord/KOOK。");
+    setStatus("派单成功，系统已尝试通知 Discord / KOOK。");
     await loadData();
   }
 
   const pending = orders.filter((order) => order.status === "PAID");
   const listedCompanions = companions.filter((companion) => companion.status === "LISTED");
+  const onlineCount = listedCompanions.filter((companion) => companion.onlineStatus === "ONLINE").length;
+  const selectedOrder = pending.find((order) => order.id === selectedOrderId);
+  const selectedCompanion = listedCompanions.find((companion) => companion.userId === selectedCompanionId);
+  const pendingAmount = useMemo(() => pending.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0), [pending]);
 
   return (
     <AdminShell>
-      <SectionHeader title="派单" desc="将已支付订单分配给已上架陪玩。客户选择平台人工挑人的订单也会进入这里。" />
+      <SectionHeader eyebrow="Dispatch Desk" title="派单控制台" desc="将已支付订单分配给已上架陪玩。客户选择平台人工挑人的订单，也会进入这里等待管理员确认。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
-      <section className="mb-6 rounded-dfc border border-dfc-border bg-dfc-surface p-4">
-        <h2 className="text-base font-semibold">执行派单</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-          <select value={selectedOrderId} onChange={(event) => setSelectedOrderId(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
-            <option value="">选择待派单订单</option>
-            {pending.map((order) => (
-              <option key={order.id} value={order.id}>
-                {order.orderNo} / {gameName(order.game)} / {order.customer?.displayName ?? "-"} / ¥{formatMoney(order.totalAmount)}
-              </option>
-            ))}
-          </select>
-          <select value={selectedCompanionId} onChange={(event) => setSelectedCompanionId(event.target.value)} className="rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus">
-            <option value="">选择陪玩</option>
-            {listedCompanions.map((companion) => (
-              <option key={companion.userId} value={companion.userId}>
-                {companion.nickname} / {companion.onlineStatus} / ¥{formatMoney(companion.pricePerHour)}/h
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={() => void assign()} className="rounded-dfc-control bg-dfc-blue px-4 py-3 text-sm font-semibold text-slate-950">
-            确认派单
-          </button>
+      <section className="mb-5 grid gap-4 md:grid-cols-3">
+        <Signal label="待派单订单" value={String(pending.length)} hint={`待派金额 ¥${formatMoney(String(pendingAmount))}`} tone="gold" />
+        <Signal label="上架陪玩" value={String(listedCompanions.length)} hint={`${onlineCount} 位在线`} tone="cyan" />
+        <Signal label="当前模式" value="人工确认" hint="不自动支付、不自动提现" tone="green" />
+      </section>
+
+      <section className="admin-panel mb-6">
+        <div className="grid gap-4 xl:grid-cols-[1fr_1fr_180px]">
+          <label>
+            <span className="mb-2 block text-xs font-black text-dfc-muted">选择待派单订单</span>
+            <select value={selectedOrderId} onChange={(event) => setSelectedOrderId(event.target.value)} className="input">
+              <option value="">选择待派单订单</option>
+              {pending.map((order) => (
+                <option key={order.id} value={order.id}>
+                  {order.orderNo} / {gameName(order.game)} / {order.customer?.displayName ?? "-"} / ¥{formatMoney(order.totalAmount)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="mb-2 block text-xs font-black text-dfc-muted">选择陪玩</span>
+            <select value={selectedCompanionId} onChange={(event) => setSelectedCompanionId(event.target.value)} className="input">
+              <option value="">选择陪玩</option>
+              {listedCompanions.map((companion) => (
+                <option key={companion.userId} value={companion.userId}>
+                  {companion.nickname} / {toOnlineStatus(companion.onlineStatus)} / ¥{formatMoney(companion.pricePerHour)}/h
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-end">
+            <button type="button" onClick={() => void assign()} className="w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200">
+              确认派单
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <Preview title="当前订单" lines={selectedOrder ? [selectedOrder.orderNo, `${gameName(selectedOrder.game)} / ${selectedOrder.mode}`, `客户：${selectedOrder.customer?.displayName ?? "-"}`, `金额：¥${formatMoney(selectedOrder.totalAmount)}`] : ["未选择订单"]} />
+          <Preview title="当前陪玩" lines={selectedCompanion ? [selectedCompanion.nickname, `状态：${toOnlineStatus(selectedCompanion.onlineStatus)}`, `价格：¥${formatMoney(selectedCompanion.pricePerHour)}/h`, selectedCompanion.email] : ["未选择陪玩"]} />
         </div>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
-        <div>
-          <h2 className="mb-3 text-base font-semibold">已支付待派单</h2>
+        <Panel title="已支付待派单" hint="只显示 PAID 状态订单">
           <DataTable
             columns={["订单", "游戏", "客户", "金额", "状态"]}
             rows={pending.map((order) => [
-              order.orderNo,
+              <span key={`${order.id}-no`} className="font-black text-white">{order.orderNo}</span>,
               gameName(order.game),
               order.customer?.displayName ?? "-",
-              `¥${formatMoney(order.totalAmount)}`,
-              <StatusBadge key={order.id} tone="warning">{order.status}</StatusBadge>
+              <span key={`${order.id}-amount`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(order.totalAmount)}</span>,
+              <StatusBadge key={order.id} tone="warning">待派单</StatusBadge>
             ])}
           />
-        </div>
-        <div>
-          <h2 className="mb-3 text-base font-semibold">已上架陪玩</h2>
+        </Panel>
+
+        <Panel title="已上架陪玩" hint="优先选择在线且资料完整的陪玩">
           <DataTable
             columns={["昵称", "在线", "价格", "邮箱", "操作"]}
             rows={listedCompanions.map((companion) => [
-              companion.nickname,
-              companion.onlineStatus,
-              `¥${formatMoney(companion.pricePerHour)}/h`,
+              <span key={`${companion.userId}-name`} className="font-semibold text-white">{companion.nickname}</span>,
+              <StatusBadge key={`${companion.userId}-online`} tone={companion.onlineStatus === "ONLINE" ? "success" : "default"}>{toOnlineStatus(companion.onlineStatus)}</StatusBadge>,
+              <span key={`${companion.userId}-price`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(companion.pricePerHour)}/h</span>,
               companion.email,
               <ActionButton key={companion.userId} onClick={() => setSelectedCompanionId(companion.userId)}>选择</ActionButton>
             ])}
           />
-        </div>
+        </Panel>
       </section>
     </AdminShell>
+  );
+}
+
+function Panel({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
+  return (
+    <section className="admin-panel">
+      <div className="admin-panel-header">
+        <div>
+          <h2 className="text-base font-black text-white">{title}</h2>
+          <p className="mt-1 text-xs text-dfc-muted">{hint}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Preview({ title, lines }: { title: string; lines: string[] }) {
+  return (
+    <div className="admin-queue-item">
+      <div className="text-xs font-black text-dfc-muted">{title}</div>
+      <div className="mt-2 space-y-1">
+        {lines.map((line) => (
+          <div key={line} className="text-sm text-dfc-subtext">{line}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" }) {
+  const styles = {
+    cyan: "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
+    gold: "border-dfc-gold/30 bg-dfc-gold/10 text-dfc-gold",
+    green: "border-dfc-success/30 bg-dfc-success/10 text-dfc-success"
+  };
+  return (
+    <div className={`rounded-dfc border p-4 ${styles[tone]}`}>
+      <div className="text-xs font-black">{label}</div>
+      <div className="mt-2 text-3xl font-black tabular-nums">{value}</div>
+      <div className="mt-1 text-xs opacity-80">{hint}</div>
+    </div>
   );
 }
 
@@ -162,6 +225,13 @@ function toFriendlyError(message?: string) {
   if (message.includes("Companion is not listed")) return "陪玩未上架或账号不可用";
   if (message.includes("already been assigned")) return "订单已被派单或状态已变化";
   return message;
+}
+
+function toOnlineStatus(status: string) {
+  if (status === "ONLINE") return "在线";
+  if (status === "BUSY") return "忙碌";
+  if (status === "OFFLINE") return "离线";
+  return status;
 }
 
 function gameName(code: string) {

@@ -57,7 +57,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <CustomerAuthGate>{children}</CustomerAuthGate>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-cyan-300/15 bg-[#050711]/92 backdrop-blur-xl md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-cyan-300/15 bg-[#050711]/90 backdrop-blur-xl md:hidden">
         <MobileNavLink href="/recharge">充值</MobileNavLink>
         <MobileNavLink href="/home">大厅</MobileNavLink>
         <MobileNavLink href="/companions">陪玩</MobileNavLink>

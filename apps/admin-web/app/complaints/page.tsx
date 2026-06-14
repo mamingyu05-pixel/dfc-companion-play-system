@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 
 type Complaint = {
@@ -57,20 +57,50 @@ export default function ComplaintsPage() {
     await loadComplaints();
   }
 
+  const stats = useMemo(() => {
+    const open = complaints.filter((item) => item.status === "OPEN").length;
+    const reviewing = complaints.filter((item) => item.status === "IN_REVIEW").length;
+    const resolved = complaints.filter((item) => item.status === "RESOLVED").length;
+    return { open, reviewing, resolved };
+  }, [complaints]);
+
   return (
     <AdminShell>
-      <SectionHeader title="投诉处理" desc="处理客户和陪玩投诉。第一阶段退款仍由管理员人工处理。" />
+      <SectionHeader eyebrow="Support Risk" title="投诉处理" desc="处理客户和陪玩投诉。第一阶段退款仍由管理员人工处理，所有结果需要写明原因，便于后续复盘。" />
+
+      <section className="mb-5 grid gap-4 md:grid-cols-3">
+        <Signal label="新投诉" value={String(stats.open)} hint="需要尽快接手" tone="gold" />
+        <Signal label="处理中" value={String(stats.reviewing)} hint="等待证据或沟通" tone="cyan" />
+        <Signal label="已解决" value={String(stats.resolved)} hint="保留处理记录" tone="green" />
+      </section>
+
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
-      <input value={resolution} onChange={(event) => setResolution(event.target.value)} className="mb-4 w-full max-w-xl rounded-dfc-control border border-dfc-border bg-dfc-bg px-3 py-3 text-sm outline-none focus:shadow-dfc-focus" placeholder="处理说明 / 结果" />
+
+      <section className="admin-panel mb-5">
+        <label>
+          <span className="mb-2 block text-xs font-black text-dfc-muted">处理说明 / 结果</span>
+          <input value={resolution} onChange={(event) => setResolution(event.target.value)} className="input" placeholder="例如：已核对语音记录，补偿客户 1 小时服务" />
+        </label>
+      </section>
+
       <DataTable
         columns={["ID", "订单", "发起人", "原因", "状态", "操作"]}
         rows={complaints.map((item) => [
-          item.id,
-          `${item.order.orderNo} / ¥${formatMoney(item.order.totalAmount)} / ${item.order.status}`,
-          `${item.reporter.displayName} (${item.reporter.role})`,
-          item.reason,
-          <StatusBadge key={`${item.id}-s`} tone={item.status === "RESOLVED" ? "success" : item.status === "REJECTED" ? "danger" : "warning"}>{item.status}</StatusBadge>,
+          <div key={`${item.id}-id`}>
+            <div className="font-black text-white">{shortId(item.id)}</div>
+            <div className="mt-1 text-xs text-dfc-muted">{formatDateTime(item.createdAt)}</div>
+          </div>,
+          <div key={`${item.id}-order`}>
+            <div className="font-semibold text-white">{item.order.orderNo}</div>
+            <div className="mt-1 text-xs text-dfc-muted">¥{formatMoney(item.order.totalAmount)} / {item.order.status}</div>
+          </div>,
+          <div key={`${item.id}-reporter`}>
+            <div className="font-semibold text-white">{item.reporter.displayName}</div>
+            <div className="mt-1 text-xs text-dfc-muted">{item.reporter.role} / {item.reporter.email}</div>
+          </div>,
+          <span key={`${item.id}-reason`} className="max-w-80 whitespace-normal leading-6">{item.reason}</span>,
+          <StatusBadge key={`${item.id}-s`} tone={item.status === "RESOLVED" ? "success" : item.status === "REJECTED" ? "danger" : "warning"}>{toComplaintStatus(item.status)}</StatusBadge>,
           <div key={`${item.id}-a`} className="flex flex-wrap gap-2">
             <ActionButton tone="secondary" onClick={() => void reviewComplaint(item.id, "IN_REVIEW")}>处理中</ActionButton>
             <ActionButton onClick={() => void reviewComplaint(item.id, "RESOLVED")}>解决</ActionButton>
@@ -82,6 +112,21 @@ export default function ComplaintsPage() {
   );
 }
 
+function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" }) {
+  const styles = {
+    cyan: "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
+    gold: "border-dfc-gold/30 bg-dfc-gold/10 text-dfc-gold",
+    green: "border-dfc-success/30 bg-dfc-success/10 text-dfc-success"
+  };
+  return (
+    <div className={`rounded-dfc border p-4 ${styles[tone]}`}>
+      <div className="text-xs font-black">{label}</div>
+      <div className="mt-2 text-3xl font-black tabular-nums">{value}</div>
+      <div className="mt-1 text-xs opacity-80">{hint}</div>
+    </div>
+  );
+}
+
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
   const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
   return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
@@ -89,4 +134,20 @@ function Alert({ children, tone }: { children: string; tone: "danger" | "success
 
 function formatMoney(value: string) {
   return Number(value || 0).toFixed(2);
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function shortId(id: string) {
+  return id.length > 12 ? `${id.slice(0, 8)}...` : id;
+}
+
+function toComplaintStatus(status: string) {
+  if (status === "OPEN") return "新投诉";
+  if (status === "IN_REVIEW") return "处理中";
+  if (status === "RESOLVED") return "已解决";
+  if (status === "REJECTED") return "已拒绝";
+  return status;
 }
