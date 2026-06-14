@@ -32,6 +32,16 @@ export class KookWebhookController {
     });
   }
 
+  @Post("order-drafts/apply-by-draft-no")
+  @UseGuards(BotInternalGuard)
+  applyOrderDraftByDraftNo(@Body() body: { draftNo: string; kookUserId: string; note?: string; quoteAmount?: string; messageId?: string }) {
+    return this.orderDrafts.companionApplyFromPlatformByDraftNo(OrderSourcePlatform.KOOK, body.draftNo, body.kookUserId, {
+      note: body.note,
+      quoteAmount: body.quoteAmount,
+      messageId: body.messageId
+    });
+  }
+
   @Post("webhook")
   @HttpCode(200)
   async webhook(@Body() body: KookWebhookBody) {
@@ -59,7 +69,7 @@ export class KookWebhookController {
     }
 
     if (!actionValue?.startsWith("order.accept.")) {
-      return this.handleSupportMessage(webhookBody);
+      return this.handlePlatformTextMessage(webhookBody);
     }
 
     const orderId = actionValue.replace("order.accept.", "");
@@ -98,15 +108,21 @@ export class KookWebhookController {
     });
   }
 
-  private async handleSupportMessage(body: KookWebhookBody) {
+  private async handlePlatformTextMessage(body: KookWebhookBody) {
     const content = this.extractContent(body);
     const kookUserId = this.extractKookUserId(body);
     const channelId = this.extractChannelId(body);
     const supportChannelId = process.env.KOOK_SUPPORT_CHANNEL_ID;
+    const dispatchChannelIds = [process.env.KOOK_AI_DISPATCH_CHANNEL_ID, process.env.KOOK_DISPATCH_CHANNEL_ID].filter(Boolean);
     const isDirect = body.d?.channel_type === "PERSON";
 
     if (!content || !kookUserId) return { ignored: true };
     if (body.d?.extra?.author?.bot) return { ignored: true };
+
+    if (!isDirect && channelId && dispatchChannelIds.includes(channelId)) {
+      return this.handleDispatchApplyText(body, content, kookUserId);
+    }
+
     if (!isDirect && supportChannelId && channelId !== supportChannelId) return { ignored: true };
     if (!isDirect && !supportChannelId) return { ignored: true, reason: "KOOK_SUPPORT_CHANNEL_ID is not configured" };
 
@@ -135,6 +151,40 @@ export class KookWebhookController {
     await this.platformSupport.markReplyMessage(result.conversationId, notification?.messageId);
 
     return { ...result, notification };
+  }
+
+  private async handleDispatchApplyText(body: KookWebhookBody, content: string, kookUserId: string) {
+    const parsed = this.parseApplyText(content);
+    const channelId = this.extractChannelId(body);
+    if (!parsed) {
+      if (/报名|我要|接|可|来/i.test(content)) {
+        const notification = channelId
+          ? await this.botNotifications.sendKookChannelText(channelId, "报名请按格式发送：报名 TRY编号 段位/水平/报价/可服务时间/性格优势/是否可试音")
+          : null;
+        return { ignored: true, notification };
+      }
+      return { ignored: true };
+    }
+
+    const result = await this.orderDrafts.companionApplyFromPlatformByDraftNo(OrderSourcePlatform.KOOK, parsed.draftNo, kookUserId, {
+      note: parsed.note,
+      messageId: this.extractMessageId(body)
+    });
+    const notification = channelId
+      ? await this.botNotifications.sendKookChannelText(channelId, `报名已记录：${result.companionName}。客服会把你的段位、报价、性格和优势给老板挑选。`)
+      : null;
+    return { ...result, notification };
+  }
+
+  private parseApplyText(content: string) {
+    const normalized = content.replace(/\s+/g, " ").trim();
+    const match = normalized.match(/(?:报名|我要报名|接单|我来)?\s*(TRY[0-9A-Z]+)\s*(.*)/i);
+    if (!match) return null;
+    const note = match[2]?.trim();
+    return {
+      draftNo: match[1].toUpperCase(),
+      note: note || "按钮/文字报名，待补充段位、报价、性格和服务优势"
+    };
   }
 
   private extractActionValue(body: KookWebhookBody): string | undefined {

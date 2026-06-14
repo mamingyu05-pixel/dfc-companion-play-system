@@ -230,6 +230,29 @@ export class OrderDraftsService {
     platformUserId: string,
     body: { note?: string; quoteAmount?: string; messageId?: string }
   ) {
+    return this.companionApplyToDraft(platform, draftId, platformUserId, body);
+  }
+
+  async companionApplyFromPlatformByDraftNo(
+    platform: OrderSourcePlatform,
+    draftNo: string,
+    platformUserId: string,
+    body: { note?: string; quoteAmount?: string; messageId?: string }
+  ) {
+    const draft = await this.prisma.orderDraft.findUnique({
+      where: { draftNo },
+      select: { id: true }
+    });
+    if (!draft) throw new NotFoundException("Order draft not found");
+    return this.companionApplyToDraft(platform, draft.id, platformUserId, body);
+  }
+
+  private async companionApplyToDraft(
+    platform: OrderSourcePlatform,
+    draftId: string,
+    platformUserId: string,
+    body: { note?: string; quoteAmount?: string; messageId?: string }
+  ) {
     return this.prisma.$transaction(async (tx) => {
       const draft = await this.assertEditableDraft(tx, draftId);
       const externalAccount = await tx.userExternalAccount.findFirst({

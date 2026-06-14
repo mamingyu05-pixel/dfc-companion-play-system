@@ -34,6 +34,16 @@ export class DiscordWebhookController {
     });
   }
 
+  @Post("order-drafts/apply-by-draft-no")
+  @UseGuards(BotInternalGuard)
+  applyOrderDraftByDraftNo(@Body() body: { draftNo: string; companionDiscordId: string; note?: string; quoteAmount?: string; messageId?: string }) {
+    return this.orderDrafts.companionApplyFromPlatformByDraftNo(OrderSourcePlatform.DISCORD, body.draftNo, body.companionDiscordId, {
+      note: body.note,
+      quoteAmount: body.quoteAmount,
+      messageId: body.messageId
+    });
+  }
+
   @Post("support/messages")
   @UseGuards(BotInternalGuard)
   supportMessage(

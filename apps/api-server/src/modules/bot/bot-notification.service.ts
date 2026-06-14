@@ -275,7 +275,8 @@ export class BotNotificationService {
                 { name: "模式", value: payload.mode, inline: true },
                 { name: "时长", value: payload.hours ? `${payload.hours} 小时` : "待确认", inline: true },
                 { name: "预算", value: payload.budgetAmount ? `¥${payload.budgetAmount}` : "待确认", inline: true },
-                { name: "需求", value: payload.note?.slice(0, 900) || "无", inline: false }
+                { name: "需求", value: payload.note?.slice(0, 900) || "无", inline: false },
+                { name: "陪玩报名", value: `点击按钮填写，或发送：报名 ${payload.draftNo} 段位/水平/报价/可服务时间/性格优势/是否可试音`, inline: false }
               ]
             }
           ],
@@ -373,7 +374,8 @@ export class BotNotificationService {
                 `**模式**：${payload.mode}`,
                 `**时长**：${payload.hours ? `${payload.hours} 小时` : "待确认"}`,
                 `**预算**：${payload.budgetAmount ? `¥${payload.budgetAmount}` : "待确认"}`,
-                `**需求**：${payload.note || "无"}`
+                `**需求**：${payload.note || "无"}`,
+                `**陪玩报名**：点击按钮后，建议继续发送：报名 ${payload.draftNo} 段位/水平/报价/可服务时间/性格优势/是否可试音`
               ].filter(Boolean).join("\n")
             }
           },
