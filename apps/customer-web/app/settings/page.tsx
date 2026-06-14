@@ -26,6 +26,13 @@ type CustomerSettingsProfile = {
     availableIncome: string;
     pendingIncome: string;
   } | null;
+  customerMembership?: {
+    level: number;
+    name: string;
+    totalApprovedRecharge: string;
+    minRecharge: string;
+    nextMinRecharge: string | null;
+  } | null;
   externalAccounts?: ExternalAccount[];
 };
 
@@ -116,7 +123,11 @@ export default function CustomerSettingsPage() {
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <StatCard label="当前账号" value={profile?.user.displayName ?? "加载中"} hint={formatAccountEmail(profile?.user.email)} />
         <StatCard label="可用余额" value={`¥${formatMoney(profile?.wallet?.availableBalance ?? "0")}`} hint="充值审核通过后增加" />
-        <StatCard label="冻结余额" value={`¥${formatMoney(profile?.wallet?.frozenBalance ?? "0")}`} hint="订单进行中会冻结" />
+        <StatCard
+          label="会员等级"
+          value={profile?.customerMembership?.name ?? "新人"}
+          hint={`累计充值 ¥${formatMoney(profile?.customerMembership?.totalApprovedRecharge ?? "0")}`}
+        />
       </section>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_1fr]">
@@ -124,9 +135,12 @@ export default function CustomerSettingsPage() {
           <InfoLine label="昵称" value={profile?.user.displayName ?? "-"} />
           <InfoLine label="邮箱" value={formatAccountEmail(profile?.user.email)} />
           <InfoLine label="角色" value={roleName(profile?.user.role)} />
+          <InfoLine label="会员等级" value={profile?.customerMembership?.name ?? "新人"} />
+          <InfoLine label="累计充值" value={`¥${formatMoney(profile?.customerMembership?.totalApprovedRecharge ?? "0")}`} />
+          <InfoLine label="下一级门槛" value={profile?.customerMembership?.nextMinRecharge ? `¥${formatMoney(profile.customerMembership.nextMinRecharge)}` : "已满级"} />
           <InfoLine label="客户 ID" value={profile?.user.id ?? "-"} mono />
           <div className="mt-4 rounded-dfc-control border border-dfc-border bg-dfc-bg p-3 text-xs leading-5 text-dfc-subtext">
-            昵称、邮箱或平台账号异常时，联系人工客服处理。涉及余额、订单和退款的问题，请同时提供客户 ID。
+            会员等级按累计审核通过充值金额自动计算，绑定 KOOK 后会同步到 KOOK 右侧成员列表。昵称、邮箱或平台账号异常时，联系人工客服处理。
           </div>
         </Panel>
 

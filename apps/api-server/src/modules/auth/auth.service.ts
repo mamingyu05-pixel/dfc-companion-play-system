@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { BotPlatform, CompanionProfileStatus, Prisma, UserRole } from "@prisma/client";
+import { BotPlatform, CompanionProfileStatus, Prisma, ReviewStatus, UserRole } from "@prisma/client";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import nodemailer from "nodemailer";
+import { getCustomerMembershipLevel } from "../customer-membership";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "./auth.types";
 import { normalizeDisplayNameKey } from "./display-name.util";
@@ -697,6 +698,14 @@ export class AuthService {
       throw new UnauthorizedException("User is not active");
     }
 
+    const customerRechargeTotal = user.role === UserRole.CUSTOMER
+      ? await this.prisma.rechargeRequest.aggregate({
+          where: { customerId: user.id, status: ReviewStatus.APPROVED },
+          _sum: { amount: true }
+        })
+      : null;
+    const membership = user.role === UserRole.CUSTOMER ? getCustomerMembershipLevel(customerRechargeTotal?._sum.amount ?? 0) : null;
+
     return {
       user: {
         id: user.id,
@@ -755,6 +764,15 @@ export class AuthService {
         balanceAfter: transaction.balanceAfter.toString(),
         createdAt: transaction.createdAt
       })),
+      customerMembership: membership
+        ? {
+            level: membership.level,
+            name: membership.name,
+            totalApprovedRecharge: (customerRechargeTotal?._sum.amount ?? new Prisma.Decimal(0)).toString(),
+            minRecharge: membership.minRecharge,
+            nextMinRecharge: membership.nextMinRecharge
+          }
+        : null,
       externalAccounts: user.externalAccounts.map((account) => ({
         platform: account.platform,
         externalUserId: account.externalUserId,

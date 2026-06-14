@@ -8,11 +8,15 @@ import {
   WalletTransactionType,
   WithdrawalStatus
 } from "@prisma/client";
+import { BotNotificationService } from "../bot/bot-notification.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class WalletService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly botNotifications: BotNotificationService
+  ) {}
 
   getWallet(userId: string) {
     return this.prisma.wallet.findUnique({
@@ -328,7 +332,7 @@ export class WalletService {
       throw new BadRequestException("Invalid recharge review status");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const request = await tx.rechargeRequest.findUnique({
         where: { id: rechargeRequestId },
         include: { customer: { include: { wallet: true } } }
@@ -460,6 +464,12 @@ export class WalletService {
 
       return tx.rechargeRequest.findUniqueOrThrow({ where: { id: rechargeRequestId } });
     });
+
+    if (result.status === ReviewStatus.APPROVED) {
+      await this.botNotifications.syncKookCustomerMembershipLevel(result.customerId).catch(() => undefined);
+    }
+
+    return result;
   }
 
   async createWithdrawalRequest(

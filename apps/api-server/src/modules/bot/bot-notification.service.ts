@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import { BotEventStatus, BotEventType, BotPlatform, type Prisma } from "@prisma/client";
+import { BotEventStatus, BotEventType, BotPlatform, ReviewStatus, UserRole, type Prisma } from "@prisma/client";
+import { getConfiguredKookCustomerLevelRoles, getCustomerMembershipLevel } from "../customer-membership";
 import { PrismaService } from "../prisma/prisma.service";
 
 interface OrderNotificationData {
@@ -111,6 +112,69 @@ export class BotNotificationService {
       return { platform: BotPlatform.KOOK, status: BotEventStatus.SENT, messageId: body.msg_id };
     } catch (error) {
       return this.recordGenericNotificationFailure(BotPlatform.KOOK, { userId, content }, this.errorMessage(error));
+    }
+  }
+
+  async syncKookCustomerMembershipLevel(userId: string): Promise<NotificationResult | null> {
+    const token = process.env.KOOK_TOKEN;
+    const guildId = process.env.KOOK_GUILD_ID;
+    if (!token || !guildId) return null;
+
+    const configuredRoles = getConfiguredKookCustomerLevelRoles();
+    if (configuredRoles.length === 0) return null;
+
+    const externalAccount = await this.prisma.userExternalAccount.findFirst({
+      where: {
+        userId,
+        platform: BotPlatform.KOOK,
+        user: { role: UserRole.CUSTOMER }
+      },
+      select: { externalUserId: true }
+    });
+    if (!externalAccount) return null;
+
+    const totalRecharge = await this.prisma.rechargeRequest.aggregate({
+      where: { customerId: userId, status: ReviewStatus.APPROVED },
+      _sum: { amount: true }
+    });
+    const membership = getCustomerMembershipLevel(totalRecharge._sum.amount ?? 0);
+    const targetRoleId = configuredRoles.find((item) => item.level === membership.level)?.roleId;
+    if (!targetRoleId) return null;
+
+    for (const role of configuredRoles) {
+      if (role.roleId === targetRoleId) continue;
+      await this.postKookAction("/api/v3/guild-role/revoke", {
+        guild_id: guildId,
+        user_id: externalAccount.externalUserId,
+        role_id: Number(role.roleId)
+      }).catch(() => undefined);
+    }
+
+    try {
+      await this.postKookAction("/api/v3/guild-role/grant", {
+        guild_id: guildId,
+        user_id: externalAccount.externalUserId,
+        role_id: Number(targetRoleId)
+      });
+      await this.recordGenericBotEvent(BotPlatform.KOOK, BotEventStatus.SENT, {
+        action: "SYNC_CUSTOMER_MEMBERSHIP_LEVEL",
+        userId,
+        kookUserId: externalAccount.externalUserId,
+        level: membership.level,
+        roleId: targetRoleId
+      } as unknown as Prisma.InputJsonValue, {
+        platformGuildId: guildId,
+        platformUserId: externalAccount.externalUserId
+      });
+      return { platform: BotPlatform.KOOK, status: BotEventStatus.SENT };
+    } catch (error) {
+      return this.recordGenericNotificationFailure(BotPlatform.KOOK, {
+        action: "SYNC_CUSTOMER_MEMBERSHIP_LEVEL",
+        userId,
+        kookUserId: externalAccount.externalUserId,
+        level: membership.level,
+        roleId: targetRoleId
+      } as unknown as Prisma.InputJsonValue, this.errorMessage(error));
     }
   }
 
@@ -302,15 +366,19 @@ export class BotNotificationService {
   }
 
   private async postKookMessage(path: string, body: Record<string, unknown>) {
+    return this.postKookAction<KookMessageResponse>(path, body);
+  }
+
+  private async postKookAction<T = unknown>(path: string, body: Record<string, unknown>) {
     const response = await fetch(`https://www.kookapp.cn${path}`, {
       method: "POST",
       headers: { Authorization: `Bot ${process.env.KOOK_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
     if (!response.ok) throw new Error(`KOOK API HTTP ${response.status}`);
-    const result = (await response.json()) as { code: number; message: string; data?: KookMessageResponse };
-    if (result.code !== 0 || !result.data) throw new Error(`KOOK API error ${result.code}: ${result.message}`);
-    return result.data;
+    const result = (await response.json()) as { code: number; message: string; data?: T };
+    if (result.code !== 0) throw new Error(`KOOK API error ${result.code}: ${result.message}`);
+    return result.data as T;
   }
 
   private toNotificationResults(results: PromiseSettledResult<NotificationResult>[]) {
