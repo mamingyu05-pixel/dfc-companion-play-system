@@ -123,7 +123,7 @@ export default function CustomerHomePage() {
                 {profile.user.displayName}，今晚进场先试音。
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-cyan-50/80 sm:text-base">
-                May猫饼电竞已接入 KOOK 和 Discord。你可以先找客服说需求，进入语音频道试音，确认陪玩风格后再下单；充值、派单、订单、钱包和投诉都会在后台留痕。
+                May猫饼电竞支持 KOOK 和 Discord。你可以先找客服说需求，进入语音频道试音，确认陪玩风格后再下单；充值、派单、订单、钱包和投诉都会在后台留痕。
               </p>
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Link href="/companions" className="maycat-button px-5 py-3 text-center text-sm font-black">

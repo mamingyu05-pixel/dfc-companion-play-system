@@ -164,11 +164,11 @@ export function CustomerAuthForm() {
         <section className="flex flex-col justify-center py-6">
           <div className="max-w-3xl">
             <MaycatLogo />
-            <div className="maycat-chip mt-8 px-3 py-1 text-xs font-semibold">Maycat Club · 已接入 KOOK / Discord · 人工试音派单</div>
+            <div className="maycat-chip mt-8 px-3 py-1 text-xs font-semibold">Maycat Club · KOOK / Discord 客服 · 人工试音派单</div>
             <h1 className="maycat-text-glow mt-5 text-4xl font-black leading-tight text-white md:text-6xl">May猫饼电竞</h1>
             <p className="mt-3 text-xl font-black text-cyan-200 md:text-2xl">先接待，再试音，确认舒服了再下单。</p>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
-              平台已接入 KOOK 和 Discord：客户可以快捷登录、联系客服、进入试音频道；管理员可在后台记录充值、派单、订单、钱包和投诉，整个服务流程可追踪。
+              平台支持 KOOK 和 Discord：客户可以快捷登录、联系客服、进入试音频道；管理员可在后台记录充值、派单、订单、钱包和投诉，整个服务流程可追踪。
             </p>
 
             <div className="mt-6 overflow-hidden rounded-dfc border border-cyan-300/20 md:max-w-2xl">
