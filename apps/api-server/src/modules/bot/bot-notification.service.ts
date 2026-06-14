@@ -29,6 +29,22 @@ interface NotificationResult {
   error?: string;
 }
 
+const dispatchRoleTags = [
+  { game: "DELTA_FORCE", label: "三角洲行动组", discordEnv: "DISCORD_GAME_DELTA_FORCE_ROLE_ID", kookEnv: "KOOK_GAME_DELTA_FORCE_ROLE_ID" },
+  { game: "LEAGUE_OF_LEGENDS", label: "英雄联盟组", discordEnv: "DISCORD_GAME_LEAGUE_OF_LEGENDS_ROLE_ID", kookEnv: "KOOK_GAME_LEAGUE_OF_LEGENDS_ROLE_ID" },
+  { game: "VALORANT", label: "无畏契约组", discordEnv: "DISCORD_GAME_VALORANT_ROLE_ID", kookEnv: "KOOK_GAME_VALORANT_ROLE_ID" },
+  { game: "COUNTER_STRIKE_2", label: "CS2组", discordEnv: "DISCORD_GAME_COUNTER_STRIKE_2_ROLE_ID", kookEnv: "KOOK_GAME_COUNTER_STRIKE_2_ROLE_ID" },
+  { game: "PUBG", label: "PUBG组", discordEnv: "DISCORD_GAME_PUBG_ROLE_ID", kookEnv: "KOOK_GAME_PUBG_ROLE_ID" },
+  { game: "APEX_LEGENDS", label: "Apex组", discordEnv: "DISCORD_GAME_APEX_LEGENDS_ROLE_ID", kookEnv: "KOOK_GAME_APEX_LEGENDS_ROLE_ID" },
+  { game: "HONOR_OF_KINGS", label: "王者荣耀组", discordEnv: "DISCORD_GAME_HONOR_OF_KINGS_ROLE_ID", kookEnv: "KOOK_GAME_HONOR_OF_KINGS_ROLE_ID" },
+  { game: "PEACEKEEPER_ELITE", label: "和平精英组", discordEnv: "DISCORD_GAME_PEACEKEEPER_ELITE_ROLE_ID", kookEnv: "KOOK_GAME_PEACEKEEPER_ELITE_ROLE_ID" }
+] as const;
+
+const voiceRoleTags = [
+  { label: "月影声线", discordEnv: "DISCORD_VOICE_MOON_ROLE_ID", kookEnv: "KOOK_VOICE_MOON_ROLE_ID", keywords: ["女", "女生", "女声", "柔和", "甜", "月影"] },
+  { label: "曜刃声线", discordEnv: "DISCORD_VOICE_SOLAR_ROLE_ID", kookEnv: "KOOK_VOICE_SOLAR_ROLE_ID", keywords: ["男", "男生", "男声", "沉稳", "低音", "曜刃"] }
+] as const;
+
 interface KookMessageResponse {
   msg_id: string;
 }
@@ -240,18 +256,20 @@ export class BotNotificationService {
 
   private async sendDiscordOrderDraftNotification(payload: OrderDraftNotificationData): Promise<NotificationResult> {
     const token = process.env.DISCORD_TOKEN;
-    const channelId = process.env.DISCORD_DISPATCH_CHANNEL_ID || process.env.DISCORD_ORDER_CHANNEL_ID;
+    const channelId = process.env.DISCORD_AI_DISPATCH_CHANNEL_ID || process.env.DISCORD_DISPATCH_CHANNEL_ID || process.env.DISCORD_ORDER_CHANNEL_ID;
     if (!token || !channelId) return this.recordDraftNotificationFailure(BotPlatform.DISCORD, payload, "Discord dispatch notification is not configured");
 
+    const roleMentions = this.buildDiscordDraftRoleMentions(payload);
     try {
       const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
         method: "POST",
         headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: "May猫饼试音派单，有空的陪玩可以报名",
+          content: [roleMentions.content, "May猫饼 AI 派单，有空的陪玩可以报名"].filter(Boolean).join("\n"),
+          allowed_mentions: { parse: [], roles: roleMentions.roleIds },
           embeds: [
             {
-              title: `试音派单 ${payload.draftNo}`,
+              title: `AI 派单 ${payload.draftNo}`,
               fields: [
                 { name: "游戏", value: payload.game, inline: true },
                 { name: "模式", value: payload.mode, inline: true },
@@ -334,27 +352,29 @@ export class BotNotificationService {
   }
 
   private async sendKookOrderDraftNotification(payload: OrderDraftNotificationData): Promise<NotificationResult> {
-    const channelId = process.env.KOOK_DISPATCH_CHANNEL_ID || process.env.KOOK_ORDER_CHANNEL_ID;
+    const channelId = process.env.KOOK_AI_DISPATCH_CHANNEL_ID || process.env.KOOK_DISPATCH_CHANNEL_ID || process.env.KOOK_ORDER_CHANNEL_ID;
     if (!process.env.KOOK_TOKEN || !channelId) return this.recordDraftNotificationFailure(BotPlatform.KOOK, payload, "KOOK dispatch notification is not configured");
 
+    const roleMentions = this.buildKookDraftRoleMentions(payload);
     const content = [
       {
         type: "card",
         theme: "primary",
         size: "lg",
         modules: [
-          { type: "header", text: { type: "plain-text", content: `May猫饼试音派单 ${payload.draftNo}` } },
+          { type: "header", text: { type: "plain-text", content: `May猫饼 AI 派单 ${payload.draftNo}` } },
           {
             type: "section",
             text: {
               type: "kmarkdown",
               content: [
+                roleMentions ? `**提醒标签**：${roleMentions}` : undefined,
                 `**游戏**：${payload.game}`,
                 `**模式**：${payload.mode}`,
                 `**时长**：${payload.hours ? `${payload.hours} 小时` : "待确认"}`,
                 `**预算**：${payload.budgetAmount ? `¥${payload.budgetAmount}` : "待确认"}`,
                 `**需求**：${payload.note || "无"}`
-              ].join("\n")
+              ].filter(Boolean).join("\n")
             }
           },
           {
@@ -384,6 +404,42 @@ export class BotNotificationService {
 
   private async postKookMessage(path: string, body: Record<string, unknown>) {
     return this.postKookAction<KookMessageResponse>(path, body);
+  }
+
+  private buildDiscordDraftRoleMentions(payload: OrderDraftNotificationData) {
+    const roleIds = [
+      this.getGameRoleId(BotPlatform.DISCORD, payload.game),
+      ...this.getVoiceRoleIds(BotPlatform.DISCORD, payload.note ?? "")
+    ].filter((roleId): roleId is string => Boolean(roleId));
+
+    return {
+      roleIds: [...new Set(roleIds)],
+      content: [...new Set(roleIds)].map((roleId) => `<@&${roleId}>`).join(" ")
+    };
+  }
+
+  private buildKookDraftRoleMentions(payload: OrderDraftNotificationData) {
+    const roleIds = [
+      this.getGameRoleId(BotPlatform.KOOK, payload.game),
+      ...this.getVoiceRoleIds(BotPlatform.KOOK, payload.note ?? "")
+    ].filter((roleId): roleId is string => Boolean(roleId));
+
+    return [...new Set(roleIds)].map((roleId) => `(rol)${roleId}(rol)`).join(" ");
+  }
+
+  private getGameRoleId(platform: BotPlatform, game: string) {
+    const tag = dispatchRoleTags.find((item) => item.game === game);
+    if (!tag) return undefined;
+    const envVar = platform === BotPlatform.DISCORD ? tag.discordEnv : tag.kookEnv;
+    return process.env[envVar]?.trim();
+  }
+
+  private getVoiceRoleIds(platform: BotPlatform, note: string) {
+    const normalized = note.toLowerCase();
+    return voiceRoleTags
+      .filter((tag) => tag.keywords.some((keyword) => normalized.includes(keyword.toLowerCase())))
+      .map((tag) => process.env[platform === BotPlatform.DISCORD ? tag.discordEnv : tag.kookEnv]?.trim())
+      .filter((roleId): roleId is string => Boolean(roleId));
   }
 
   private async postKookAction<T = unknown>(path: string, body: Record<string, unknown>) {

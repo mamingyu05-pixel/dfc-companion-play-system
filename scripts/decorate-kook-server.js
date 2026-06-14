@@ -8,7 +8,17 @@ const rolePlan = [
   { env: "KOOK_SUPER_ADMIN_ROLE_ID", name: "👑 总管理", color: 0xffd166, grantToAdmin: true },
   { env: "KOOK_ADMIN_ROLE_ID", name: "🛡️ 管理员", color: 0xff5a6a, grantToAdmin: true },
   { env: "KOOK_SUPPORT_ROLE_ID", name: "💬 May客服", color: 0x22d3ee },
-  { env: "KOOK_COMPANION_ROLE_ID", name: "🎮 认证陪玩", color: 0xa78bfa },
+  { env: "KOOK_COMPANION_ROLE_ID", name: "🎮 认证陪玩", color: 0xa78bfa, mentionable: true },
+  { env: "KOOK_VOICE_MOON_ROLE_ID", name: "🌙 月影声线", color: 0xf472b6, mentionable: true },
+  { env: "KOOK_VOICE_SOLAR_ROLE_ID", name: "☀️ 曜刃声线", color: 0x38bdf8, mentionable: true },
+  { env: "KOOK_GAME_DELTA_FORCE_ROLE_ID", name: "🎯 三角洲行动组", color: 0x22d3ee, mentionable: true },
+  { env: "KOOK_GAME_LEAGUE_OF_LEGENDS_ROLE_ID", name: "🛡️ 英雄联盟组", color: 0x60a5fa, mentionable: true },
+  { env: "KOOK_GAME_VALORANT_ROLE_ID", name: "🔺 无畏契约组", color: 0xfb7185, mentionable: true },
+  { env: "KOOK_GAME_COUNTER_STRIKE_2_ROLE_ID", name: "💥 CS2组", color: 0xfbbf24, mentionable: true },
+  { env: "KOOK_GAME_PUBG_ROLE_ID", name: "🪂 PUBG组", color: 0xf97316, mentionable: true },
+  { env: "KOOK_GAME_APEX_LEGENDS_ROLE_ID", name: "⚡ Apex组", color: 0xef4444, mentionable: true },
+  { env: "KOOK_GAME_HONOR_OF_KINGS_ROLE_ID", name: "👑 王者荣耀组", color: 0xfacc15, mentionable: true },
+  { env: "KOOK_GAME_PEACEKEEPER_ELITE_ROLE_ID", name: "🕊️ 和平精英组", color: 0x34d399, mentionable: true },
   { env: "KOOK_CUSTOMER_ROLE_ID", name: "🐾 猫饼客户", color: 0x38bdf8 },
   { env: "KOOK_CUSTOMER_NO_ORDER_ROLE_ID", name: "🌱 未下单客户", color: 0x94a3b8 },
   { env: "KOOK_CUSTOMER_SPECIAL_HALL_ROLE_ID", name: "👑 May名人堂", color: 0xfacc15 },
@@ -45,6 +55,17 @@ const channelIntroPlan = [
       "客服或 AI 会在这里整理客户需求，陪玩按格式报名，管理员最终确认。",
       "陪玩报名建议包含：可服务时间、报价、擅长模式、是否可试音、备注。",
       "报名不等于接单，最终以后台订单状态为准。禁止绕过平台私下交易。"
+    ]
+  },
+  {
+    env: "KOOK_AI_DISPATCH_CHANNEL_ID",
+    name: "🤖｜AI派单",
+    topic: "AI 自动整理客户需求，按游戏标签和声线标签提醒陪玩报名",
+    title: "May猫饼 AI 派单大厅",
+    lines: [
+      "AI 客服会把 KOOK / Discord 客户需求整理到这里。",
+      "派单会自动提醒对应游戏标签和声线标签的陪玩。",
+      "陪玩报名后进入后台候选列表，客服再向客户确认最终人选。"
     ]
   },
   {
@@ -271,7 +292,7 @@ async function ensureRole(token, guildId, existingRoles, item) {
       name: item.name,
       color: item.color,
       hoist: 1,
-      mentionable: 0
+      mentionable: item.mentionable ? 1 : 0
     })
   });
 
@@ -294,7 +315,7 @@ async function tryUpdateRoleDisplay(token, guildId, role, item) {
         name: item.name,
         color: item.color,
         hoist: 1,
-        mentionable: 0
+        mentionable: item.mentionable ? 1 : 0
       })
     });
   } catch (error) {

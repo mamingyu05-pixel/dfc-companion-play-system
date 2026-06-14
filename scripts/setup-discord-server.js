@@ -26,6 +26,19 @@ const channelPlan = [
     ]
   },
   {
+    env: "DISCORD_AI_DISPATCH_CHANNEL_ID",
+    name: "🤖｜AI派单",
+    topic: "AI 自动整理客户需求，按游戏标签提醒陪玩报名。",
+    categoryKey: "dispatch",
+    type: 0,
+    title: "May猫饼 AI 派单大厅",
+    lines: [
+      "AI 客服会把 KOOK / Discord 客户需求整理到这里。",
+      "消息会自动提醒对应游戏标签和声线标签的陪玩。",
+      "陪玩点击报名后进入后台候选列表，客服再向客户确认最终人选。"
+    ]
+  },
+  {
     env: "DISCORD_DISPATCH_CHANNEL_ID",
     name: "📣｜人工派单",
     topic: "客服发布需求，陪玩报名，管理员确认。",
@@ -103,6 +116,20 @@ const channelPlan = [
   }
 ];
 
+const rolePlan = [
+  { env: "DISCORD_COMPANION_ROLE_ID", name: "🎮 认证陪玩", color: 0xa78bfa, mentionable: true },
+  { env: "DISCORD_VOICE_MOON_ROLE_ID", name: "🌙 月影声线", color: 0xf472b6, mentionable: true },
+  { env: "DISCORD_VOICE_SOLAR_ROLE_ID", name: "☀️ 曜刃声线", color: 0x38bdf8, mentionable: true },
+  { env: "DISCORD_GAME_DELTA_FORCE_ROLE_ID", name: "🎯 三角洲行动组", color: 0x22d3ee, mentionable: true },
+  { env: "DISCORD_GAME_LEAGUE_OF_LEGENDS_ROLE_ID", name: "🛡️ 英雄联盟组", color: 0x60a5fa, mentionable: true },
+  { env: "DISCORD_GAME_VALORANT_ROLE_ID", name: "🔺 无畏契约组", color: 0xfb7185, mentionable: true },
+  { env: "DISCORD_GAME_COUNTER_STRIKE_2_ROLE_ID", name: "💥 CS2组", color: 0xfbbf24, mentionable: true },
+  { env: "DISCORD_GAME_PUBG_ROLE_ID", name: "🪂 PUBG组", color: 0xf97316, mentionable: true },
+  { env: "DISCORD_GAME_APEX_LEGENDS_ROLE_ID", name: "⚡ Apex组", color: 0xef4444, mentionable: true },
+  { env: "DISCORD_GAME_HONOR_OF_KINGS_ROLE_ID", name: "👑 王者荣耀组", color: 0xfacc15, mentionable: true },
+  { env: "DISCORD_GAME_PEACEKEEPER_ELITE_ROLE_ID", name: "🕊️ 和平精英组", color: 0x34d399, mentionable: true }
+];
+
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
@@ -121,6 +148,7 @@ async function main() {
   console.log("Creating or reusing May猫饼 Discord channels...\n");
 
   const existingChannels = await listGuildChannels(token, guildId);
+  const existingRoles = await listGuildRoles(token, guildId);
   const categoryIds = {};
 
   for (const item of categoryPlan) {
@@ -160,11 +188,26 @@ async function main() {
     }
   }
 
+  const roleOutput = {};
+  console.log("\nCreating or reusing May猫饼 Discord roles...\n");
+  for (const item of rolePlan) {
+    const existing = existingRoles.find((role) => role.name === item.name);
+    const role = existing || (await createGuildRole(token, guildId, item));
+    if (existing && args.decorateChannels) {
+      await updateGuildRole(token, guildId, role.id, item);
+    }
+    roleOutput[item.env] = role.id;
+    console.log(`${existing ? "reuse" : "create"} role ${item.name} -> ${role.id}`);
+  }
+
   console.log("\nCopy these lines into /opt/companion-play-system/.env:");
   console.log(`DISCORD_GUILD_ID=${guildId}`);
   for (const item of channelPlan) {
     if (item.env === "DISCORD_VOICE_WAITING_CHANNEL_ID") continue;
     console.log(`${item.env}=${output[item.env]}`);
+  }
+  for (const item of rolePlan) {
+    console.log(`${item.env}=${roleOutput[item.env]}`);
   }
   console.log(`# Optional voice waiting room: DISCORD_VOICE_WAITING_CHANNEL_ID=${output.DISCORD_VOICE_WAITING_CHANNEL_ID}`);
   console.log("\nAfter updating .env, run:");
@@ -199,6 +242,10 @@ async function listGuildChannels(token, guildId) {
   return discordRequest(token, `/guilds/${guildId}/channels`, { method: "GET" });
 }
 
+async function listGuildRoles(token, guildId) {
+  return discordRequest(token, `/guilds/${guildId}/roles`, { method: "GET" });
+}
+
 async function createGuildChannel(token, guildId, body) {
   return discordRequest(token, `/guilds/${guildId}/channels`, {
     method: "POST",
@@ -210,6 +257,28 @@ async function updateChannel(token, channelId, body) {
   return discordRequest(token, `/channels/${channelId}`, {
     method: "PATCH",
     body: JSON.stringify(body)
+  });
+}
+
+async function createGuildRole(token, guildId, item) {
+  return discordRequest(token, `/guilds/${guildId}/roles`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: item.name,
+      color: item.color,
+      mentionable: Boolean(item.mentionable)
+    })
+  });
+}
+
+async function updateGuildRole(token, guildId, roleId, item) {
+  return discordRequest(token, `/guilds/${guildId}/roles/${roleId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      name: item.name,
+      color: item.color,
+      mentionable: Boolean(item.mentionable)
+    })
   });
 }
 

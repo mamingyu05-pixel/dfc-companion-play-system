@@ -12,6 +12,12 @@ const channelPlan = [
     purpose: "客户咨询、找陪玩需求、AI/人工客服入口"
   },
   {
+    env: "KOOK_AI_DISPATCH_CHANNEL_ID",
+    name: "AI派单",
+    type: 1,
+    purpose: "AI 自动整理客户需求，按游戏标签和声线标签提醒陪玩报名"
+  },
+  {
     env: "KOOK_DISPATCH_CHANNEL_ID",
     name: "人工派单",
     type: 1,

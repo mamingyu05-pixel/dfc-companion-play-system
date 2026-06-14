@@ -34,6 +34,7 @@ export default function NewCompanionPage() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [game, setGame] = useState("DELTA_FORCE");
   const [pricePerHour, setPricePerHour] = useState("");
+  const [gender, setGender] = useState("MOON");
   const [deltaForceRank, setDeltaForceRank] = useState("UNRANKED");
   const [skillModes, setSkillModes] = useState("Hot Zone, Warfare");
   const [bio, setBio] = useState("");
@@ -59,6 +60,7 @@ export default function NewCompanionPage() {
         password,
         nickname,
         avatarUrl: avatarUrl.trim() || undefined,
+        gender: gender === "UNSET" ? undefined : gender,
         game,
         pricePerHour,
         deltaForceRank,
@@ -79,6 +81,7 @@ export default function NewCompanionPage() {
     setPassword("");
     setNickname("");
     setAvatarUrl("");
+    setGender("MOON");
     setBio("");
     setStatus("陪玩账号已创建，请到陪玩管理页面审核上架。");
   }
@@ -121,6 +124,14 @@ export default function NewCompanionPage() {
                 <option value="REQUIRED">必须语音</option>
                 <option value="OPTIONAL">可语音</option>
                 <option value="TEXT_ONLY">仅文字</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-dfc-muted">声线标签</span>
+              <select value={gender} onChange={(event) => setGender(event.target.value)} className="input">
+                <option value="MOON">🌙 月影声线</option>
+                <option value="SOLAR">☀️ 曜刃声线</option>
+                <option value="UNSET">暂不分类</option>
               </select>
             </label>
           </div>
