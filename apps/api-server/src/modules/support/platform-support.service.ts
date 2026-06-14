@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
-import { BotPlatform, CompanionProfileStatus, OrderSourcePlatform, UserRole, UserStatus } from "@prisma/client";
+import { BotEventStatus, BotPlatform, CompanionProfileStatus, OrderSourcePlatform, UserRole, UserStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderDraftsService } from "../orders/order-drafts.service";
 
@@ -220,7 +220,7 @@ export class PlatformSupportService {
     let draft: { id: string; draftNo: string } | null = null;
 
     if (dispatchIntent) {
-      const facts = this.buildDemandFacts(message, history);
+      const facts = this.withExplicitPublishDefaults(message, this.buildDemandFacts(message, history));
       const dispatchResult = await this.maybeCreateDispatchDraft(input, account?.userId ?? undefined, message, facts);
       draft = dispatchResult.draft;
       finalAnswer = dispatchResult.reply;
@@ -259,7 +259,15 @@ export class PlatformSupportService {
   }
 
   private async maybeCreateDispatchDraft(input: PlatformSupportMessage, customerId: string | undefined, message: string, facts: DemandFacts) {
-    if (process.env.AI_AUTO_DISPATCH_ENABLED !== "true") {
+    const shouldPublish = process.env.AI_AUTO_DISPATCH_ENABLED === "true" || this.shouldPublishDispatchDraft(message, facts);
+    if (!shouldPublish) {
+      return {
+        draft: null,
+        reply: this.buildDispatchCollectionReply(facts)
+      };
+    }
+
+    if (!facts.game || !facts.duration) {
       return {
         draft: null,
         reply: this.buildDispatchCollectionReply(facts)
@@ -288,7 +296,7 @@ export class PlatformSupportService {
 
     return {
       draft: { id: result.draft.id, draftNo: result.draft.draftNo },
-      reply: `已为你生成试音派单 ${result.draft.draftNo}，系统会通知陪玩频道报名。稍后客服会把候选陪玩发给你选择；充值、退款和余额问题仍由人工客服确认。`
+      reply: this.buildDispatchPublishedReply(result.draft.draftNo, facts, result.notifications)
     };
   }
 
@@ -608,9 +616,57 @@ export class PlatformSupportService {
     return { ...facts, missing, summary };
   }
 
+  private withExplicitPublishDefaults(message: string, facts: DemandFacts): DemandFacts {
+    if (!this.isExplicitDispatchPublish(message)) return facts;
+
+    const next: DemandFacts = {
+      ...facts,
+      mode: facts.mode ?? "随意",
+      trial: facts.trial ?? (/(不用|不要|不需要|免试|直接)/i.test(message) ? "不需要" : "待确认"),
+      startTime: facts.startTime ?? "现在/待确认"
+    };
+    next.missing = [];
+    if (!next.game) next.missing.push("游戏");
+    if (!next.duration) next.missing.push("预计时长");
+    next.summary = this.buildDemandSummary(next);
+    return next;
+  }
+
+  private buildDemandSummary(facts: DemandFacts) {
+    return [
+      facts.game ? `游戏：${facts.game}` : undefined,
+      facts.mode ? `模式：${facts.mode}` : undefined,
+      facts.duration ? `时长：${facts.duration}` : undefined,
+      facts.budget ? `预算：${facts.budget}` : "预算：按陪玩报价确认",
+      facts.trial ? `试音：${facts.trial}` : undefined,
+      facts.startTime ? `时间：${facts.startTime}` : undefined
+    ]
+      .filter(Boolean)
+      .join("，");
+  }
+
+  private isExplicitDispatchPublish(message: string) {
+    return /(发布招募|发招募|直接招募|开始招募|直接发布|派单吧|直接派单|发派单|发布派单|发到派单|推到派单)/i.test(message);
+  }
+
+  private shouldPublishDispatchDraft(message: string, facts: DemandFacts) {
+    return facts.missing.length === 0 || (this.isExplicitDispatchPublish(message) && Boolean(facts.game && facts.duration));
+  }
+
+  private buildDispatchPublishedReply(draftNo: string, facts: DemandFacts, notifications: Array<{ platform: BotPlatform; status: BotEventStatus; error?: string }>) {
+    const sentPlatforms = notifications.filter((item) => item.status === BotEventStatus.SENT).map((item) => (item.platform === BotPlatform.DISCORD ? "Discord" : "KOOK"));
+    const failedPlatforms = notifications.filter((item) => item.status !== BotEventStatus.SENT).map((item) => (item.platform === BotPlatform.DISCORD ? "Discord" : "KOOK"));
+
+    if (sentPlatforms.length > 0) {
+      return `已发布派单 ${draftNo} 到 ${sentPlatforms.join("、")} 派单频道。需求：${facts.summary}。陪玩报名后，客服会继续给你确认候选人和报价。`;
+    }
+
+    return `派单草稿 ${draftNo} 已生成，但暂时没有成功发到派单频道${failedPlatforms.length ? `（${failedPlatforms.join("、")} 通知失败）` : ""}。我已记录需求：${facts.summary}，请人工客服检查 Bot 频道权限或环境变量。`;
+  }
+
   private buildDispatchCollectionReply(facts: DemandFacts) {
     if (facts.missing.length === 0) {
-      return `收到，需求够了：${facts.summary}。我会按这个给人工客服/派单频道继续处理，价格以候选陪玩报价和后台订单为准。`;
+      return `收到，需求够了：${facts.summary}。你可以回复“直接发布招募”，我会发到派单频道；价格以候选陪玩报价和后台订单为准。`;
     }
 
     if (facts.game && facts.duration && facts.mode) {

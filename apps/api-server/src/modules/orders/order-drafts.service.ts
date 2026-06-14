@@ -709,6 +709,7 @@ export class OrderDraftsService {
 
   private detectMode(text: string, lower: string) {
     if (text.includes("烽火")) return "烽火地带";
+    if (text.includes("随意") || text.includes("不限") || text.includes("都行") || text.includes("无所谓")) return "随意";
     if (lower.includes("排位") || lower.includes("rank")) return "排位";
     if (text.includes("上分")) return "上分";
     if (text.includes("娱乐")) return "娱乐";
