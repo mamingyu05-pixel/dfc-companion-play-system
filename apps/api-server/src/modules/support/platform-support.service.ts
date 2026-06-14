@@ -21,6 +21,18 @@ type SupportHistoryTurn = {
   answer: string;
 };
 
+type DemandFacts = {
+  hasOrderContext: boolean;
+  game?: string;
+  mode?: string;
+  duration?: string;
+  budget?: string;
+  startTime?: string;
+  trial?: string;
+  missing: string[];
+  summary: string;
+};
+
 type PlatformSupportMessage = {
   platform: BotPlatform;
   platformUserId: string;
@@ -203,12 +215,13 @@ export class PlatformSupportService {
       platformUserId: input.platformUserId
     });
     const result = await this.resolveSupportAnswer(message, history);
-    const dispatchIntent = this.isDispatchIntent(message);
+    const dispatchIntent = this.isDispatchIntent(message) || this.isDemandContinuation(message, history);
     let finalAnswer = result.answer;
     let draft: { id: string; draftNo: string } | null = null;
 
     if (dispatchIntent) {
-      const dispatchResult = await this.maybeCreateDispatchDraft(input, account?.userId ?? undefined, message);
+      const facts = this.buildDemandFacts(message, history);
+      const dispatchResult = await this.maybeCreateDispatchDraft(input, account?.userId ?? undefined, message, facts);
       draft = dispatchResult.draft;
       finalAnswer = dispatchResult.reply;
     }
@@ -245,12 +258,11 @@ export class PlatformSupportService {
     });
   }
 
-  private async maybeCreateDispatchDraft(input: PlatformSupportMessage, customerId: string | undefined, message: string) {
+  private async maybeCreateDispatchDraft(input: PlatformSupportMessage, customerId: string | undefined, message: string, facts: DemandFacts) {
     if (process.env.AI_AUTO_DISPATCH_ENABLED !== "true") {
       return {
         draft: null,
-        reply:
-          "可以，我先帮你记录下单需求。你继续发：游戏、模式、预计时长、是否试音、想现在开始还是预约。预算不确定也没关系，客服会按候选陪玩的报价给你确认。"
+        reply: this.buildDispatchCollectionReply(facts)
       };
     }
 
@@ -271,7 +283,7 @@ export class PlatformSupportService {
       sourceGuildId: input.guildId,
       sourceChannelId: input.channelId,
       sourceMessageId: input.messageId,
-      demandText: message
+      demandText: facts.summary || message
     });
 
     return {
@@ -547,6 +559,134 @@ export class PlatformSupportService {
     return /(找陪玩|下单|派单|预约|试音|上分|带我|陪打|陪练|来个|安排|want.*play|need.*companion|boost|rank)/i.test(message);
   }
 
+  private isDemandContinuation(message: string, history: SupportHistoryTurn[] = []) {
+    if (!history.some((turn) => this.isDispatchIntent(turn.message) || turn.answer.includes("下单需求") || turn.answer.includes("派单"))) {
+      return false;
+    }
+
+    return Boolean(
+      this.extractGame(message) ||
+        this.extractDuration(message) ||
+        this.extractMode(message) ||
+        this.extractBudget(message) ||
+        this.extractStartTime(message) ||
+        this.extractTrialPreference(message)
+    );
+  }
+
+  private buildDemandFacts(message: string, history: SupportHistoryTurn[] = []): DemandFacts {
+    const messages = [...history.map((turn) => turn.message), message].map((item) => this.normalizeMessage(item));
+    const combined = messages.join("，");
+    const facts = {
+      hasOrderContext: messages.some((item) => this.isDispatchIntent(item)),
+      game: this.extractGame(combined),
+      mode: this.extractMode(combined),
+      duration: this.extractDuration(combined),
+      budget: this.extractBudget(combined),
+      startTime: this.extractStartTime(combined),
+      trial: this.extractTrialPreference(combined)
+    };
+
+    const missing: string[] = [];
+    if (!facts.game) missing.push("游戏");
+    if (!facts.mode) missing.push("模式");
+    if (!facts.duration) missing.push("预计时长");
+    if (!facts.trial) missing.push("是否试音");
+    if (!facts.startTime) missing.push("现在开始还是预约");
+
+    const summary = [
+      facts.game ? `游戏：${facts.game}` : undefined,
+      facts.mode ? `模式：${facts.mode}` : undefined,
+      facts.duration ? `时长：${facts.duration}` : undefined,
+      facts.budget ? `预算：${facts.budget}` : "预算：按陪玩报价确认",
+      facts.trial ? `试音：${facts.trial}` : undefined,
+      facts.startTime ? `时间：${facts.startTime}` : undefined
+    ]
+      .filter(Boolean)
+      .join("，");
+
+    return { ...facts, missing, summary };
+  }
+
+  private buildDispatchCollectionReply(facts: DemandFacts) {
+    if (facts.missing.length === 0) {
+      return `收到，需求够了：${facts.summary}。我会按这个给人工客服/派单频道继续处理，价格以候选陪玩报价和后台订单为准。`;
+    }
+
+    if (facts.game && facts.duration && facts.mode) {
+      const nextQuestion = facts.missing.includes("是否试音") ? "要不要先试音？" : `还差：${facts.missing.slice(0, 2).join("、")}。`;
+      return `收到，先记下：${facts.summary}。${nextQuestion}`;
+    }
+
+    const ask = facts.missing.slice(0, 3).join("、");
+    return `可以，我先帮你记录下单需求。${facts.summary ? `已记下：${facts.summary}。` : ""}还差：${ask}。预算不确定也没关系，可以按陪玩报价确认。`;
+  }
+
+  private extractGame(message: string) {
+    const lower = message.toLowerCase();
+    const games: Array<[RegExp, string]> = [
+      [/(三角洲行动|三角洲|delta force|df)/i, "三角洲行动"],
+      [/(apex|apex legends|派派)/i, "Apex Legends"],
+      [/(无畏契约|瓦罗兰特|valorant|瓦\b)/i, "无畏契约"],
+      [/(英雄联盟|lol|联盟)/i, "英雄联盟"],
+      [/(王者荣耀|王者)/i, "王者荣耀"],
+      [/(和平精英|pubg mobile)/i, "和平精英"],
+      [/(pubg|绝地求生|吃鸡)/i, "PUBG"],
+      [/(永劫无间|永劫)/i, "永劫无间"],
+      [/(cs2|counter-strike|反恐精英)/i, "CS2"],
+      [/(dota2|dota)/i, "DOTA 2"],
+      [/(我的世界|minecraft)/i, "Minecraft"],
+      [/(原神|genshin)/i, "原神"]
+    ];
+
+    return games.find(([pattern]) => pattern.test(lower))?.[1];
+  }
+
+  private extractMode(message: string) {
+    const normalized = message.replace(/\s+/g, "");
+    if (/(模式随意|模式不限|模式都行|模式任意|随便模式|模式无所谓|模式没要求)/i.test(normalized)) return "随意";
+    const explicit = normalized.match(/(?:模式|玩法)[:：]?([\u4e00-\u9fa5A-Za-z0-9]{1,12})/i);
+    if (explicit?.[1] && !/(随便|随意|不限|都行|任意|无所谓)/i.test(explicit[1])) return explicit[1];
+    if (/(排位|排位赛|上分|天梯|rank)/i.test(normalized)) return "排位/上分";
+    if (/(匹配|娱乐|休闲|快速|普通)/i.test(normalized)) return "匹配/娱乐";
+    return undefined;
+  }
+
+  private extractDuration(message: string) {
+    const normalized = message.replace(/\s+/g, "");
+    const match = normalized.match(/(\d+(?:\.\d+)?)(?:个)?(?:小时|h|H)/);
+    if (match?.[1]) return `${match[1]}小时`;
+    const chineseHour = normalized.match(/([一二两三四五六七八九十])(?:个)?小时/);
+    const number = chineseHour?.[1] ? chineseNumberToDigit(chineseHour[1]) : undefined;
+    return number ? `${number}小时` : undefined;
+  }
+
+  private extractBudget(message: string) {
+    const normalized = message.replace(/\s+/g, "");
+    if (/(预算不确定|没预算|没有预算|预算随意|预算无所谓|价格随意|客服报价|按报价|看报价|报价确认)/i.test(normalized)) {
+      return "按陪玩报价确认";
+    }
+    const money = normalized.match(/(?:预算|价格|价位|费用)?(?:¥|￥)?(\d{2,5})(?:元|块)?/);
+    return money?.[1] ? `¥${money[1]}` : undefined;
+  }
+
+  private extractStartTime(message: string) {
+    const normalized = message.replace(/\s+/g, "");
+    if (/(现在|马上|立刻|直接开始|现在开始|这会儿)/i.test(normalized)) return "现在开始";
+    if (/(今晚|晚上)/i.test(normalized)) return "今晚/晚上";
+    if (/(明天|后天|预约|预定|约)/i.test(normalized)) return "预约时间";
+    const time = normalized.match(/(\d{1,2})[点:：](\d{2})?/);
+    return time ? `${time[1]}点${time[2] ?? ""}` : undefined;
+  }
+
+  private extractTrialPreference(message: string) {
+    const normalized = message.replace(/\s+/g, "");
+    if (/(要试音|先试音|试音|听声音|语音看看)/i.test(normalized)) return "需要";
+    if (/(不用试音|不要试音|不试音|直接下单)/i.test(normalized)) return "不需要";
+    if (/(无所谓|都行|随意)/i.test(normalized) && /(声音|语音|试音)/i.test(normalized)) return "无所谓";
+    return undefined;
+  }
+
   private isCompanionCountQuestion(message: string) {
     return (
       /(多少|几位|几个|人数|数量|规模|多吗|有多少|目前有|现在有)/i.test(message) &&
@@ -600,4 +740,21 @@ export class PlatformSupportService {
     if (value.length > 1000) throw new BadRequestException("message is too long");
     return value;
   }
+}
+
+function chineseNumberToDigit(value: string) {
+  const map: Record<string, string> = {
+    一: "1",
+    二: "2",
+    两: "2",
+    三: "3",
+    四: "4",
+    五: "5",
+    六: "6",
+    七: "7",
+    八: "8",
+    九: "9",
+    十: "10"
+  };
+  return map[value];
 }
