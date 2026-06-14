@@ -1,0 +1,246 @@
+#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+
+const KOOK_API_BASE_URL = "https://www.kookapp.cn";
+
+const rolePlan = [
+  { env: "KOOK_SUPER_ADMIN_ROLE_ID", name: "👑 总管理", color: 0xffd166, grantToAdmin: true },
+  { env: "KOOK_ADMIN_ROLE_ID", name: "🛡️ 管理员", color: 0xff5a6a, grantToAdmin: true },
+  { env: "KOOK_SUPPORT_ROLE_ID", name: "💬 May客服", color: 0x22d3ee },
+  { env: "KOOK_COMPANION_ROLE_ID", name: "🎮 认证陪玩", color: 0xa78bfa },
+  { env: "KOOK_CUSTOMER_ROLE_ID", name: "🐾 猫饼客户", color: 0x38bdf8 },
+  { env: "KOOK_CUSTOMER_NO_ORDER_ROLE_ID", name: "🌱 未下单客户", color: 0x94a3b8 },
+  { env: "KOOK_CUSTOMER_SPECIAL_HALL_ROLE_ID", name: "👑 May名人堂", color: 0xfacc15 },
+  { env: "KOOK_CUSTOMER_SPECIAL_NEON_ROLE_ID", name: "💎 霓虹贵宾", color: 0xf472b6 },
+  ...Array.from({ length: 15 }, (_, index) => {
+    const level = index + 1;
+    return {
+      env: `KOOK_CUSTOMER_LEVEL_${level}_ROLE_ID`,
+      name: `🐾 猫饼会员 Lv.${level}`,
+      color: level <= 4 ? 0x38bdf8 : level <= 9 ? 0x818cf8 : 0xc084fc
+    };
+  })
+];
+
+const channelIntroPlan = [
+  {
+    env: "KOOK_SUPPORT_CHANNEL_ID",
+    title: "May猫饼客服接待",
+    lines: [
+      "这里是客户咨询入口。你可以直接说需求，AI 客服会先整理信息，复杂问题会转人工。",
+      "找陪玩请说清楚：游戏、模式、段位、时长、预算、是否试音、语音偏好。",
+      "充值不到账、退款、投诉、提现等问题，请带账号邮箱、订单号或截图，人工客服会继续处理。",
+      "AI 不会直接加余额、退款、提现或封号，所有资金动作必须进入后台。"
+    ]
+  },
+  {
+    env: "KOOK_DISPATCH_CHANNEL_ID",
+    title: "人工派单",
+    lines: [
+      "客服或 AI 会在这里整理客户需求，陪玩按格式报名，管理员最终确认。",
+      "陪玩报名建议包含：可服务时间、报价、擅长模式、是否可试音、备注。",
+      "报名不等于接单，最终以后台订单状态为准。禁止绕过平台私下交易。"
+    ]
+  },
+  {
+    env: "KOOK_RECHARGE_CHANNEL_ID",
+    title: "充值审核",
+    lines: [
+      "用于人工充值提醒和截图核对。",
+      "审核前确认客户账号、金额、截图、备注、优惠码是否匹配。",
+      "后台通过后必须生成钱包流水，不能只在频道口头确认。"
+    ]
+  },
+  {
+    env: "KOOK_WITHDRAWAL_CHANNEL_ID",
+    title: "提现审核",
+    lines: [
+      "用于陪玩提现申请、支付宝收款信息核对和人工打款确认。",
+      "打款前确认可提现收入、订单完成状态、是否存在投诉。",
+      "人工打款完成后再到后台确认完成。"
+    ]
+  },
+  {
+    env: "KOOK_COMPLAINT_CHANNEL_ID",
+    title: "投诉处理",
+    lines: [
+      "用于退款、投诉、争议订单处理。",
+      "处理前收集订单号、聊天记录、截图或录屏、客户诉求、陪玩说明。",
+      "退款、补偿、封禁必须在后台操作并保留管理员日志。"
+    ]
+  },
+  {
+    env: "KOOK_ADMIN_CHANNEL_ID",
+    title: "管理提醒",
+    lines: [
+      "用于系统异常、Bot 失败日志、待审核充值、提现和投诉提醒。",
+      "每日建议检查：未派单订单、充值审核、提现审核、投诉、数据库备份、Bot 日志。"
+    ]
+  }
+];
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const env = { ...loadEnv(path.resolve(process.cwd(), ".env")), ...process.env };
+  const token = env.KOOK_TOKEN;
+  const guildId = args.guildId || env.KOOK_GUILD_ID;
+  const adminUserId = args.adminUserId || env.KOOK_ADMIN_USER_ID || "1481361693";
+
+  if (!token) throw new Error("KOOK_TOKEN is missing in .env");
+  if (!guildId) throw new Error("KOOK_GUILD_ID is missing in .env. Example: node scripts/decorate-kook-server.js 3189962583916682");
+
+  console.log(`KOOK guild: ${guildId}`);
+  console.log("Ensuring May猫饼 roles...\n");
+
+  const existingRoles = await listRoles(token, guildId);
+  const roleOutput = {};
+
+  for (const item of rolePlan) {
+    const role = await ensureRole(token, guildId, existingRoles, item);
+    roleOutput[item.env] = role.id;
+    console.log(`${role.created ? "create" : "reuse"} ${item.name} -> ${role.id}`);
+
+    if (item.grantToAdmin && adminUserId) {
+      await grantRole(token, guildId, adminUserId, role.id);
+      console.log(`  grant to KOOK user ${adminUserId}`);
+    }
+  }
+
+  if (args.postWelcome) {
+    console.log("\nPosting channel layout messages...\n");
+    for (const item of channelIntroPlan) {
+      const channelId = env[item.env];
+      if (!channelId) {
+        console.log(`skip ${item.env}: not configured`);
+        continue;
+      }
+      const result = await postChannelMessage(token, channelId, buildIntroMessage(item));
+      console.log(`posted ${item.title} -> ${result.msg_id}`);
+    }
+  }
+
+  console.log("\nCopy these lines into /opt/companion-play-system/.env:");
+  console.log(`KOOK_GUILD_ID=${guildId}`);
+  for (const item of rolePlan) {
+    console.log(`${item.env}=${roleOutput[item.env]}`);
+  }
+  console.log("\nAfter updating .env, run:");
+  console.log("sudo docker compose restart api-server kook-bot nginx");
+  console.log("\nManual KOOK step: 服务器设置 -> 角色权限，把角色按文档顺序拖动；Bot 自己的角色必须排在这些业务角色上方。");
+}
+
+function parseArgs(argv) {
+  return {
+    guildId: argv.find((value) => !value.startsWith("--")),
+    adminUserId: argv.find((value, index) => index > 0 && !value.startsWith("--")),
+    postWelcome: argv.includes("--post-welcome")
+  };
+}
+
+function loadEnv(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  const env = {};
+  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const index = trimmed.indexOf("=");
+    if (index === -1) continue;
+    const key = trimmed.slice(0, index).trim();
+    const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, "");
+    env[key] = value;
+  }
+  return env;
+}
+
+async function listRoles(token, guildId) {
+  const data = await kookRequest(token, `/api/v3/guild-role/list?guild_id=${encodeURIComponent(guildId)}`, { method: "GET" });
+  const roles = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+  return roles.map((role) => ({
+    id: String(role.role_id ?? role.id),
+    name: String(role.name)
+  }));
+}
+
+async function ensureRole(token, guildId, existingRoles, item) {
+  const existing = existingRoles.find((role) => role.name === item.name);
+  if (existing) return { ...existing, created: false };
+
+  const data = await kookRequest(token, "/api/v3/guild-role/create", {
+    method: "POST",
+    body: JSON.stringify({
+      guild_id: guildId,
+      name: item.name,
+      color: item.color,
+      hoist: 1,
+      mentionable: 0
+    })
+  });
+
+  const role = {
+    id: String(data.role_id ?? data.id),
+    name: String(data.name ?? item.name),
+    created: true
+  };
+  existingRoles.push(role);
+  return role;
+}
+
+async function grantRole(token, guildId, userId, roleId) {
+  await kookRequest(token, "/api/v3/guild-role/grant", {
+    method: "POST",
+    body: JSON.stringify({
+      guild_id: guildId,
+      user_id: userId,
+      role_id: Number(roleId)
+    })
+  });
+}
+
+async function postChannelMessage(token, channelId, content) {
+  return kookRequest(token, "/api/v3/message/create", {
+    method: "POST",
+    body: JSON.stringify({
+      target_id: channelId,
+      type: 9,
+      content
+    })
+  });
+}
+
+function buildIntroMessage(item) {
+  return [`**${item.title}**`, "", ...item.lines.map((line) => `- ${line}`)].join("\n");
+}
+
+async function kookRequest(token, apiPath, init) {
+  const response = await fetch(`${KOOK_API_BASE_URL}${apiPath}`, {
+    ...init,
+    headers: {
+      Authorization: `Bot ${token}`,
+      "Content-Type": "application/json",
+      ...(init.headers || {})
+    }
+  });
+
+  const text = await response.text();
+  if (!response.ok) throw new Error(`KOOK API HTTP ${response.status}: ${text}`);
+
+  let result;
+  try {
+    result = JSON.parse(text);
+  } catch {
+    throw new Error(`KOOK API returned non-JSON response: ${text}`);
+  }
+
+  if (result.code !== 0) {
+    throw new Error(`KOOK API error ${result.code}: ${result.message || text}`);
+  }
+
+  return result.data;
+}
