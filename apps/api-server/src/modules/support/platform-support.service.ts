@@ -216,12 +216,13 @@ export class PlatformSupportService {
     });
     const result = await this.resolveSupportAnswer(message, history);
     const dispatchIntent = this.isDispatchIntent(message) || this.isDemandContinuation(message, history);
+    const customerId = account?.user?.role === UserRole.CUSTOMER && account.user.status === UserStatus.ACTIVE ? account.userId : undefined;
     let finalAnswer = result.answer;
     let draft: { id: string; draftNo: string } | null = null;
 
     if (dispatchIntent) {
       const facts = this.withExplicitPublishDefaults(message, this.buildDemandFacts(message, history));
-      const dispatchResult = await this.maybeCreateDispatchDraft(input, account?.userId ?? undefined, message, facts);
+      const dispatchResult = await this.maybeCreateDispatchDraft(input, customerId, message, facts);
       draft = dispatchResult.draft;
       finalAnswer = dispatchResult.reply;
     }
@@ -741,8 +742,8 @@ export class PlatformSupportService {
 
   private extractTrialPreference(message: string) {
     const normalized = message.replace(/\s+/g, "");
-    if (/(要试音|先试音|试音|听声音|语音看看)/i.test(normalized)) return "需要";
     if (/(不用试音|不要试音|不试音|直接下单)/i.test(normalized)) return "不需要";
+    if (/(要试音|先试音|试音|听声音|语音看看)/i.test(normalized)) return "需要";
     if (/(无所谓|都行|随意)/i.test(normalized) && /(声音|语音|试音)/i.test(normalized)) return "无所谓";
     return undefined;
   }
