@@ -8,7 +8,7 @@ const navItems = [
   ["陪玩", "/companions"],
   ["添加陪玩", "/companions/new"],
   ["订单", "/orders"],
-  ["试音草稿", "/order-drafts"],
+  ["客服派单", "/order-drafts"],
   ["派单", "/dispatch"],
   ["优惠", "/promotions"],
   ["充值审核", "/recharges"],

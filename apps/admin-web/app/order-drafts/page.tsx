@@ -72,6 +72,13 @@ type Recommendation = {
   reasons: string[];
 };
 
+type DispatchNotification = {
+  platform: "DISCORD" | "KOOK";
+  status: "SENT" | "FAILED" | string;
+  messageId?: string;
+  error?: string;
+};
+
 const gameOptions = [
   ["DELTA_FORCE", "三角洲行动"],
   ["LEAGUE_OF_LEGENDS", "英雄联盟"],
@@ -165,7 +172,7 @@ export default function OrderDraftsPage() {
 
   async function createDraftFromDemand() {
     try {
-      const data = await callApi<{ draft: { id: string } }>("/api/admin/order-drafts/from-demand", {
+      const data = await callApi<{ draft: { id: string; draftNo?: string }; notifications?: DispatchNotification[] }>("/api/admin/order-drafts/from-demand", {
         method: "POST",
         body: JSON.stringify({
           customerId: form.customerId || undefined,
@@ -178,7 +185,7 @@ export default function OrderDraftsPage() {
         })
       });
       setSelectedDraftId(data.draft.id);
-      setStatus("AI 派单草稿已创建，并已尝试通知 KOOK / Discord 陪玩频道。");
+      setStatus(buildNotificationStatus(data.draft.draftNo, data.notifications));
       setForm((current) => ({ ...current, demandText: "" }));
       await loadData();
     } catch (err) {
@@ -297,7 +304,7 @@ export default function OrderDraftsPage() {
 
   return (
     <AdminShell>
-      <SectionHeader eyebrow="Voice Trial Desk" title="AI 试音派单" desc="客户在 KOOK / Discord 说需求后，AI 派单助手解析需求、通知陪玩频道、记录报名、推荐候选，客户确认后再转正式订单。" />
+      <SectionHeader eyebrow="Support Dispatch Desk" title="客服派单台" desc="AI 收集 KOOK / Discord 客户需求，客服可在这里确认、发布到派单频道、记录报名、推荐候选，客户确认后再转正式订单。" />
 
       <section className="mb-5 grid gap-4 md:grid-cols-3">
         <Signal label="开放草稿" value={String(stats.open)} hint="等待候选或客户确认" tone="cyan" />
@@ -309,7 +316,7 @@ export default function OrderDraftsPage() {
       {status ? <Alert tone="success">{status}</Alert> : null}
 
       <section className="mb-6 grid gap-4 xl:grid-cols-2">
-        <Panel title="AI 创建派单草稿" hint="粘贴客户原话，自动解析需求并通知陪玩频道。">
+        <Panel title="AI 客服派单" hint="粘贴客户原话或频道对话，系统会解析需求并发布到 KOOK / Discord 派单频道。">
           <div className="grid gap-3 md:grid-cols-2">
             <CustomerSelect value={form.customerId} customers={customers} onChange={(value) => setForm({ ...form, customerId: value })} />
             <select value={form.sourcePlatform} onChange={(event) => setForm({ ...form, sourcePlatform: event.target.value as "WEB" | "DISCORD" | "KOOK" })} className="input">
@@ -322,9 +329,20 @@ export default function OrderDraftsPage() {
             <input value={form.sourceChannelId} onChange={(event) => setForm({ ...form, sourceChannelId: event.target.value })} className="input" placeholder="来源频道 ID，可选" />
             <input value={form.voiceRoomId} onChange={(event) => setForm({ ...form, voiceRoomId: event.target.value })} className="input" placeholder="试音语音频道 ID，可选" />
           </div>
-          <textarea value={form.demandText} onChange={(event) => setForm({ ...form, demandText: event.target.value })} className="input mt-3 min-h-28" placeholder="粘贴客户原话，例如：三角洲烽火 2 小时，预算 300，想先试音。" />
+          <textarea value={form.demandText} onChange={(event) => setForm({ ...form, demandText: event.target.value })} className="input mt-3 min-h-28" placeholder="粘贴客户原话，例如：三角洲，模式随意，2 小时，不试音，现在开始。" />
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[
+              "三角洲，模式随意，2小时，不试音，现在开始",
+              "Apex，娱乐模式，2小时，预算按报价，先试音",
+              "无畏契约，排位上分，3小时，今晚开始"
+            ].map((template) => (
+              <button key={template} type="button" onClick={() => setForm((current) => ({ ...current, demandText: template }))} className="rounded-dfc-control border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs font-semibold text-cyan-100 hover:border-cyan-300/50">
+                {template}
+              </button>
+            ))}
+          </div>
           <button type="button" onClick={() => void createDraftFromDemand()} className="mt-4 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">
-            AI 解析并派发
+            AI 解析并发布派单
           </button>
         </Panel>
 
@@ -415,7 +433,7 @@ export default function OrderDraftsPage() {
           {selectedDraft ? (
             <div className="mt-4 space-y-4 text-sm text-dfc-subtext">
               <DetailBlock title={selectedDraft.draftNo}>
-                <div>备注：{selectedDraft.note || "-"}</div>
+                <div className="whitespace-pre-wrap">备注：{selectedDraft.note || "-"}</div>
                 <div>预算：{selectedDraft.budgetAmount ? `¥${formatMoney(selectedDraft.budgetAmount)}` : "-"} / 时长：{selectedDraft.hours || "-"}</div>
                 <div>更新时间：{formatDateTime(selectedDraft.updatedAt)}</div>
               </DetailBlock>
@@ -504,6 +522,27 @@ function Signal({ label, value, hint, tone }: { label: string; value: string; hi
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
   const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
   return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+}
+
+function buildNotificationStatus(draftNo?: string, notifications: DispatchNotification[] = []) {
+  const sent = notifications.filter((item) => item.status === "SENT").map((item) => platformLabel(item.platform));
+  const failed = notifications.filter((item) => item.status !== "SENT").map((item) => `${platformLabel(item.platform)}${item.error ? `：${item.error}` : ""}`);
+
+  if (sent.length > 0) {
+    return `派单 ${draftNo ?? ""} 已创建，并已发布到 ${sent.join("、")} 派单频道${failed.length ? `；失败：${failed.join("；")}` : ""}。`;
+  }
+
+  if (notifications.length > 0) {
+    return `派单 ${draftNo ?? ""} 已创建，但频道通知失败：${failed.join("；")}。请检查 Bot 权限、频道 ID 和 .env。`;
+  }
+
+  return `派单 ${draftNo ?? ""} 已创建，但没有返回频道通知结果。请检查 Bot 通知服务配置。`;
+}
+
+function platformLabel(platform: string) {
+  if (platform === "DISCORD") return "Discord";
+  if (platform === "KOOK") return "KOOK";
+  return platform;
 }
 
 function formatMoney(value: string) {

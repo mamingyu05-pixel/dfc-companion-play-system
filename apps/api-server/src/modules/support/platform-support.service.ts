@@ -555,7 +555,7 @@ export class PlatformSupportService {
     const rows = await this.prisma.aiSupportConversation.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: 2,
+      take: 6,
       select: { message: true, answer: true }
     });
 
@@ -578,7 +578,8 @@ export class PlatformSupportService {
         this.extractMode(message) ||
         this.extractBudget(message) ||
         this.extractStartTime(message) ||
-        this.extractTrialPreference(message)
+        this.extractTrialPreference(message) ||
+        this.isExplicitDispatchPublish(message)
     );
   }
 
@@ -646,7 +647,8 @@ export class PlatformSupportService {
   }
 
   private isExplicitDispatchPublish(message: string) {
-    return /(发布招募|发招募|直接招募|开始招募|直接发布|派单吧|直接派单|发派单|发布派单|发到派单|推到派单)/i.test(message);
+    const normalized = message.replace(/\s+/g, "");
+    return /^(开始|发布|发吧|可以发|直接发|确认发|派吧)$/.test(normalized) || /(发布招募|发招募|直接招募|开始招募|直接发布|派单吧|直接派单|发派单|发布派单|发到派单|推到派单)/i.test(normalized);
   }
 
   private shouldPublishDispatchDraft(message: string, facts: DemandFacts) {
@@ -655,7 +657,9 @@ export class PlatformSupportService {
 
   private buildDispatchPublishedReply(draftNo: string, facts: DemandFacts, notifications: Array<{ platform: BotPlatform; status: BotEventStatus; error?: string }>) {
     const sentPlatforms = notifications.filter((item) => item.status === BotEventStatus.SENT).map((item) => (item.platform === BotPlatform.DISCORD ? "Discord" : "KOOK"));
-    const failedPlatforms = notifications.filter((item) => item.status !== BotEventStatus.SENT).map((item) => (item.platform === BotPlatform.DISCORD ? "Discord" : "KOOK"));
+    const failedPlatforms = notifications
+      .filter((item) => item.status !== BotEventStatus.SENT)
+      .map((item) => `${item.platform === BotPlatform.DISCORD ? "Discord" : "KOOK"}${item.error ? `：${item.error}` : ""}`);
 
     if (sentPlatforms.length > 0) {
       return `已发布派单 ${draftNo} 到 ${sentPlatforms.join("、")} 派单频道。需求：${facts.summary}。陪玩报名后，客服会继续给你确认候选人和报价。`;
@@ -700,7 +704,7 @@ export class PlatformSupportService {
 
   private extractMode(message: string) {
     const normalized = message.replace(/\s+/g, "");
-    if (/(模式随意|模式不限|模式都行|模式任意|随便模式|模式无所谓|模式没要求)/i.test(normalized)) return "随意";
+    if (/(模式随意|模式不限|模式都行|模式任意|随便模式|模式无所谓|模式没要求|没有模式|没模式|无模式)/i.test(normalized)) return "随意";
     const explicit = normalized.match(/(?:模式|玩法)[:：]?([\u4e00-\u9fa5A-Za-z0-9]{1,12})/i);
     if (explicit?.[1] && !/(随便|随意|不限|都行|任意|无所谓)/i.test(explicit[1])) return explicit[1];
     if (/(排位|排位赛|上分|天梯|rank)/i.test(normalized)) return "排位/上分";
@@ -728,7 +732,7 @@ export class PlatformSupportService {
 
   private extractStartTime(message: string) {
     const normalized = message.replace(/\s+/g, "");
-    if (/(现在|马上|立刻|直接开始|现在开始|这会儿)/i.test(normalized)) return "现在开始";
+    if (/^(开始|现在开始)$/.test(normalized) || /(现在|马上|立刻|直接开始|现在开始|这会儿)/i.test(normalized)) return "现在开始";
     if (/(今晚|晚上)/i.test(normalized)) return "今晚/晚上";
     if (/(明天|后天|预约|预定|约)/i.test(normalized)) return "预约时间";
     const time = normalized.match(/(\d{1,2})[点:：](\d{2})?/);

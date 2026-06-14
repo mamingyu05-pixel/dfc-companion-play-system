@@ -681,7 +681,7 @@ export class OrderDraftsService {
     const preferences = [
       /女|女生|女声/.test(text) ? "偏好女陪玩/女声" : undefined,
       /男|男生|男声/.test(text) ? "偏好男陪玩/男声" : undefined,
-      /试音|听声音|语音/.test(text) ? "需要试音" : undefined,
+      /不试音|不用试音|不要试音|免试音/.test(text) ? "不需要试音" : /试音|听声音|语音/.test(text) ? "需要试音" : undefined,
       /上分|排位|带飞/.test(text) ? "偏上分" : undefined,
       /娱乐|聊天|轻松/.test(text) ? "偏娱乐聊天" : undefined
     ].filter(Boolean) as string[];
