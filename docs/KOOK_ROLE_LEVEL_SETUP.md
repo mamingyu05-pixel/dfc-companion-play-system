@@ -3,7 +3,8 @@
 ## 目标
 
 - 管理员和客服显示在 KOOK 右侧成员列表最上方。
-- 客户按累计审核通过充值金额自动获得 `猫饼会员 Lv.1 - Lv.15`。
+- 客户按累计审核通过充值金额自动获得 `猫饼会员 Lv.1 - Lv.15`，高额客户进入 2 个特殊等级。
+- 未完成首单的客户自动获得 `🌱 未下单客户` 标签，完成首单后自动撤销。
 - 等级不按当前余额计算，避免客户下单消费后掉级。
 
 ## 推荐角色顺序
@@ -15,6 +16,8 @@
 🛡️ 管理员
 💬 May客服
 🎮 认证陪玩
+👑 May名人堂
+💎 霓虹贵宾
 🐾 猫饼会员 Lv.15
 🐾 猫饼会员 Lv.14
 🐾 猫饼会员 Lv.13
@@ -30,6 +33,7 @@
 🐾 猫饼会员 Lv.3
 🐾 猫饼会员 Lv.2
 🐾 猫饼会员 Lv.1
+🌱 未下单客户
 🌱 新人
 ```
 
@@ -38,21 +42,23 @@ KOOK 右侧列表优先按角色顺序显示，所以管理员、客服要放在
 ## 等级门槛
 
 ```text
-Lv.1   累计充值 ¥1
-Lv.2   累计充值 ¥50
-Lv.3   累计充值 ¥100
-Lv.4   累计充值 ¥200
-Lv.5   累计充值 ¥500
-Lv.6   累计充值 ¥800
-Lv.7   累计充值 ¥1200
-Lv.8   累计充值 ¥2000
-Lv.9   累计充值 ¥3000
-Lv.10  累计充值 ¥5000
-Lv.11  累计充值 ¥8000
-Lv.12  累计充值 ¥12000
-Lv.13  累计充值 ¥20000
-Lv.14  累计充值 ¥30000
-Lv.15  累计充值 ¥50000
+Lv.1   累计充值 ¥100
+Lv.2   累计充值 ¥300
+Lv.3   累计充值 ¥500
+Lv.4   累计充值 ¥1000
+Lv.5   累计充值 ¥2000
+Lv.6   累计充值 ¥3000
+Lv.7   累计充值 ¥5000
+Lv.8   累计充值 ¥8000
+Lv.9   累计充值 ¥12000
+Lv.10  累计充值 ¥20000
+Lv.11  累计充值 ¥30000
+Lv.12  累计充值 ¥50000
+Lv.13  累计充值 ¥70000
+Lv.14  累计充值 ¥90000
+Lv.15  累计充值 ¥120000
+霓虹贵宾     累计充值 ¥200000
+May名人堂    累计充值 ¥500000
 ```
 
 ## 自动同步规则
@@ -63,6 +69,7 @@ Lv.15  累计充值 ¥50000
 4. 系统计算会员等级。
 5. 如果客户已经绑定 KOOK，系统撤销旧会员等级角色并授予新等级角色。
 6. 如果没有绑定 KOOK，网站个人设置仍会显示等级；绑定 KOOK 后下一次充值审核会同步角色。
+7. 如果客户没有完成过订单，系统授予 `未下单客户` 角色；完成首单后自动撤销。
 
 管理员人工加减余额不计入会员等级，避免把测试调账、纠错调账误算成充值。
 
@@ -86,12 +93,15 @@ KOOK_CUSTOMER_LEVEL_12_ROLE_ID=
 KOOK_CUSTOMER_LEVEL_13_ROLE_ID=
 KOOK_CUSTOMER_LEVEL_14_ROLE_ID=
 KOOK_CUSTOMER_LEVEL_15_ROLE_ID=
+KOOK_CUSTOMER_SPECIAL_NEON_ROLE_ID=
+KOOK_CUSTOMER_SPECIAL_HALL_ROLE_ID=
 ```
 
 基础角色仍然使用：
 
 ```env
 KOOK_CUSTOMER_ROLE_ID=
+KOOK_CUSTOMER_NO_ORDER_ROLE_ID=
 KOOK_COMPANION_ROLE_ID=
 KOOK_ADMIN_ROLE_ID=
 KOOK_SUPER_ADMIN_ROLE_ID=
@@ -115,7 +125,8 @@ sudo docker compose restart api-server customer-web nginx
 2. 客户提交充值申请。
 3. 管理员审核通过。
 4. 打开客户个人设置，确认显示会员等级和累计充值。
-5. 打开 KOOK 右侧成员列表，确认客户获得对应 `猫饼会员 Lv.x`。
+5. 打开 KOOK 右侧成员列表，确认客户获得对应 `猫饼会员 Lv.x` 或特殊等级。
+6. 未完成首单的客户应有 `未下单客户` 角色；完成首单后该角色应自动撤销。
 
 如果网站显示等级但 KOOK 没变，优先检查：
 
@@ -123,4 +134,6 @@ sudo docker compose restart api-server customer-web nginx
 - Bot 是否有角色管理权限。
 - Bot 自己的角色是否排在会员等级角色上方。
 - `KOOK_CUSTOMER_LEVEL_X_ROLE_ID` 是否填错。
+- `KOOK_CUSTOMER_SPECIAL_NEON_ROLE_ID` / `KOOK_CUSTOMER_SPECIAL_HALL_ROLE_ID` 是否填错。
+- `KOOK_CUSTOMER_NO_ORDER_ROLE_ID` 是否填错。
 - 客户是否已经绑定 KOOK。

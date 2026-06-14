@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { BotEventStatus, BotEventType, BotPlatform, ReviewStatus, UserRole, type Prisma } from "@prisma/client";
+import { BotEventStatus, BotEventType, BotPlatform, OrderStatus, ReviewStatus, UserRole, type Prisma } from "@prisma/client";
 import { getConfiguredKookCustomerLevelRoles, getCustomerMembershipLevel } from "../customer-membership";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -137,9 +137,13 @@ export class BotNotificationService {
       where: { customerId: userId, status: ReviewStatus.APPROVED },
       _sum: { amount: true }
     });
+    const completedOrderCount = await this.prisma.order.count({
+      where: { customerId: userId, status: OrderStatus.COMPLETED }
+    });
     const membership = getCustomerMembershipLevel(totalRecharge._sum.amount ?? 0);
     const targetRoleId = configuredRoles.find((item) => item.level === membership.level)?.roleId;
-    if (!targetRoleId) return null;
+    const noOrderRoleId = process.env.KOOK_CUSTOMER_NO_ORDER_ROLE_ID?.trim();
+    if (!targetRoleId && !noOrderRoleId) return null;
 
     for (const role of configuredRoles) {
       if (role.roleId === targetRoleId) continue;
@@ -151,17 +155,30 @@ export class BotNotificationService {
     }
 
     try {
-      await this.postKookAction("/api/v3/guild-role/grant", {
-        guild_id: guildId,
-        user_id: externalAccount.externalUserId,
-        role_id: Number(targetRoleId)
-      });
+      if (targetRoleId) {
+        await this.postKookAction("/api/v3/guild-role/grant", {
+          guild_id: guildId,
+          user_id: externalAccount.externalUserId,
+          role_id: Number(targetRoleId)
+        });
+      }
+
+      if (noOrderRoleId) {
+        await this.postKookAction(completedOrderCount > 0 ? "/api/v3/guild-role/revoke" : "/api/v3/guild-role/grant", {
+          guild_id: guildId,
+          user_id: externalAccount.externalUserId,
+          role_id: Number(noOrderRoleId)
+        });
+      }
+
       await this.recordGenericBotEvent(BotPlatform.KOOK, BotEventStatus.SENT, {
         action: "SYNC_CUSTOMER_MEMBERSHIP_LEVEL",
         userId,
         kookUserId: externalAccount.externalUserId,
         level: membership.level,
-        roleId: targetRoleId
+        roleId: targetRoleId,
+        noOrderRoleId,
+        completedOrderCount
       } as unknown as Prisma.InputJsonValue, {
         platformGuildId: guildId,
         platformUserId: externalAccount.externalUserId

@@ -47,7 +47,7 @@ https://maycatplay.com/api/auth/oauth/kook/callback
 ```env
 CUSTOMER_WEB_URL=https://maycatplay.com/customer
 COMPANION_WEB_URL=https://maycatplay.com/companion
-DEFAULT_COMPANION_PRICE=50
+DEFAULT_COMPANION_PRICE=100
 
 DISCORD_CLIENT_ID=你的DiscordClientID
 DISCORD_CLIENT_SECRET=你的DiscordClientSecret

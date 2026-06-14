@@ -33,7 +33,7 @@ export default function NewCompanionPage() {
   const [nickname, setNickname] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [game, setGame] = useState("DELTA_FORCE");
-  const [pricePerHour, setPricePerHour] = useState("68");
+  const [pricePerHour, setPricePerHour] = useState("100");
   const [deltaForceRank, setDeltaForceRank] = useState("UNRANKED");
   const [skillModes, setSkillModes] = useState("Hot Zone, Warfare");
   const [bio, setBio] = useState("");

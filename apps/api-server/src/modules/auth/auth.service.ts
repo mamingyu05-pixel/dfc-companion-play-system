@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { BotPlatform, CompanionProfileStatus, Prisma, ReviewStatus, UserRole } from "@prisma/client";
+import { BotPlatform, CompanionProfileStatus, OrderStatus, Prisma, ReviewStatus, UserRole } from "@prisma/client";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import nodemailer from "nodemailer";
 import { getCustomerMembershipLevel } from "../customer-membership";
@@ -698,12 +698,17 @@ export class AuthService {
       throw new UnauthorizedException("User is not active");
     }
 
-    const customerRechargeTotal = user.role === UserRole.CUSTOMER
-      ? await this.prisma.rechargeRequest.aggregate({
-          where: { customerId: user.id, status: ReviewStatus.APPROVED },
-          _sum: { amount: true }
-        })
-      : null;
+    const [customerRechargeTotal, completedOrderCount] = user.role === UserRole.CUSTOMER
+      ? await Promise.all([
+          this.prisma.rechargeRequest.aggregate({
+            where: { customerId: user.id, status: ReviewStatus.APPROVED },
+            _sum: { amount: true }
+          }),
+          this.prisma.order.count({
+            where: { customerId: user.id, status: OrderStatus.COMPLETED }
+          })
+        ])
+      : [null, 0] as const;
     const membership = user.role === UserRole.CUSTOMER ? getCustomerMembershipLevel(customerRechargeTotal?._sum.amount ?? 0) : null;
 
     return {
@@ -770,7 +775,9 @@ export class AuthService {
             name: membership.name,
             totalApprovedRecharge: (customerRechargeTotal?._sum.amount ?? new Prisma.Decimal(0)).toString(),
             minRecharge: membership.minRecharge,
-            nextMinRecharge: membership.nextMinRecharge
+            nextMinRecharge: membership.nextMinRecharge,
+            benefits: membership.benefits,
+            hasCompletedOrder: completedOrderCount > 0
           }
         : null,
       externalAccounts: user.externalAccounts.map((account) => ({

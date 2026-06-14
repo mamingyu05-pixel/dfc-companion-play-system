@@ -32,6 +32,8 @@ type CustomerSettingsProfile = {
     totalApprovedRecharge: string;
     minRecharge: string;
     nextMinRecharge: string | null;
+    benefits: string[];
+    hasCompletedOrder: boolean;
   } | null;
   externalAccounts?: ExternalAccount[];
 };
@@ -137,7 +139,9 @@ export default function CustomerSettingsPage() {
           <InfoLine label="角色" value={roleName(profile?.user.role)} />
           <InfoLine label="会员等级" value={profile?.customerMembership?.name ?? "新人"} />
           <InfoLine label="累计充值" value={`¥${formatMoney(profile?.customerMembership?.totalApprovedRecharge ?? "0")}`} />
+          <InfoLine label="首单状态" value={profile?.customerMembership?.hasCompletedOrder ? "已完成首单" : "未完成首单"} />
           <InfoLine label="下一级门槛" value={profile?.customerMembership?.nextMinRecharge ? `¥${formatMoney(profile.customerMembership.nextMinRecharge)}` : "已满级"} />
+          <InfoLine label="当前权益" value={profile?.customerMembership?.benefits?.join(" / ") || "人工客服引导"} />
           <InfoLine label="客户 ID" value={profile?.user.id ?? "-"} mono />
           <div className="mt-4 rounded-dfc-control border border-dfc-border bg-dfc-bg p-3 text-xs leading-5 text-dfc-subtext">
             会员等级按累计审核通过充值金额自动计算，绑定 KOOK 后会同步到 KOOK 右侧成员列表。昵称、邮箱或平台账号异常时，联系人工客服处理。

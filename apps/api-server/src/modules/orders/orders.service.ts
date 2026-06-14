@@ -486,7 +486,7 @@ export class OrdersService {
   }
 
   async completeOrder(orderId: string, actorId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
         select: {
@@ -600,6 +600,10 @@ export class OrdersService {
 
       return tx.order.findUniqueOrThrow({ where: { id: orderId } });
     });
+
+    await this.botNotifications.syncKookCustomerMembershipLevel(result.customerId).catch(() => undefined);
+
+    return result;
   }
 
   private async settleReferralReward(tx: Prisma.TransactionClient, customerId: string, orderId: string, operatorId: string) {

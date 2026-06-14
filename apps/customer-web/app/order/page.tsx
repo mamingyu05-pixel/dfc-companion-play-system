@@ -65,7 +65,7 @@ export default function OrderPage() {
 
   const selectedGame = games.find((item) => item.code === game);
   const selectedCompanion = companions.find((item) => item.id === companionId);
-  const unitPrice = assignmentType === "MATCH" ? 50 : Number(selectedCompanion?.pricePerHour ?? 0);
+  const unitPrice = assignmentType === "MATCH" ? 100 : Number(selectedCompanion?.pricePerHour ?? 0);
   const totalAmount = useMemo(() => unitPrice * Number(hours || 0), [hours, unitPrice]);
   const availableBalance = Number(wallet?.wallet?.availableBalance ?? 0);
   const balanceAfter = availableBalance - totalAmount;
