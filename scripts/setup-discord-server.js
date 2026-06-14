@@ -127,6 +127,9 @@ const customerLevelRolePlan = Array.from({ length: 15 }, (_, index) => {
 });
 
 const rolePlan = [
+  { env: "DISCORD_SUPER_ADMIN_ROLE_ID", name: "👑 总管理", color: 0xffd166, mentionable: false, hoist: true },
+  { env: "DISCORD_ADMIN_ROLE_ID", name: "🛡️ 管理员", color: 0xff5a6a, mentionable: false, hoist: true },
+  { env: "DISCORD_SUPPORT_ROLE_ID", name: "💬 May客服", color: 0x22d3ee, mentionable: true, hoist: true },
   { env: "DISCORD_CUSTOMER_ROLE_ID", name: "🐾 猫饼客户", color: 0x38bdf8, mentionable: false },
   { env: "DISCORD_CUSTOMER_NO_ORDER_ROLE_ID", name: "🌱 未下单客户", color: 0x94a3b8, mentionable: false },
   ...customerLevelRolePlan,
@@ -167,7 +170,7 @@ async function main() {
   const categoryIds = {};
 
   for (const item of categoryPlan) {
-    const existing = existingChannels.find((channel) => channel.type === 4 && channel.name === item.name);
+    const existing = existingChannels.find((channel) => channel.type === 4 && matchesManagedName(channel.name, item.name));
     const category = existing || (await createGuildChannel(token, guildId, { name: item.name, type: 4 }));
     categoryIds[item.key] = category.id;
     if (!existing) existingChannels.push(category);
@@ -176,7 +179,7 @@ async function main() {
 
   const output = {};
   for (const item of channelPlan) {
-    const existing = existingChannels.find((channel) => channel.type === item.type && channel.name === item.name);
+    const existing = existingChannels.find((channel) => channel.type === item.type && matchesManagedName(channel.name, item.name));
     const channel =
       existing ||
       (await createGuildChannel(token, guildId, {
@@ -206,7 +209,7 @@ async function main() {
   const roleOutput = {};
   console.log("\nCreating or reusing May猫饼 Discord roles...\n");
   for (const item of rolePlan) {
-    const existing = existingRoles.find((role) => role.name === item.name);
+    const existing = existingRoles.find((role) => matchesManagedName(role.name, item.name));
     const role = existing || (await createGuildRole(token, guildId, item));
     if (existing && args.decorateChannels) {
       await updateGuildRole(token, guildId, role.id, item);
@@ -281,6 +284,7 @@ async function createGuildRole(token, guildId, item) {
     body: JSON.stringify({
       name: item.name,
       color: item.color,
+      hoist: Boolean(item.hoist),
       mentionable: Boolean(item.mentionable)
     })
   });
@@ -292,6 +296,7 @@ async function updateGuildRole(token, guildId, roleId, item) {
     body: JSON.stringify({
       name: item.name,
       color: item.color,
+      hoist: Boolean(item.hoist),
       mentionable: Boolean(item.mentionable)
     })
   });
@@ -316,6 +321,17 @@ function buildIntroMessage(item) {
     "",
     "May猫饼电竞：下单、派单、充值、提现、投诉都以网站后台记录为准。"
   ].join("\n");
+}
+
+function matchesManagedName(actual, expected) {
+  return normalizeManagedName(actual) === normalizeManagedName(expected);
+}
+
+function normalizeManagedName(value) {
+  return String(value)
+    .replace(/\s+/g, "")
+    .replace(/[｜|_\-—–:：()[\]【】]/g, "")
+    .toLowerCase();
 }
 
 async function discordRequest(token, apiPath, init) {
