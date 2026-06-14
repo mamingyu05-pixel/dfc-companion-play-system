@@ -147,7 +147,7 @@ export default function CustomerHomePage() {
 
           <aside className="maycat-brand-frame self-end">
             <MaycatSignalArtwork />
-            <div className="absolute inset-x-4 bottom-4 z-10 rounded-dfc border border-cyan-300/20 bg-[#050711]/80 p-4 backdrop-blur-xl">
+            <div className="maycat-signal-actions absolute inset-x-4 bottom-4 rounded-dfc border border-cyan-300/20 bg-[#050711]/80 p-4 backdrop-blur-xl">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-200">Signal Dispatch</div>

@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export function MaycatLogo({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-3">
@@ -43,12 +41,6 @@ export function MaycatSignalArtwork({ compact = false }: { compact?: boolean }) 
       <div className="maycat-art-grid" />
       <div className="maycat-art-rail maycat-art-rail-left" />
       <div className="maycat-art-rail maycat-art-rail-right" />
-      <Link href="/support" className="maycat-art-chip maycat-art-chip-kook" aria-label="去客服页查看 KOOK 入口">
-        KOOK 已接入
-      </Link>
-      <Link href="/support" className="maycat-art-chip maycat-art-chip-dc" aria-label="去客服页查看 Discord 入口">
-        Discord 已接入
-      </Link>
       <div className="maycat-art-core">
         <svg viewBox="0 0 260 230" role="img" aria-labelledby="maycat-art-title" className="h-full w-full">
           <title id="maycat-art-title">Maycat Club 霓虹猫耳控制台</title>
@@ -84,11 +76,6 @@ export function MaycatSignalArtwork({ compact = false }: { compact?: boolean }) 
           <path d="M86 171c22 18 66 19 88 0" fill="none" stroke="#050711" strokeLinecap="round" strokeWidth="8" opacity=".78" />
           <path d="M85 196h90" stroke="#22d3ee" strokeLinecap="round" strokeWidth="5" />
         </svg>
-      </div>
-      <div className="maycat-art-caption">
-        <Link href="/support">客服接待</Link>
-        <Link href="/order">试音派单</Link>
-        <Link href="/order">后台派单</Link>
       </div>
     </div>
   );

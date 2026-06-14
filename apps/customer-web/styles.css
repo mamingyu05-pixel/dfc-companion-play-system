@@ -581,6 +581,7 @@ body {
   width: 100%;
   overflow: hidden;
   border-radius: 8px;
+  pointer-events: none;
   background:
     radial-gradient(circle at 24% 22%, rgba(236, 72, 153, 0.34), transparent 32%),
     radial-gradient(circle at 78% 16%, rgba(34, 211, 238, 0.28), transparent 30%),
@@ -626,49 +627,9 @@ body {
   transform: rotate(-18deg);
 }
 
-.maycat-art-chip {
-  position: absolute;
-  z-index: 2;
-  border: 1px solid rgba(125, 211, 252, 0.35);
-  border-radius: 999px;
-  background: rgba(5, 7, 17, 0.72);
-  padding: 8px 12px;
-  color: #dffbff;
-  font-size: 12px;
-  font-weight: 900;
-  box-shadow:
-    0 0 24px rgba(34, 211, 238, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(14px);
-  cursor: pointer;
-  transition:
-    border-color 160ms ease,
-    background 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
-}
-
-.maycat-art-chip:hover {
-  border-color: rgba(34, 211, 238, 0.72);
-  background: rgba(34, 211, 238, 0.16);
-  color: #ffffff;
-  transform: translateY(-1px);
-}
-
-.maycat-art-chip-kook {
-  left: 18px;
-  top: 18px;
-}
-
-.maycat-art-chip-dc {
-  right: 18px;
-  top: 72px;
-  border-color: rgba(236, 72, 153, 0.38);
-}
-
 .maycat-art-core {
   position: absolute;
-  inset: 62px 24px 82px;
+  inset: 42px 24px 72px;
   display: grid;
   place-items: center;
   filter:
@@ -676,32 +637,22 @@ body {
     drop-shadow(0 0 30px rgba(236, 72, 153, 0.18));
 }
 
-.maycat-art-caption {
-  position: absolute;
-  inset-inline: 16px;
-  bottom: 16px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+.maycat-signal-actions {
+  z-index: 30;
+  pointer-events: auto;
 }
 
-.maycat-art-caption a {
-  border: 1px solid rgba(125, 211, 252, 0.22);
-  border-radius: 8px;
-  background: rgba(5, 7, 17, 0.66);
-  padding: 10px 8px;
-  color: #cffafe;
-  font-size: 12px;
-  font-weight: 900;
-  text-align: center;
+.maycat-signal-actions a {
+  position: relative;
+  z-index: 31;
+  display: block;
   transition:
     border-color 160ms ease,
     background 160ms ease,
-    color 160ms ease;
+    color 160ms ease,
+    transform 160ms ease;
 }
 
-.maycat-art-caption a:hover {
-  border-color: rgba(34, 211, 238, 0.55);
-  background: rgba(34, 211, 238, 0.14);
-  color: #ffffff;
+.maycat-signal-actions a:hover {
+  transform: translateY(-1px);
 }
