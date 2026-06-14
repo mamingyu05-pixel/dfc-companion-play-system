@@ -147,20 +147,20 @@ export default function CustomerHomePage() {
 
           <aside className="maycat-brand-frame self-end">
             <MaycatSignalArtwork />
-            <div className="absolute inset-x-4 bottom-4 rounded-dfc border border-cyan-300/20 bg-[#050711]/80 p-4 backdrop-blur-xl">
+            <div className="absolute inset-x-4 bottom-4 z-10 rounded-dfc border border-cyan-300/20 bg-[#050711]/80 p-4 backdrop-blur-xl">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-200">Signal Dispatch</div>
                   <div className="mt-1 text-lg font-black text-white">KOOK / DC 试音后再派单</div>
                 </div>
-                <span className="rounded-dfc-control border border-dfc-success/50 bg-dfc-success/10 px-3 py-2 text-xs font-black text-dfc-success">
-                  已接入
-                </span>
+                <Link href="/settings" className="rounded-dfc-control border border-dfc-success/50 bg-dfc-success/10 px-3 py-2 text-xs font-black text-dfc-success hover:border-dfc-success hover:bg-dfc-success/20">
+                  去绑定
+                </Link>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                <div className="rounded-dfc-control bg-cyan-300/10 px-2 py-2 text-cyan-100">客服</div>
-                <div className="rounded-dfc-control bg-fuchsia-400/10 px-2 py-2 text-fuchsia-100">试音</div>
-                <div className="rounded-dfc-control bg-dfc-gold/10 px-2 py-2 text-dfc-gold">派单</div>
+                <Link href="/support" className="rounded-dfc-control bg-cyan-300/10 px-2 py-2 text-cyan-100 hover:bg-cyan-300/20">客服</Link>
+                <Link href="/order" className="rounded-dfc-control bg-fuchsia-400/10 px-2 py-2 text-fuchsia-100 hover:bg-fuchsia-400/20">试音</Link>
+                <Link href="/order" className="rounded-dfc-control bg-dfc-gold/10 px-2 py-2 text-dfc-gold hover:bg-dfc-gold/20">派单</Link>
               </div>
             </div>
           </aside>
