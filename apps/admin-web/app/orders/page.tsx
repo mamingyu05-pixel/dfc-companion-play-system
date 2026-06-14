@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 
@@ -18,19 +19,41 @@ type AdminOrder = {
   createdAt: string;
 };
 
+type OrderDraft = {
+  id: string;
+  draftNo: string;
+  sourcePlatform: "WEB" | "DISCORD" | "KOOK";
+  customerPlatformUserId?: string | null;
+  customerDisplayName?: string | null;
+  game: string;
+  mode: string;
+  hours?: string | null;
+  budgetAmount?: string | null;
+  status: string;
+  note?: string | null;
+  createdAt: string;
+  customer?: { email: string; displayName: string } | null;
+  convertedOrder?: { id: string; orderNo: string; status: string } | null;
+  candidates: Array<{ id: string; status: string }>;
+};
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [drafts, setDrafts] = useState<OrderDraft[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     async function loadOrders() {
       const token = localStorage.getItem("dfc_admin_token");
       if (!token) return;
-      const response = await fetch("/api/admin/orders", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error("无法加载订单");
-      setOrders((await response.json()) as AdminOrder[]);
+      const headers = { Authorization: `Bearer ${token}` };
+      const [ordersResponse, draftsResponse] = await Promise.all([
+        fetch("/api/admin/orders", { headers }),
+        fetch("/api/admin/order-drafts", { headers })
+      ]);
+      if (!ordersResponse.ok || !draftsResponse.ok) throw new Error("无法加载订单");
+      setOrders((await ordersResponse.json()) as AdminOrder[]);
+      setDrafts((await draftsResponse.json()) as OrderDraft[]);
     }
 
     void loadOrders().catch(() => setError("无法加载真实订单数据"));
@@ -41,8 +64,9 @@ export default function OrdersPage() {
     const active = orders.filter((order) => ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"].includes(order.status)).length;
     const completed = orders.filter((order) => order.status === "COMPLETED").length;
     const amount = orders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-    return { paid, active, completed, amount };
-  }, [orders]);
+    const openDrafts = drafts.filter((draft) => !["CONVERTED", "CANCELLED"].includes(draft.status)).length;
+    return { paid, active, completed, amount, openDrafts };
+  }, [orders, drafts]);
 
   return (
     <AdminShell>
@@ -52,10 +76,41 @@ export default function OrdersPage() {
         <Signal label="待派单" value={String(stats.paid)} hint="PAID 订单" tone="gold" />
         <Signal label="服务中" value={String(stats.active)} hint="已派单 / 已接单 / 进行中" tone="cyan" />
         <Signal label="已完成" value={String(stats.completed)} hint="完成后进入结算" tone="green" />
-        <Signal label="订单金额" value={`¥${formatMoney(String(stats.amount))}`} hint="当前列表合计" tone="cyan" />
+        <Signal label="AI草稿" value={String(stats.openDrafts)} hint="KOOK / Discord 派单草稿" tone="purple" />
       </section>
 
       {error ? <Alert tone="danger">{error}</Alert> : null}
+
+      <section className="mb-6">
+        <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-lg font-black text-white">AI 派单草稿</h2>
+            <p className="mt-1 text-xs text-dfc-muted">频道 Bot 发出的派单先进入这里。客户确认陪玩并转正式订单后，才会出现在下方正式订单列表。</p>
+          </div>
+          <Link href="/order-drafts" className="rounded-dfc-control border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100 hover:border-cyan-300/60">
+            进入客服派单台
+          </Link>
+        </div>
+        <DataTable
+          columns={["草稿号", "来源", "客户", "游戏", "模式", "时长", "预算", "报名", "状态"]}
+          rows={drafts.slice(0, 8).map((draft) => [
+            <Link key={`${draft.id}-no`} href="/order-drafts" className="font-black text-cyan-200">{draft.draftNo}</Link>,
+            draft.sourcePlatform,
+            draft.customer ? <Person key={`${draft.id}-customer`} name={draft.customer.displayName} email={draft.customer.email} /> : <Person key={`${draft.id}-platform-customer`} name={draft.customerDisplayName ?? "频道客户"} email={draft.customerPlatformUserId ?? "未绑定站内客户"} />,
+            gameName(draft.game),
+            draft.mode || "-",
+            draft.hours ? `${formatMoney(draft.hours)}h` : "-",
+            draft.budgetAmount ? <span key={`${draft.id}-budget`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(draft.budgetAmount)}</span> : <span key={`${draft.id}-budget-empty`} className="text-dfc-muted">按报价</span>,
+            `${draft.candidates.length} 人`,
+            <StatusBadge key={`${draft.id}-status`} tone={draftStatusTone(draft.status)}>{toDraftStatus(draft.status)}</StatusBadge>
+          ])}
+        />
+      </section>
+
+      <div className="mb-3">
+        <h2 className="text-lg font-black text-white">正式订单</h2>
+        <p className="mt-1 text-xs text-dfc-muted">只有客户余额确认、陪玩确认并转订单后，才会进入正式订单流程。</p>
+      </div>
 
       <DataTable
         columns={["订单号", "客户", "陪玩", "游戏", "模式", "时长", "金额", "试音", "状态", "创建时间"]}
@@ -85,11 +140,12 @@ function Person({ name, email }: { name: string; email: string }) {
   );
 }
 
-function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" }) {
+function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" | "purple" }) {
   const styles = {
     cyan: "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
     gold: "border-dfc-gold/30 bg-dfc-gold/10 text-dfc-gold",
-    green: "border-dfc-success/30 bg-dfc-success/10 text-dfc-success"
+    green: "border-dfc-success/30 bg-dfc-success/10 text-dfc-success",
+    purple: "border-fuchsia-300/25 bg-fuchsia-300/10 text-fuchsia-100"
   };
   return (
     <div className={`rounded-dfc border p-4 ${styles[tone]}`}>
@@ -155,9 +211,28 @@ function toOrderStatus(status: string) {
   return map[status] ?? status;
 }
 
+function toDraftStatus(status: string) {
+  const map: Record<string, string> = {
+    OPEN: "招募中",
+    TRIALING: "试音中",
+    SELECTED: "已选陪玩",
+    CUSTOMER_CONFIRMED: "客户确认",
+    CONVERTED: "已转订单",
+    CANCELLED: "已取消"
+  };
+  return map[status] ?? status;
+}
+
 function statusTone(status: string): "default" | "warning" | "danger" | "success" {
   if (status === "COMPLETED") return "success";
   if (status === "CANCELLED" || status === "REFUNDED" || status === "DISPUTED") return "danger";
   if (status === "PAID" || status === "ASSIGNED" || status === "ACCEPTED" || status === "IN_PROGRESS") return "warning";
+  return "default";
+}
+
+function draftStatusTone(status: string): "default" | "warning" | "danger" | "success" {
+  if (status === "CONVERTED") return "success";
+  if (status === "CANCELLED") return "danger";
+  if (status === "TRIALING" || status === "SELECTED" || status === "CUSTOMER_CONFIRMED") return "warning";
   return "default";
 }
