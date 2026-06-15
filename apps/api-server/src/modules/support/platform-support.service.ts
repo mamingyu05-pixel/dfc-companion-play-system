@@ -1,5 +1,8 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
-import { BotEventStatus, BotPlatform, CompanionProfileStatus, OrderSourcePlatform, UserRole, UserStatus } from "@prisma/client";
+import { BotEventStatus, BotPlatform, CompanionProfileStatus, OrderSourcePlatform, Prisma, UserRole, UserStatus } from "@prisma/client";
+import { randomBytes, randomInt } from "node:crypto";
+import { normalizeDisplayNameKey } from "../auth/display-name.util";
+import { createPasswordHash } from "../auth/password.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderDraftsService } from "../orders/order-drafts.service";
 
@@ -199,7 +202,7 @@ export class PlatformSupportService {
       };
     }
 
-    const account = await this.prisma.userExternalAccount.findUnique({
+    let account = await this.prisma.userExternalAccount.findUnique({
       where: {
         platform_externalUserId: {
           platform: input.platform,
@@ -208,6 +211,10 @@ export class PlatformSupportService {
       },
       include: { user: true }
     });
+
+    if (!account) {
+      account = await this.findOrCreatePlatformCustomer(input);
+    }
 
     const history = await this.loadConversationHistory({
       userId: account?.userId,
@@ -416,6 +423,92 @@ export class PlatformSupportService {
     });
 
     return recentSameMessage;
+  }
+
+  private async findOrCreatePlatformCustomer(input: PlatformSupportMessage) {
+    if (process.env.PLATFORM_AUTO_CREATE_CUSTOMER_ENABLED === "false") return null;
+
+    const existing = await this.prisma.userExternalAccount.findUnique({
+      where: {
+        platform_externalUserId: {
+          platform: input.platform,
+          externalUserId: input.platformUserId
+        }
+      },
+      include: { user: true }
+    });
+    if (existing) return existing;
+
+    const displayName = await this.getAvailablePlatformCustomerDisplayName(input.platform, input.displayName);
+    const displayNameKey = normalizeDisplayNameKey(displayName);
+    const email = buildPlatformCustomerEmail(input.platform, input.platformUserId);
+    const passwordHash = await createPasswordHash(randomBytes(32).toString("hex"));
+
+    try {
+      const user = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email,
+            passwordHash,
+            role: UserRole.CUSTOMER,
+            displayName,
+            displayNameKey,
+            referralCode: await generateUniqueReferralCode(tx, "C")
+          }
+        });
+        await tx.wallet.create({ data: { userId: created.id } });
+        await tx.userExternalAccount.create({
+          data: {
+            userId: created.id,
+            platform: input.platform,
+            externalUserId: input.platformUserId,
+            displayName: sanitizePlatformDisplayName(input.displayName)
+          }
+        });
+        return created;
+      });
+
+      this.logger.log(`Auto-created ${input.platform} customer profile for ${input.platformUserId}`);
+      return this.prisma.userExternalAccount.findUnique({
+        where: {
+          platform_externalUserId: {
+            platform: input.platform,
+            externalUserId: input.platformUserId
+          }
+        },
+        include: { user: true }
+      });
+    } catch (error) {
+      const raced = await this.prisma.userExternalAccount.findUnique({
+        where: {
+          platform_externalUserId: {
+            platform: input.platform,
+            externalUserId: input.platformUserId
+          }
+        },
+        include: { user: true }
+      });
+      if (raced) return raced;
+      throw error;
+    }
+  }
+
+  private async getAvailablePlatformCustomerDisplayName(platform: BotPlatform, displayName?: string) {
+    const baseName =
+      sanitizePlatformDisplayName(displayName) ??
+      `${platform === BotPlatform.KOOK ? "KOOK" : "Discord"}客户${randomInt(1000, 9999)}`;
+
+    for (let index = 0; index < 50; index += 1) {
+      const candidate = index === 0 ? baseName : `${baseName}-${index + 1}`;
+      const displayNameKey = normalizeDisplayNameKey(candidate);
+      const existing = await this.prisma.user.findFirst({
+        where: { role: UserRole.CUSTOMER, displayNameKey },
+        select: { id: true }
+      });
+      if (!existing) return candidate;
+    }
+
+    return `${baseName}-${randomBytes(2).toString("hex").toUpperCase()}`;
   }
 
   private async tryOpenAiSupportAnswer(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string) {
@@ -818,4 +911,26 @@ function chineseNumberToDigit(value: string) {
     十: "10"
   };
   return map[value];
+}
+
+function sanitizePlatformDisplayName(displayName?: string) {
+  const normalized = displayName?.normalize("NFKC").trim().replace(/\s+/g, " ");
+  return normalized ? normalized.slice(0, 32) : undefined;
+}
+
+function buildPlatformCustomerEmail(platform: BotPlatform, externalUserId: string) {
+  const platformKey = platform === BotPlatform.KOOK ? "kook" : "discord";
+  return `customer-${platformKey}-${externalUserId}@platform.maycatplay.local`.toLowerCase();
+}
+
+async function generateUniqueReferralCode(tx: Prisma.TransactionClient, prefix: string) {
+  for (let index = 0; index < 20; index += 1) {
+    const code = `${prefix}${randomInt(100000, 999999)}`;
+    const existing = await tx.user.findUnique({
+      where: { referralCode: code },
+      select: { id: true }
+    });
+    if (!existing) return code;
+  }
+  return `${prefix}${randomBytes(4).toString("hex").toUpperCase()}`;
 }

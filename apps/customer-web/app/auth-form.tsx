@@ -26,6 +26,9 @@ type PublicConfig = {
   };
 };
 
+const DEFAULT_SUPPORT_KOOK_URL = "https://kook.vip/i0o2qA";
+const DEFAULT_SUPPORT_DISCORD_URL = "https://discord.gg/dX5prAZMPu";
+
 export function CustomerAuthForm() {
   const [mode, setMode] = useState<Mode>("register");
   const [email, setEmail] = useState("");
@@ -188,6 +191,11 @@ export function CustomerAuthForm() {
               <PlatformPill label="KOOK" value="客服 / 试音 / 绑定" active={Boolean(publicConfig.support?.kookUrl)} />
               <PlatformPill label="Discord" value="客服 / 试音 / 登录" active={Boolean(publicConfig.support?.discordUrl)} />
               <PlatformPill label="VX 客服" value={publicConfig.support?.wechatId || "暂未配置"} active={Boolean(publicConfig.support?.wechatId)} />
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <CommunityLink href={publicConfig.support?.kookUrl || DEFAULT_SUPPORT_KOOK_URL} label="进入 KOOK 社群" />
+              <CommunityLink href={publicConfig.support?.discordUrl || DEFAULT_SUPPORT_DISCORD_URL} label="进入 Discord 社群" />
             </div>
 
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
@@ -417,6 +425,14 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function OAuthButton({ href, label }: { href: string; label: string }) {
   return (
     <a href={href} className="maycat-button-secondary px-3 py-3 text-center text-sm font-black">
+      {label}
+    </a>
+  );
+}
+
+function CommunityLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="maycat-button px-4 py-3 text-center text-sm font-black">
       {label}
     </a>
   );
