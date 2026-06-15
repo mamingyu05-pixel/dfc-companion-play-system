@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { BotPlatform, CompanionProfileStatus, OrderStatus, Prisma, ReviewStatus, UserRole } from "@prisma/client";
+import { BotPlatform, CompanionProfileStatus, OnlineStatus, OrderStatus, Prisma, ReviewStatus, UserRole } from "@prisma/client";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import nodemailer from "nodemailer";
 import { getCustomerMembershipLevel } from "../customer-membership";
@@ -938,6 +938,31 @@ export class AuthService {
     });
 
     return { companionProfile: profile };
+  }
+
+  async updateMyCompanionOnlineStatus(userId: string, body: { onlineStatus?: string }) {
+    if (!body.onlineStatus || !["ONLINE", "BUSY", "OFFLINE"].includes(body.onlineStatus)) {
+      throw new BadRequestException("Invalid online status");
+    }
+
+    const existing = await this.prisma.companionProfile.findUnique({
+      where: { userId },
+      select: { id: true }
+    });
+    if (!existing) {
+      throw new BadRequestException("Companion profile does not exist");
+    }
+
+    const profile = await this.prisma.companionProfile.update({
+      where: { userId },
+      data: { onlineStatus: body.onlineStatus as OnlineStatus },
+      select: {
+        onlineStatus: true,
+        updatedAt: true
+      }
+    });
+
+    return { companionProfile: { onlineStatus: profile.onlineStatus, updatedAt: profile.updatedAt } };
   }
 
   private issueToken(payload: JwtPayload) {

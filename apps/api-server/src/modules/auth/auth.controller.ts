@@ -78,4 +78,13 @@ export class AuthController {
   ) {
     return this.auth.updateMyCompanionMedia(user.id, body);
   }
+
+  @Patch("me/companion-online-status")
+  @UseGuards(JwtAuthGuard)
+  updateMyCompanionOnlineStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { onlineStatus?: "ONLINE" | "BUSY" | "OFFLINE" }
+  ) {
+    return this.auth.updateMyCompanionOnlineStatus(user.id, body);
+  }
 }

@@ -28,6 +28,7 @@ type CompanionMe = {
 };
 
 type UploadPurpose = "avatar" | "photo" | "voice";
+type OnlineStatusValue = "ONLINE" | "BUSY" | "OFFLINE";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<CompanionMe | null>(null);
@@ -37,6 +38,7 @@ export default function ProfilePage() {
   const [payoutAccountName, setPayoutAccountName] = useState("");
   const [payoutAccountNo, setPayoutAccountNo] = useState("");
   const [payoutQrCodeUrl, setPayoutQrCodeUrl] = useState("");
+  const [onlineStatus, setOnlineStatus] = useState<OnlineStatusValue>("OFFLINE");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -57,6 +59,7 @@ export default function ProfilePage() {
     setPayoutAccountName(data.companionProfile?.payoutAccountName ?? "");
     setPayoutAccountNo(data.companionProfile?.payoutAccountNo ?? "");
     setPayoutQrCodeUrl(data.companionProfile?.payoutQrCodeUrl ?? "");
+    setOnlineStatus(toOnlineStatusValue(data.companionProfile?.onlineStatus));
   }
 
   useEffect(() => {
@@ -201,6 +204,39 @@ export default function ProfilePage() {
     }
   }
 
+  async function updateOnlineStatus(nextStatus: OnlineStatusValue) {
+    setError("");
+    setStatus("");
+    setOnlineStatus(nextStatus);
+
+    const token = localStorage.getItem("dfc_companion_token");
+    if (!token) {
+      window.location.href = "/companion/";
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/auth/me/companion-online-status", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ onlineStatus: nextStatus })
+      });
+      const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+      if (!response.ok) {
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        throw new Error(toChineseError(message));
+      }
+      setStatus(`在线状态已切换为：${toOnlineStatus(nextStatus)}`);
+      await loadProfile();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "在线状态保存失败，请稍后重试");
+      setOnlineStatus(toOnlineStatusValue(profile?.companionProfile?.onlineStatus));
+    }
+  }
+
   if (error && !profile) {
     return (
       <CompanionShell>
@@ -239,7 +275,7 @@ export default function ProfilePage() {
             <Field label="账号" value={formatAccountEmail(profile.user.email)} />
             <Field label="我的邀请码" value={profile.user.referralCode ?? "未生成"} />
             <Field label="游戏" value={gameName(profile.companionProfile?.game ?? "")} />
-            <Field label="在线状态" value={toOnlineStatus(profile.companionProfile?.onlineStatus)} />
+            <OnlineStatusControl value={onlineStatus} onChange={(value) => void updateOnlineStatus(value)} />
             <Field label="每小时价格" value={`¥${Number(profile.companionProfile?.pricePerHour ?? "0").toFixed(2)}`} />
           </div>
         </div>
@@ -304,6 +340,19 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
+function OnlineStatusControl({ value, onChange }: { value: OnlineStatusValue; onChange: (value: OnlineStatusValue) => void }) {
+  return (
+    <label className="rounded-dfc-control border border-cyan-300/15 bg-[#050711]/60 p-3">
+      <span className="block text-xs text-dfc-muted">在线状态</span>
+      <select value={value} onChange={(event) => onChange(event.target.value as OnlineStatusValue)} className="mt-2 w-full rounded-dfc-control border border-cyan-300/25 bg-[#080d18] px-3 py-2 text-sm font-black text-white outline-none transition focus:border-cyan-300">
+        <option value="ONLINE">在线，可接单</option>
+        <option value="BUSY">忙碌，需沟通</option>
+        <option value="OFFLINE">离线，暂不接</option>
+      </select>
+    </label>
+  );
+}
+
 function UploadBox({ label, hint, accept, multiple, uploading, onChange, children }: { label: string; hint: string; accept: string; multiple?: boolean; uploading: boolean; onChange: (event: ChangeEvent<HTMLInputElement>) => void; children?: ReactNode }) {
   return (
     <label className="block rounded-dfc border border-cyan-300/15 bg-[#050711]/50 p-3">
@@ -329,6 +378,11 @@ function toOnlineStatus(status?: string) {
   if (status === "BUSY") return "忙碌";
   if (status === "OFFLINE") return "离线";
   return "未设置";
+}
+
+function toOnlineStatusValue(status?: string): OnlineStatusValue {
+  if (status === "ONLINE" || status === "BUSY" || status === "OFFLINE") return status;
+  return "OFFLINE";
 }
 
 function gameName(code: string) {
