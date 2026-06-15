@@ -21,7 +21,13 @@ if (!token) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.MessageContent
+  ],
   partials: [Partials.Channel]
 });
 
@@ -49,6 +55,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 client.on(Events.MessageCreate, async (message) => {
   await handleSupportMessage(message);
+});
+
+client.on(Events.GuildMemberAdd, async (member) => {
+  if (member.user.bot) return;
+
+  try {
+    const response = await callApi("/discord/members/ensure", {
+      discordUserId: member.user.id,
+      displayName: member.displayName ?? member.user.globalName ?? member.user.username,
+      guildId: member.guild.id
+    });
+    if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
+    console.log(`Ensured Discord customer for ${member.user.tag} (${member.user.id})`);
+  } catch (error) {
+    console.warn(`Failed to ensure Discord customer ${member.user.id}: ${errorMessage(error)}`);
+  }
 });
 
 async function handleOrderAccept(interaction: ButtonInteraction, orderId: string) {

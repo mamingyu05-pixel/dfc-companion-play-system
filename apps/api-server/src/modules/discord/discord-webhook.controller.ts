@@ -1,7 +1,8 @@
 import { Body, Controller, Post, UseGuards } from "@nestjs/common";
-import { BotPlatform, OrderSourcePlatform } from "@prisma/client";
+import { BotEventStatus, BotPlatform, OrderSourcePlatform } from "@prisma/client";
 import { BotInternalGuard } from "../bot/bot-internal.guard";
 import { AuthService } from "../auth/auth.service";
+import { BotNotificationService } from "../bot/bot-notification.service";
 import { OrderDraftsService } from "../orders/order-drafts.service";
 import { OrdersService } from "../orders/orders.service";
 import { PlatformSupportService } from "../support/platform-support.service";
@@ -12,7 +13,8 @@ export class DiscordWebhookController {
     private readonly orders: OrdersService,
     private readonly orderDrafts: OrderDraftsService,
     private readonly platformSupport: PlatformSupportService,
-    private readonly auth: AuthService
+    private readonly auth: AuthService,
+    private readonly botNotifications: BotNotificationService
   ) {}
 
   @Post("orders/accept")
@@ -81,4 +83,35 @@ export class DiscordWebhookController {
       displayName: body.displayName
     });
   }
+
+  @Post("members/ensure")
+  @UseGuards(BotInternalGuard)
+  async ensureMember(@Body() body: { discordUserId: string; displayName?: string; guildId?: string }) {
+    const account = await this.platformSupport.ensurePlatformCustomer({
+      platform: BotPlatform.DISCORD,
+      platformUserId: body.discordUserId,
+      displayName: body.displayName
+    });
+
+    const roleSync = account?.userId
+      ? await this.botNotifications.syncDiscordCustomerMembershipLevel(account.userId).catch((error) => ({
+          platform: BotPlatform.DISCORD,
+          status: BotEventStatus.FAILED,
+          error: errorMessage(error)
+        }))
+      : null;
+
+    return {
+      registered: Boolean(account),
+      platform: BotPlatform.DISCORD,
+      discordUserId: body.discordUserId,
+      userId: account?.userId,
+      displayName: account?.displayName ?? body.displayName,
+      roleSync
+    };
+  }
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
