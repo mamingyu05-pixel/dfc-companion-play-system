@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { CustomerAuthGate } from "./auth-gate";
 import { MaycatLogo } from "./brand";
 
@@ -123,7 +125,7 @@ export function CompanionCard({ companion }: { companion: Companion }) {
         <div className="mt-4 grid grid-cols-3 gap-2">
           {companion.photoUrls.slice(0, 3).map((url) => (
             <div key={url} className="h-20 overflow-hidden rounded-dfc-control border border-cyan-300/20 bg-[#050711]">
-              <img src={url} alt={`${companion.nickname} 展示照片`} className="h-full w-full object-cover" />
+              <SafeMediaImage src={url} alt={`${companion.nickname} 展示照片`} className="h-full w-full object-cover" fallbackText="展示图" />
             </div>
           ))}
         </div>
@@ -177,15 +179,27 @@ export function CompanionAvatar({ nickname, avatarUrl, size = "md" }: { nickname
   const sizeClass = size === "lg" ? "h-28 w-28 text-3xl" : size === "sm" ? "h-14 w-14 text-lg" : "h-20 w-20 text-2xl";
   return (
     <div className={`${sizeClass} overflow-hidden rounded-dfc border border-cyan-300/30 bg-[#07111f] shadow-[0_0_26px_rgba(34,211,238,0.10)]`}>
-      {avatarUrl ? (
-        <img src={avatarUrl} alt={`${nickname} 头像`} className="h-full w-full object-cover" />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(34,211,238,0.32),transparent_36%),radial-gradient(circle_at_80%_80%,rgba(236,72,153,0.26),transparent_42%)] font-black text-cyan-300">
-          {nickname.slice(0, 1)}
-        </div>
-      )}
+      <SafeMediaImage src={avatarUrl} alt={`${nickname} 头像`} className="h-full w-full object-cover" fallbackText={nickname.slice(0, 1)} />
     </div>
   );
+}
+
+export function SafeMediaImage({ src, alt, className, fallbackText }: { src?: string | null; alt: string; className: string; fallbackText: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (!src || failed) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(34,211,238,0.32),transparent_36%),radial-gradient(circle_at_80%_80%,rgba(236,72,153,0.26),transparent_42%)] px-2 text-center font-black text-cyan-300">
+        {fallbackText}
+      </div>
+    );
+  }
+
+  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
 }
 
 export function PriceSummary() {

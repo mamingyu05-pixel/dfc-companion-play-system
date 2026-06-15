@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Badge, CompanionAvatar, CustomerShell } from "../../components";
+import { Badge, CompanionAvatar, CustomerShell, SafeMediaImage } from "../../components";
 import { games } from "../../data";
 
 type ApiCompanion = {
@@ -127,7 +127,7 @@ export default function CompanionDetailPage() {
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {companion.photoUrls.slice(0, 9).map((url) => (
                   <div key={url} className="aspect-square overflow-hidden rounded-dfc border border-cyan-300/20 bg-[#050711]">
-                    <img src={url} alt={`${companion.nickname} 展示照片`} className="h-full w-full object-cover" />
+                    <SafeMediaImage src={url} alt={`${companion.nickname} 展示照片`} className="h-full w-full object-cover" fallbackText="展示图" />
                   </div>
                 ))}
               </div>
