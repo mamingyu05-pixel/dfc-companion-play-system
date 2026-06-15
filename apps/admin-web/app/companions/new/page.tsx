@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useState } from "react";
+import type { ReactNode } from "react";
 import { AdminShell, SectionHeader } from "../../components";
 
 const gameOptions = [
@@ -27,11 +28,15 @@ const gameOptions = [
   ["GENSHIN_IMPACT", "原神"]
 ] as const;
 
+type UploadPurpose = "avatar" | "photo" | "voice";
+
 export default function NewCompanionPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [voiceIntroUrl, setVoiceIntroUrl] = useState("");
   const [game, setGame] = useState("DELTA_FORCE");
   const [pricePerHour, setPricePerHour] = useState("");
   const [gender, setGender] = useState("MOON");
@@ -41,6 +46,72 @@ export default function NewCompanionPage() {
   const [voicePreference, setVoicePreference] = useState("OPTIONAL");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [uploading, setUploading] = useState("");
+
+  async function uploadMedia(file: File, purpose: UploadPurpose) {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) throw new Error("请先登录管理端");
+    const form = new FormData();
+    form.append("purpose", purpose);
+    form.append("file", file);
+    setUploading(purpose);
+    try {
+      const response = await fetch("/api/uploads/companion-media", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form
+      });
+      const data = (await response.json().catch(() => ({}))) as { url?: string; message?: string | string[] };
+      if (!response.ok || !data.url) {
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        throw new Error(message ?? "上传失败");
+      }
+      return data.url;
+    } finally {
+      setUploading("");
+    }
+  }
+
+  async function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      setAvatarUrl(await uploadMedia(file, "avatar"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "头像上传失败");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handlePhotosChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []).slice(0, Math.max(0, 9 - photoUrls.length));
+    if (!files.length) return;
+    setError("");
+    try {
+      const uploaded: string[] = [];
+      for (const file of files) uploaded.push(await uploadMedia(file, "photo"));
+      setPhotoUrls((current) => [...current, ...uploaded].slice(0, 9));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "照片上传失败");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handleVoiceChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      setVoiceIntroUrl(await uploadMedia(file, "voice"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "语音上传失败");
+    } finally {
+      event.target.value = "";
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,7 +130,9 @@ export default function NewCompanionPage() {
         email,
         password,
         nickname,
-        avatarUrl: avatarUrl.trim() || undefined,
+        avatarUrl: avatarUrl || undefined,
+        photoUrls,
+        voiceIntroUrl: voiceIntroUrl || undefined,
         gender: gender === "UNSET" ? undefined : gender,
         game,
         pricePerHour,
@@ -81,24 +154,25 @@ export default function NewCompanionPage() {
     setPassword("");
     setNickname("");
     setAvatarUrl("");
+    setPhotoUrls([]);
+    setVoiceIntroUrl("");
     setGender("MOON");
     setBio("");
-    setStatus("陪玩账号已创建，请到陪玩管理页面审核上架。");
+    setStatus("陪玩账号已创建，默认待审核。请到陪玩管理页审核上架。");
   }
 
   return (
     <AdminShell>
-      <SectionHeader eyebrow="Roster Intake" title="添加陪玩" desc="创建真实陪玩账号、钱包和资料。新陪玩默认进入待审核状态，上架后客户才能下单。" />
+      <SectionHeader eyebrow="Roster Intake" title="添加陪玩" desc="创建真实陪玩账号、钱包和资料。头像、展示照片、语音介绍直接上传，不再填写外部 URL。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_320px]">
+      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <form onSubmit={submit} className="admin-panel">
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="邮箱" value={email} onChange={setEmail} type="email" required />
             <Field label="初始密码" value={password} onChange={setPassword} type="password" required />
             <Field label="昵称" value={nickname} onChange={setNickname} required />
-            <Field label="头像 URL" value={avatarUrl} onChange={setAvatarUrl} />
             <Field label="每小时价格" value={pricePerHour} onChange={setPricePerHour} required />
             <label className="block">
               <span className="mb-2 block text-xs font-black text-dfc-muted">游戏</span>
@@ -129,11 +203,29 @@ export default function NewCompanionPage() {
             <label className="block">
               <span className="mb-2 block text-xs font-black text-dfc-muted">声线标签</span>
               <select value={gender} onChange={(event) => setGender(event.target.value)} className="input">
-                <option value="MOON">🌙 月影声线</option>
-                <option value="SOLAR">☀️ 曜刃声线</option>
+                <option value="MOON">月影声线</option>
+                <option value="SOLAR">曜刃声线</option>
                 <option value="UNSET">暂不分类</option>
               </select>
             </label>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <UploadBox label="头像" hint="建议方图，展示在列表和详情页" accept="image/*" uploading={uploading === "avatar"} onChange={handleAvatarChange}>
+              {avatarUrl ? <img src={avatarUrl} alt="头像预览" className="h-24 w-24 rounded-dfc object-cover" /> : null}
+            </UploadBox>
+            <UploadBox label="展示照片" hint="最多 9 张，用于陪玩详情展示" accept="image/*" multiple uploading={uploading === "photo"} onChange={handlePhotosChange}>
+              <div className="grid grid-cols-3 gap-2">
+                {photoUrls.map((url) => (
+                  <button key={url} type="button" onClick={() => setPhotoUrls((current) => current.filter((item) => item !== url))} className="overflow-hidden rounded-dfc-control border border-cyan-300/20">
+                    <img src={url} alt="展示照片" className="h-16 w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </UploadBox>
+            <UploadBox label="语音介绍" hint="上传 10-30 秒语音，方便客户试听" accept="audio/*" uploading={uploading === "voice"} onChange={handleVoiceChange}>
+              {voiceIntroUrl ? <audio controls src={voiceIntroUrl} className="mt-2 w-full" /> : null}
+            </UploadBox>
           </div>
 
           <label className="mt-4 block">
@@ -150,12 +242,12 @@ export default function NewCompanionPage() {
         </form>
 
         <aside className="admin-panel">
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">Checklist</div>
-          <h2 className="mt-2 text-lg font-black text-white">建档前检查</h2>
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">Media Rule</div>
+          <h2 className="mt-2 text-lg font-black text-white">资料上传规范</h2>
           <div className="mt-4 space-y-3">
-            <GuideItem title="资料真实" desc="昵称、价格、段位和擅长模式会影响客户选择。" />
-            <GuideItem title="先建后审" desc="新陪玩创建后不会自动上架，需要到陪玩管理页审核。" />
-            <GuideItem title="平台绑定" desc="KOOK / Discord 绑定后，派单通知才更稳定。" />
+            <GuideItem title="头像真实清晰" desc="客户第一眼会看头像，尽量使用清晰、可信的个人形象或统一风格头像。" />
+            <GuideItem title="照片不要过多" desc="展示照片最多 9 张，优先放游戏截图、陪玩人设图、服务说明图。" />
+            <GuideItem title="语音介绍要短" desc="建议 10-30 秒，说清声线、擅长游戏、服务风格，不要放联系方式。" />
           </div>
         </aside>
       </section>
@@ -168,6 +260,18 @@ function Field({ label, value, onChange, type = "text", required }: { label: str
     <label className="block">
       <span className="mb-2 block text-xs font-black text-dfc-muted">{label}</span>
       <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="input" />
+    </label>
+  );
+}
+
+function UploadBox({ label, hint, accept, multiple, uploading, onChange, children }: { label: string; hint: string; accept: string; multiple?: boolean; uploading: boolean; onChange: (event: ChangeEvent<HTMLInputElement>) => void; children?: ReactNode }) {
+  return (
+    <label className="block rounded-dfc border border-cyan-300/15 bg-[#050711]/50 p-3">
+      <span className="block text-xs font-black text-dfc-muted">{label}</span>
+      <span className="mt-1 block text-xs leading-5 text-dfc-subtext">{hint}</span>
+      <input type="file" accept={accept} multiple={multiple} onChange={onChange} className="mt-3 block w-full text-xs text-dfc-subtext file:mr-3 file:rounded-dfc-control file:border-0 file:bg-cyan-300 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
+      {uploading ? <div className="mt-2 text-xs text-cyan-300">上传中...</div> : null}
+      {children ? <div className="mt-3">{children}</div> : null}
     </label>
   );
 }

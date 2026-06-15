@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { CompanionShell, SectionHeader, StatusBadge } from "../components";
 
 type CompanionMe = {
@@ -14,6 +14,8 @@ type CompanionMe = {
   companionProfile: {
     nickname: string;
     avatarUrl?: string | null;
+    photoUrls?: string[];
+    voiceIntroUrl?: string | null;
     game: string;
     onlineStatus: string;
     status: string;
@@ -25,14 +27,20 @@ type CompanionMe = {
   } | null;
 };
 
+type UploadPurpose = "avatar" | "photo" | "voice";
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<CompanionMe | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [voiceIntroUrl, setVoiceIntroUrl] = useState("");
   const [payoutAccountName, setPayoutAccountName] = useState("");
   const [payoutAccountNo, setPayoutAccountNo] = useState("");
   const [payoutQrCodeUrl, setPayoutQrCodeUrl] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [uploading, setUploading] = useState("");
 
   async function loadProfile() {
     const token = localStorage.getItem("dfc_companion_token");
@@ -43,6 +51,9 @@ export default function ProfilePage() {
     if (!response.ok) throw new Error("无法加载资料");
     const data = (await response.json()) as CompanionMe;
     setProfile(data);
+    setAvatarUrl(data.companionProfile?.avatarUrl ?? "");
+    setPhotoUrls(data.companionProfile?.photoUrls ?? []);
+    setVoiceIntroUrl(data.companionProfile?.voiceIntroUrl ?? "");
     setPayoutAccountName(data.companionProfile?.payoutAccountName ?? "");
     setPayoutAccountNo(data.companionProfile?.payoutAccountNo ?? "");
     setPayoutQrCodeUrl(data.companionProfile?.payoutQrCodeUrl ?? "");
@@ -51,6 +62,104 @@ export default function ProfilePage() {
   useEffect(() => {
     void loadProfile().catch(() => setError("无法加载真实陪玩资料，请重新登录"));
   }, []);
+
+  async function uploadMedia(file: File, purpose: UploadPurpose) {
+    const token = localStorage.getItem("dfc_companion_token");
+    if (!token) throw new Error("请先登录陪玩端");
+    const form = new FormData();
+    form.append("purpose", purpose);
+    form.append("file", file);
+    setUploading(purpose);
+    try {
+      const response = await fetch("/api/uploads/companion-media", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form
+      });
+      const data = (await response.json().catch(() => ({}))) as { url?: string; message?: string | string[] };
+      if (!response.ok || !data.url) {
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        throw new Error(message ?? "上传失败");
+      }
+      return data.url;
+    } finally {
+      setUploading("");
+    }
+  }
+
+  async function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      setAvatarUrl(await uploadMedia(file, "avatar"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "头像上传失败");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handlePhotosChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []).slice(0, Math.max(0, 9 - photoUrls.length));
+    if (!files.length) return;
+    setError("");
+    try {
+      const uploaded: string[] = [];
+      for (const file of files) uploaded.push(await uploadMedia(file, "photo"));
+      setPhotoUrls((current) => [...current, ...uploaded].slice(0, 9));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "照片上传失败");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handleVoiceChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      setVoiceIntroUrl(await uploadMedia(file, "voice"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "语音上传失败");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function saveMedia() {
+    setError("");
+    setStatus("");
+    const token = localStorage.getItem("dfc_companion_token");
+    if (!token) {
+      window.location.href = "/companion/";
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch("/api/auth/me/companion-media", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ avatarUrl: avatarUrl || null, photoUrls, voiceIntroUrl: voiceIntroUrl || null })
+      });
+      const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+      if (!response.ok) {
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        throw new Error(toChineseError(message));
+      }
+      setStatus("展示资料已保存，客户前台会使用最新照片和语音。");
+      await loadProfile();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败，请稍后重试");
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   async function savePayout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -80,7 +189,7 @@ export default function ProfilePage() {
       });
       const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
       if (!response.ok) {
-        const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
         throw new Error(toChineseError(message));
       }
       setStatus("支付宝收款资料已保存，后续提现会自动带出。");
@@ -110,11 +219,14 @@ export default function ProfilePage() {
 
   return (
     <CompanionShell>
-      <SectionHeader eyebrow="Profile Center" title="我的资料" desc="这里显示数据库里的真实陪玩资料。入驻、头像、价格和上架状态由客服考核后在后台维护。" />
+      <SectionHeader eyebrow="Profile Center" title="我的资料" desc="这里维护客户能看到的展示资料。价格、上架和审核仍由后台管理，避免私自改价影响订单。" />
+
+      {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
+      {status ? <div className="mt-4 rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
 
       <section className="companion-card mt-6 grid gap-4 p-4 md:grid-cols-[160px_1fr]">
         <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-dfc border border-cyan-300/20 bg-[#101827] text-3xl font-black text-cyan-200">
-          {profile.companionProfile?.avatarUrl ? <img src={profile.companionProfile.avatarUrl} alt="陪玩头像" className="h-full w-full object-cover" /> : profile.user.displayName.slice(0, 1)}
+          {avatarUrl ? <img src={avatarUrl} alt="陪玩头像" className="h-full w-full object-cover" /> : profile.user.displayName.slice(0, 1)}
         </div>
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -125,12 +237,37 @@ export default function ProfilePage() {
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <Field label="账号" value={formatAccountEmail(profile.user.email)} />
-            <Field label="我的推荐码" value={profile.user.referralCode ?? "未生成"} />
+            <Field label="我的邀请码" value={profile.user.referralCode ?? "未生成"} />
             <Field label="游戏" value={gameName(profile.companionProfile?.game ?? "")} />
             <Field label="在线状态" value={toOnlineStatus(profile.companionProfile?.onlineStatus)} />
             <Field label="每小时价格" value={`¥${Number(profile.companionProfile?.pricePerHour ?? "0").toFixed(2)}`} />
           </div>
         </div>
+      </section>
+
+      <section className="companion-card mt-6 p-4">
+        <h2 className="text-base font-black text-white">展示资料</h2>
+        <p className="mt-1 text-sm leading-6 text-dfc-subtext">头像、照片和语音会影响客户点击率。请不要上传联系方式、二维码或违规内容。</p>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <UploadBox label="头像" hint="用于陪玩列表和详情页" accept="image/*" uploading={uploading === "avatar"} onChange={handleAvatarChange}>
+            {avatarUrl ? <img src={avatarUrl} alt="头像预览" className="h-24 w-24 rounded-dfc object-cover" /> : null}
+          </UploadBox>
+          <UploadBox label="展示照片" hint="最多 9 张，点击缩略图可删除" accept="image/*" multiple uploading={uploading === "photo"} onChange={handlePhotosChange}>
+            <div className="grid grid-cols-3 gap-2">
+              {photoUrls.map((url) => (
+                <button key={url} type="button" onClick={() => setPhotoUrls((current) => current.filter((item) => item !== url))} className="overflow-hidden rounded-dfc-control border border-cyan-300/20">
+                  <img src={url} alt="展示照片" className="h-16 w-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </UploadBox>
+          <UploadBox label="语音介绍" hint="建议 10-30 秒，客户可试听" accept="audio/*" uploading={uploading === "voice"} onChange={handleVoiceChange}>
+            {voiceIntroUrl ? <audio controls src={voiceIntroUrl} className="mt-2 w-full" /> : null}
+          </UploadBox>
+        </div>
+        <button type="button" disabled={isSaving} onClick={() => void saveMedia()} className="mt-5 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
+          {isSaving ? "保存中..." : "保存展示资料"}
+        </button>
       </section>
 
       <form onSubmit={savePayout} className="companion-card mt-6 p-4">
@@ -147,11 +284,9 @@ export default function ProfilePage() {
           </label>
         </div>
         <label className="mt-4 block">
-          <span className="mb-2 block text-xs font-black text-dfc-muted">收款码图片地址（选填）</span>
-          <input value={payoutQrCodeUrl} onChange={(event) => setPayoutQrCodeUrl(event.target.value)} className="input" placeholder="以后接入上传后可自动填入" />
+          <span className="mb-2 block text-xs font-black text-dfc-muted">收款码图片地址（可选）</span>
+          <input value={payoutQrCodeUrl} onChange={(event) => setPayoutQrCodeUrl(event.target.value)} className="input" placeholder="后续可接入上传二维码" />
         </label>
-        {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
-        {status ? <div className="mt-4 rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
         <button disabled={isSaving} className="mt-5 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
           {isSaving ? "保存中..." : "保存收款资料"}
         </button>
@@ -166,6 +301,18 @@ function Field({ label, value }: { label: string; value: string }) {
       <div className="text-xs text-dfc-muted">{label}</div>
       <div className="mt-1 break-all text-sm font-black text-white">{value}</div>
     </div>
+  );
+}
+
+function UploadBox({ label, hint, accept, multiple, uploading, onChange, children }: { label: string; hint: string; accept: string; multiple?: boolean; uploading: boolean; onChange: (event: ChangeEvent<HTMLInputElement>) => void; children?: ReactNode }) {
+  return (
+    <label className="block rounded-dfc border border-cyan-300/15 bg-[#050711]/50 p-3">
+      <span className="block text-xs font-black text-dfc-muted">{label}</span>
+      <span className="mt-1 block text-xs leading-5 text-dfc-subtext">{hint}</span>
+      <input type="file" accept={accept} multiple={multiple} onChange={onChange} className="mt-3 block w-full text-xs text-dfc-subtext file:mr-3 file:rounded-dfc-control file:border-0 file:bg-cyan-300 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
+      {uploading ? <div className="mt-2 text-xs text-cyan-300">上传中...</div> : null}
+      {children ? <div className="mt-3">{children}</div> : null}
+    </label>
   );
 }
 

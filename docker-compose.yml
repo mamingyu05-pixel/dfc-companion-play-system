@@ -27,6 +27,8 @@ services:
         condition: service_healthy
     expose:
       - "4000"
+    volumes:
+      - uploads:/app/uploads
 
   customer-web:
     build:
@@ -109,3 +111,4 @@ volumes:
   postgres_data:
   certbot_www:
   letsencrypt:
+  uploads:

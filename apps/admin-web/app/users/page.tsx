@@ -278,7 +278,7 @@ export default function UsersPage() {
 
   const normalizedSearch = search.trim().toLowerCase();
   const filteredUsers = normalizedSearch
-    ? users.filter((user) => [user.id, user.email, user.displayName, user.role, user.status].some((value) => value.toLowerCase().includes(normalizedSearch)))
+    ? users.filter((user) => getSearchableUserText(user).includes(normalizedSearch))
     : users;
   const customerOptions = users.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
   const companionCandidateOptions = users.filter(
@@ -300,6 +300,13 @@ export default function UsersPage() {
     <div key={`${user.id}-profile`}>
       <div className="font-semibold text-white">{user.displayName}</div>
       <div className="mt-1 text-xs text-dfc-subtext">{formatAccountEmail(user.email)}</div>
+      {user.externalAccounts.length ? (
+        <div className="mt-1 space-y-1 text-xs text-cyan-200">
+          {user.externalAccounts.map((account) => (
+            <div key={`${user.id}-${account.platform}-${account.externalUserId}`}>{formatExternalAccount(account)}</div>
+          ))}
+        </div>
+      ) : null}
       <div className="mt-1 text-xs text-dfc-muted">{formatDateTime(user.createdAt)}</div>
       {user.companionProfile ? <div className="mt-1 text-xs text-cyan-200">{user.companionProfile.nickname} / ¥{formatMoney(user.companionProfile.pricePerHour)}/h</div> : null}
     </div>,
@@ -311,8 +318,8 @@ export default function UsersPage() {
       <div className="text-dfc-muted">收益 ¥{formatMoney(user.wallet?.availableIncome ?? "0")}</div>
     </div>,
     <div key={`${user.id}-bind`} className="text-xs leading-5">
-      <div>Discord：{user.externalAccounts.some((item) => item.platform === "DISCORD") ? "已绑定" : "未绑定"}</div>
-      <div>KOOK：{user.externalAccounts.some((item) => item.platform === "KOOK") ? "已绑定" : "未绑定"}</div>
+      <div>Discord：{bindingLabel(user, "DISCORD")}</div>
+      <div>KOOK：{bindingLabel(user, "KOOK")}</div>
     </div>,
     user.status === "ACTIVE" ? (
       <ActionButton key={`${user.id}-ban`} tone="danger" onClick={() => void updateStatus(user.id, "BANNED")}>封禁</ActionButton>
@@ -350,7 +357,7 @@ export default function UsersPage() {
             >
               <option value="">选择要开通陪玩身份的账号</option>
               {companionCandidateOptions.map((user) => (
-                <option key={user.id} value={user.id}>{user.displayName} / {user.email}</option>
+                <option key={user.id} value={user.id}>{userOptionLabel(user)}</option>
               ))}
             </select>
             <input value={companionNickname} onChange={(event) => setCompanionNickname(event.target.value)} className="input" placeholder="陪玩昵称" />
@@ -369,7 +376,7 @@ export default function UsersPage() {
             <select value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)} className="input">
               <option value="">选择要调账的客户</option>
               {customerOptions.map((user) => (
-                <option key={user.id} value={user.id}>{user.displayName} / {user.email}</option>
+                <option key={user.id} value={user.id}>{userOptionLabel(user)}</option>
               ))}
             </select>
             <select value={adjustmentDirection} onChange={(event) => setAdjustmentDirection(event.target.value === "DEBIT" ? "DEBIT" : "CREDIT")} className="input">
@@ -389,7 +396,7 @@ export default function UsersPage() {
             <select value={passwordResetUserId} onChange={(event) => setPasswordResetUserId(event.target.value)} className="input">
               <option value="">选择要重置密码的用户</option>
               {passwordResetOptions.map((user) => (
-                <option key={user.id} value={user.id}>{user.displayName} / {user.email} / {user.role}</option>
+                <option key={user.id} value={user.id}>{userOptionLabel(user)} / {user.role}</option>
               ))}
             </select>
             <input value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} className="input" placeholder="新密码，至少 8 位" type="password" autoComplete="new-password" />
@@ -419,7 +426,7 @@ export default function UsersPage() {
             <select value={promoteUserId} onChange={(event) => setPromoteUserId(event.target.value)} className="input">
               <option value="">选择已有用户</option>
               {promotableUserOptions.map((user) => (
-                <option key={user.id} value={user.id}>{user.displayName} / {user.email} / {user.role}</option>
+                <option key={user.id} value={user.id}>{userOptionLabel(user)} / {user.role}</option>
               ))}
             </select>
             <select value={promoteRole} onChange={(event) => setPromoteRole(event.target.value === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN")} className="input">
@@ -480,7 +487,41 @@ function formatDateTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function getSearchableUserText(user: AdminUser) {
+  return [
+    user.id,
+    user.email,
+    user.displayName,
+    user.role,
+    user.status,
+    ...user.externalAccounts.flatMap((account) => [
+      account.platform,
+      account.externalUserId,
+      account.displayName ?? ""
+    ])
+  ].join(" ").toLowerCase();
+}
+
+function formatExternalAccount(account: AdminUser["externalAccounts"][number]) {
+  const nickname = account.displayName?.trim() || "未同步昵称";
+  return `${account.platform}：${nickname} / ${shortId(account.externalUserId)}`;
+}
+
+function bindingLabel(user: AdminUser, platform: "DISCORD" | "KOOK") {
+  const account = user.externalAccounts.find((item) => item.platform === platform);
+  if (!account) return "未绑定";
+
+  const nickname = account.displayName?.trim();
+  return nickname ? `已绑定：${nickname}` : `已绑定：${shortId(account.externalUserId)}`;
+}
+
+function userOptionLabel(user: AdminUser) {
+  const accountText = user.externalAccounts.map(formatExternalAccount).join(" / ");
+  return accountText ? `${user.displayName} / ${accountText}` : `${user.displayName} / ${user.email}`;
+}
+
 function formatAccountEmail(email: string) {
+  if (email.endsWith("@platform.maycatplay.local")) return "平台频道用户";
   return email.endsWith("@oauth.maycatplay.local") ? "第三方注册" : email;
 }
 

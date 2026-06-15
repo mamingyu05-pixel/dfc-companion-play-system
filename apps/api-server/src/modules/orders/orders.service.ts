@@ -42,6 +42,8 @@ export class OrdersService {
       displayName: profile.user.displayName,
       nickname: profile.nickname,
       avatarUrl: profile.avatarUrl,
+      photoUrls: profile.photoUrls,
+      voiceIntroUrl: profile.voiceIntroUrl,
       game: profile.game,
       status: profile.status,
       onlineStatus: profile.onlineStatus,

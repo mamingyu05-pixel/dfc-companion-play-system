@@ -7,6 +7,8 @@ type Companion = {
   id: string;
   nickname: string;
   avatarUrl?: string | null;
+  photoUrls?: string[];
+  voiceIntroUrl?: string | null;
   game?: string;
   rank: string;
   modes: string[];
@@ -117,10 +119,21 @@ export function CompanionCard({ companion }: { companion: Companion }) {
 
       <p className="mt-4 min-h-11 text-sm leading-6 text-dfc-subtext">{companion.intro}</p>
 
+      {companion.photoUrls?.length ? (
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {companion.photoUrls.slice(0, 3).map((url) => (
+            <div key={url} className="h-20 overflow-hidden rounded-dfc-control border border-cyan-300/20 bg-[#050711]">
+              <img src={url} alt={`${companion.nickname} 展示照片`} className="h-full w-full object-cover" />
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="mt-4 rounded-dfc-control border border-cyan-300/30 bg-cyan-300/10 p-3">
         <div className="text-xs font-semibold text-cyan-300">语音展示</div>
         <div className="mt-1 text-sm text-dfc-subtext">{companion.voiceStyle}</div>
         <div className="mt-1 text-xs text-dfc-muted">{companion.trial}</div>
+        {companion.voiceIntroUrl ? <audio controls src={companion.voiceIntroUrl} className="mt-3 w-full" /> : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">

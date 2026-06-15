@@ -752,6 +752,8 @@ export class AuthService {
           select: {
             nickname: true,
             avatarUrl: true,
+            photoUrls: true,
+            voiceIntroUrl: true,
             game: true,
             onlineStatus: true,
             status: true,
@@ -860,6 +862,8 @@ export class AuthService {
         ? {
           nickname: user.companionProfile.nickname,
           avatarUrl: user.companionProfile.avatarUrl,
+          photoUrls: user.companionProfile.photoUrls,
+          voiceIntroUrl: user.companionProfile.voiceIntroUrl,
           game: user.companionProfile.game,
           onlineStatus: user.companionProfile.onlineStatus,
           status: user.companionProfile.status,
@@ -907,6 +911,33 @@ export class AuthService {
         createdAt: account.createdAt
       }))
     };
+  }
+
+  async updateMyCompanionMedia(userId: string, body: { avatarUrl?: string | null; photoUrls?: string[]; voiceIntroUrl?: string | null }) {
+    const existing = await this.prisma.companionProfile.findUnique({
+      where: { userId },
+      select: { id: true }
+    });
+    if (!existing) {
+      throw new BadRequestException("Companion profile does not exist");
+    }
+
+    const profile = await this.prisma.companionProfile.update({
+      where: { userId },
+      data: {
+        avatarUrl: normalizeOptionalMediaUrl(body.avatarUrl),
+        photoUrls: normalizeMediaUrls(body.photoUrls),
+        voiceIntroUrl: normalizeOptionalMediaUrl(body.voiceIntroUrl)
+      },
+      select: {
+        nickname: true,
+        avatarUrl: true,
+        photoUrls: true,
+        voiceIntroUrl: true
+      }
+    });
+
+    return { companionProfile: profile };
   }
 
   private issueToken(payload: JwtPayload) {
@@ -1099,6 +1130,18 @@ function oauthPlatformToBotPlatform(platform: OAuthPlatform) {
 
 function buildOAuthEmail(platform: OAuthPlatform, role: UserRole, externalUserId: string) {
   return `${role.toLowerCase()}-${platform}-${externalUserId}@oauth.maycatplay.local`.toLowerCase();
+}
+
+function normalizeOptionalMediaUrl(value?: string | null) {
+  const normalized = value?.trim();
+  return normalized || null;
+}
+
+function normalizeMediaUrls(urls?: string[]) {
+  return (urls ?? [])
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .slice(0, 9);
 }
 
 function sanitizeOAuthDisplayName(displayName: string) {

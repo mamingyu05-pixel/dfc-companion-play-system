@@ -307,6 +307,8 @@ model CompanionProfile {
   userId          String                 @unique
   nickname        String
   avatarUrl       String?
+  photoUrls       String[]               @default([])
+  voiceIntroUrl   String?
   gender          String?
   game            GameCode               @default(DELTA_FORCE)
   deltaForceRank  DeltaForceRank         @default(UNRANKED)

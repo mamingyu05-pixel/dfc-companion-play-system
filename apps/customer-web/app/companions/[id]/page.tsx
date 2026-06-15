@@ -10,6 +10,8 @@ type ApiCompanion = {
   id: string;
   nickname: string;
   avatarUrl?: string | null;
+  photoUrls?: string[];
+  voiceIntroUrl?: string | null;
   game: string;
   onlineStatus: string;
   deltaForceRank: string;
@@ -75,6 +77,12 @@ export default function CompanionDetailPage() {
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
               {companion.bio || "该陪玩资料来自后台真实上架信息。你可以先试音确认沟通体验，再提交订单。"}
             </p>
+            {companion.voiceIntroUrl ? (
+              <div className="mt-5 max-w-xl rounded-dfc-control border border-cyan-300/25 bg-[#050711]/70 p-3">
+                <div className="mb-2 text-xs font-black text-cyan-300">语音介绍</div>
+                <audio controls src={companion.voiceIntroUrl} className="w-full" />
+              </div>
+            ) : null}
             <div className="mt-5 flex flex-wrap gap-2">
               <Badge tone={isOnline ? "gold" : "default"}>{toOnlineStatus(companion.onlineStatus)}</Badge>
               <Badge>{gameName(companion.game)}</Badge>
@@ -113,6 +121,19 @@ export default function CompanionDetailPage() {
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-6">
+          {companion.photoUrls?.length ? (
+            <section className="maycat-card p-4">
+              <h2 className="text-lg font-black text-white">展示照片</h2>
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {companion.photoUrls.slice(0, 9).map((url) => (
+                  <div key={url} className="aspect-square overflow-hidden rounded-dfc border border-cyan-300/20 bg-[#050711]">
+                    <img src={url} alt={`${companion.nickname} 展示照片`} className="h-full w-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section className="maycat-card p-4">
             <h2 className="text-lg font-black text-white">服务特点</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">

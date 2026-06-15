@@ -9,8 +9,9 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { BotModule } from "./bot/bot.module";
 import { ComplaintsModule } from "./complaints/complaints.module";
 import { SupportModule } from "./support/support.module";
+import { UploadsModule } from "./uploads/uploads.module";
 
 @Module({
-  imports: [PrismaModule, BotModule, AuthModule, AdminModule, OrdersModule, WalletModule, DiscordModule, KookModule, ComplaintsModule, SupportModule]
+  imports: [PrismaModule, BotModule, AuthModule, AdminModule, OrdersModule, WalletModule, DiscordModule, KookModule, ComplaintsModule, SupportModule, UploadsModule]
 })
 export class AppModule {}

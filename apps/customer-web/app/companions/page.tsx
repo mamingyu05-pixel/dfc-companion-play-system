@@ -20,6 +20,8 @@ type ApiCompanion = {
   id: string;
   nickname: string;
   avatarUrl?: string | null;
+  photoUrls?: string[];
+  voiceIntroUrl?: string | null;
   game: string;
   onlineStatus: string;
   deltaForceRank: string;
@@ -176,6 +178,8 @@ function toCardCompanion(companion: ApiCompanion) {
     id: companion.id,
     nickname: companion.nickname,
     avatarUrl: companion.avatarUrl,
+    photoUrls: companion.photoUrls ?? [],
+    voiceIntroUrl: companion.voiceIntroUrl ?? null,
     game: gameName(companion.game),
     rank: companion.deltaForceRank,
     modes: companion.skillModes.length ? companion.skillModes : ["平台派单"],

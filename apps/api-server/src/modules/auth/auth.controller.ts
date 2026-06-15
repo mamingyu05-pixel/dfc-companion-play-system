@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { AuthenticatedUser } from "./auth.types";
 import { CurrentUser } from "./current-user.decorator";
@@ -68,5 +68,14 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.auth.getMe(user.id);
+  }
+
+  @Patch("me/companion-media")
+  @UseGuards(JwtAuthGuard)
+  updateMyCompanionMedia(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { avatarUrl?: string | null; photoUrls?: string[]; voiceIntroUrl?: string | null }
+  ) {
+    return this.auth.updateMyCompanionMedia(user.id, body);
   }
 }

@@ -740,6 +740,8 @@ export class AdminController {
         userStatus: profile.user.status,
         nickname: profile.nickname,
         avatarUrl: profile.avatarUrl,
+        photoUrls: profile.photoUrls,
+        voiceIntroUrl: profile.voiceIntroUrl,
         game: profile.game,
         status: profile.status,
         onlineStatus: profile.onlineStatus,
@@ -935,6 +937,8 @@ export class AdminController {
       pricePerHour: string;
       commissionRate?: string;
       avatarUrl?: string;
+      photoUrls?: string[];
+      voiceIntroUrl?: string;
       gender?: string;
       game?: GameCode;
       deltaForceRank?: DeltaForceRank;
@@ -980,6 +984,8 @@ export class AdminController {
               create: {
                 nickname,
                 avatarUrl: body.avatarUrl,
+                photoUrls: normalizeMediaUrls(body.photoUrls),
+                voiceIntroUrl: normalizeOptionalString(body.voiceIntroUrl),
                 gender: body.gender,
                 game: body.game ?? GameCode.DELTA_FORCE,
                 deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
@@ -1033,6 +1039,8 @@ export class AdminController {
       pricePerHour: string;
       commissionRate?: string;
       avatarUrl?: string;
+      photoUrls?: string[];
+      voiceIntroUrl?: string;
       gender?: string;
       game?: GameCode;
       deltaForceRank?: DeltaForceRank;
@@ -1078,6 +1086,8 @@ export class AdminController {
               create: {
                 nickname,
                 avatarUrl: body.avatarUrl,
+                photoUrls: normalizeMediaUrls(body.photoUrls),
+                voiceIntroUrl: normalizeOptionalString(body.voiceIntroUrl),
                 gender: body.gender,
                 game: body.game ?? GameCode.DELTA_FORCE,
                 deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
@@ -1301,6 +1311,18 @@ function parseCommissionRate(value: string) {
 
 function normalizePromotionCode(code: string | undefined) {
   return code?.trim().toUpperCase().replace(/\s+/g, "").slice(0, 32) ?? "";
+}
+
+function normalizeOptionalString(value?: string | null) {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function normalizeMediaUrls(urls?: string[]) {
+  return (urls ?? [])
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .slice(0, 9);
 }
 
 function parseOptionalDate(value: string | undefined, fieldName: string) {
