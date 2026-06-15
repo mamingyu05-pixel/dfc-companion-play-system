@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, HttpCode, Post, UnauthorizedException, UseGuards } from "@nestjs/common";
 import { createDecipheriv } from "node:crypto";
-import { BotPlatform, OrderSourcePlatform } from "@prisma/client";
+import { BotEventStatus, BotPlatform, OrderSourcePlatform } from "@prisma/client";
 import { AuthService } from "../auth/auth.service";
 import { BotInternalGuard } from "../bot/bot-internal.guard";
 import { BotNotificationService } from "../bot/bot-notification.service";
@@ -56,6 +56,32 @@ export class KookWebhookController {
 
     if (expectedVerifyToken && actualVerifyToken !== expectedVerifyToken) {
       throw new UnauthorizedException("Invalid KOOK verify token");
+    }
+
+    const memberJoin = this.extractMemberJoin(webhookBody);
+    if (memberJoin) {
+      const account = await this.platformSupport.ensurePlatformCustomer({
+        platform: BotPlatform.KOOK,
+        platformUserId: memberJoin.kookUserId,
+        displayName: memberJoin.displayName
+      });
+
+      const roleSync = account?.userId
+        ? await this.botNotifications.syncKookCustomerMembershipLevel(account.userId).catch((error) => ({
+            platform: BotPlatform.KOOK,
+            status: BotEventStatus.FAILED,
+            error: errorMessage(error)
+          }))
+        : null;
+
+      return {
+        registered: Boolean(account),
+        platform: BotPlatform.KOOK,
+        kookUserId: memberJoin.kookUserId,
+        userId: account?.userId,
+        displayName: account?.displayName ?? memberJoin.displayName,
+        roleSync
+      };
     }
 
     const actionValue = this.extractActionValue(webhookBody);
@@ -309,6 +335,47 @@ export class KookWebhookController {
   private extractAuthorName(body: KookWebhookBody): string | undefined {
     return body.d?.extra?.author?.nickname ?? body.d?.extra?.author?.username;
   }
+
+  private extractMemberJoin(body: KookWebhookBody) {
+    const eventType = [
+      body.type,
+      body.event_type,
+      body.d?.event_type,
+      body.d?.extra?.type,
+      body.d?.extra?.body?.type,
+      typeof body.d?.type === "string" ? body.d.type : undefined
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase());
+
+    const isMemberJoin = eventType.some((value) =>
+      ["guild_member_add", "guild_member_added", "joined_guild", "member_join", "member_joined"].includes(value)
+    );
+    if (!isMemberJoin) return null;
+
+    const member = body.d?.extra?.body?.user ?? body.d?.extra?.user ?? body.d?.extra?.author;
+    const kookUserId =
+      body.d?.extra?.body?.user_id ??
+      body.d?.extra?.body?.user?.id ??
+      body.d?.extra?.user?.id ??
+      body.d?.extra?.author?.id ??
+      body.d?.author_id;
+
+    if (!kookUserId || !/^\d{6,}$/.test(kookUserId)) return null;
+    if (member?.bot) return null;
+
+    const displayName = [
+      member?.nickname,
+      member?.username,
+      body.d?.extra?.body?.nickname,
+      body.d?.extra?.body?.username
+    ].find((value) => typeof value === "string" && value.trim().length > 0);
+
+    return {
+      kookUserId,
+      displayName
+    };
+  }
 }
 
 function parseBindingText(content: string) {
@@ -323,11 +390,14 @@ function errorMessage(error: unknown) {
 
 interface KookWebhookBody {
   s?: number;
+  type?: string;
+  event_type?: string;
   challenge?: string;
   encrypt?: string;
   verify_token?: string;
   d?: {
-    type?: number;
+    type?: number | string;
+    event_type?: string;
     channel_type?: string;
     challenge?: string;
     verify_token?: string;
@@ -342,14 +412,21 @@ interface KookWebhookBody {
       user_id?: string;
       guild_id?: string;
       channel_id?: string;
+      type?: string;
+      user?: KookWebhookUser;
       author?: {
+        id?: string;
         username?: string;
         nickname?: string;
         bot?: boolean;
       };
       body?: {
+        type?: string;
         value?: string;
         user_id?: string;
+        username?: string;
+        nickname?: string;
+        user?: KookWebhookUser;
         msg_id?: string;
         channel_id?: string;
         data?: {
@@ -358,4 +435,11 @@ interface KookWebhookBody {
       };
     };
   };
+}
+
+interface KookWebhookUser {
+  id?: string;
+  username?: string;
+  nickname?: string;
+  bot?: boolean;
 }

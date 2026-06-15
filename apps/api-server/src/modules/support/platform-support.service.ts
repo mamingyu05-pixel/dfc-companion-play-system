@@ -47,6 +47,8 @@ type PlatformSupportMessage = {
   isDirect?: boolean;
 };
 
+type PlatformCustomerIdentity = Pick<PlatformSupportMessage, "platform" | "platformUserId" | "displayName">;
+
 const SUPPORT_RULES: SupportRule[] = [
   {
     topic: "问候",
@@ -266,6 +268,27 @@ export class PlatformSupportService {
     });
   }
 
+  async ensurePlatformCustomer(input: PlatformCustomerIdentity) {
+    const account = await this.findOrCreatePlatformCustomer(input);
+    if (!account) return null;
+
+    const displayName = sanitizePlatformDisplayName(input.displayName);
+    if (displayName && account.displayName !== displayName) {
+      return this.prisma.userExternalAccount.update({
+        where: {
+          platform_externalUserId: {
+            platform: input.platform,
+            externalUserId: input.platformUserId
+          }
+        },
+        data: { displayName },
+        include: { user: true }
+      });
+    }
+
+    return account;
+  }
+
   private async maybeCreateDispatchDraft(input: PlatformSupportMessage, customerId: string | undefined, message: string, facts: DemandFacts) {
     const shouldPublish = process.env.AI_AUTO_DISPATCH_ENABLED === "true" || this.shouldPublishDispatchDraft(message, facts);
     if (!shouldPublish) {
@@ -425,7 +448,7 @@ export class PlatformSupportService {
     return recentSameMessage;
   }
 
-  private async findOrCreatePlatformCustomer(input: PlatformSupportMessage) {
+  private async findOrCreatePlatformCustomer(input: PlatformCustomerIdentity) {
     if (process.env.PLATFORM_AUTO_CREATE_CUSTOMER_ENABLED === "false") return null;
 
     const existing = await this.prisma.userExternalAccount.findUnique({
