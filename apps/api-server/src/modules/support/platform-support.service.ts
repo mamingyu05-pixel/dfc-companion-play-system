@@ -450,6 +450,7 @@ export class PlatformSupportService {
 
   private async findOrCreatePlatformCustomer(input: PlatformCustomerIdentity) {
     if (process.env.PLATFORM_AUTO_CREATE_CUSTOMER_ENABLED === "false") return null;
+    if (!isValidPlatformUserId(input.platform, input.platformUserId)) return null;
 
     const existing = await this.prisma.userExternalAccount.findUnique({
       where: {
@@ -944,6 +945,12 @@ function sanitizePlatformDisplayName(displayName?: string) {
 function buildPlatformCustomerEmail(platform: BotPlatform, externalUserId: string) {
   const platformKey = platform === BotPlatform.KOOK ? "kook" : "discord";
   return `customer-${platformKey}-${externalUserId}@platform.maycatplay.local`.toLowerCase();
+}
+
+function isValidPlatformUserId(platform: BotPlatform, value: string) {
+  if (platform === BotPlatform.KOOK) return /^\d{6,}$/.test(value);
+  if (platform === BotPlatform.DISCORD) return /^\d{15,22}$/.test(value);
+  return false;
 }
 
 async function generateUniqueReferralCode(tx: Prisma.TransactionClient, prefix: string) {

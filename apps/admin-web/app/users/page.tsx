@@ -503,6 +503,9 @@ function getSearchableUserText(user: AdminUser) {
 }
 
 function formatExternalAccount(account: AdminUser["externalAccounts"][number]) {
+  if (!isValidExternalAccount(account)) {
+    return `${account.platform}：异常占位ID ${account.externalUserId}`;
+  }
   const nickname = account.displayName?.trim() || "未同步昵称";
   return `${account.platform}：${nickname} / ${shortId(account.externalUserId)}`;
 }
@@ -510,9 +513,16 @@ function formatExternalAccount(account: AdminUser["externalAccounts"][number]) {
 function bindingLabel(user: AdminUser, platform: "DISCORD" | "KOOK") {
   const account = user.externalAccounts.find((item) => item.platform === platform);
   if (!account) return "未绑定";
+  if (!isValidExternalAccount(account)) return `异常占位ID：${account.externalUserId}`;
 
   const nickname = account.displayName?.trim();
   return nickname ? `已绑定：${nickname}` : `已绑定：${shortId(account.externalUserId)}`;
+}
+
+function isValidExternalAccount(account: AdminUser["externalAccounts"][number]) {
+  if (account.platform === "KOOK") return /^\d{6,}$/.test(account.externalUserId);
+  if (account.platform === "DISCORD") return /^\d{15,22}$/.test(account.externalUserId);
+  return true;
 }
 
 function userOptionLabel(user: AdminUser) {
