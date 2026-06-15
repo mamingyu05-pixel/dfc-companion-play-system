@@ -6,8 +6,12 @@ import type { FormEvent } from "react";
 type PublicConfig = {
   support?: {
     wechatId?: string | null;
+    kookUrl?: string | null;
   };
 };
+
+const DEFAULT_SUPPORT_KOOK_URL = "https://kook.vip/i0o2qA";
+const KOOK_INVITE_CODE = "i0o2qA";
 
 export function CompanionLoginForm() {
   const [email, setEmail] = useState("");
@@ -88,7 +92,11 @@ export function CompanionLoginForm() {
 
           <div className="grid gap-2 sm:grid-cols-2">
             <OAuthButton href="/api/auth/oauth/discord/start?portal=companion" label="Discord 登录" />
-            <OAuthButton href="/api/auth/oauth/kook/start?portal=companion" label="KOOK 登录" />
+            <CommunityAuthLink
+              href={publicConfig.support?.kookUrl || DEFAULT_SUPPORT_KOOK_URL}
+              label="加入 KOOK"
+              helper={`邀请码 ${KOOK_INVITE_CODE}`}
+            />
           </div>
 
           <div className="my-5 flex items-center gap-3 text-xs text-dfc-muted">
@@ -135,6 +143,20 @@ function OAuthButton({ href, label }: { href: string; label: string }) {
   return (
     <a href={href} className="rounded-dfc-control border border-cyan-300/20 bg-[#101827] px-3 py-3 text-center text-sm font-black text-dfc-text hover:border-cyan-300/60 hover:text-cyan-100">
       {label}
+    </a>
+  );
+}
+
+function CommunityAuthLink({ href, label, helper }: { href: string; label: string; helper: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="rounded-dfc-control border border-cyan-300/20 bg-[#101827] px-3 py-3 text-center text-sm font-black text-dfc-text hover:border-cyan-300/60 hover:text-cyan-100"
+    >
+      <span className="block">{label}</span>
+      <span className="mt-1 block text-[11px] font-semibold text-dfc-muted">{helper}</span>
     </a>
   );
 }

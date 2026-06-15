@@ -256,7 +256,11 @@ export function CustomerAuthForm() {
               <>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 登录" />
-                  <OAuthButton href="/api/auth/oauth/kook/start" label="KOOK 登录" />
+                  <CommunityAuthLink
+                    href={publicConfig.support?.kookUrl || DEFAULT_SUPPORT_KOOK_URL}
+                    label="加入 KOOK"
+                    helper={`邀请码 ${KOOK_INVITE_CODE}`}
+                  />
                 </div>
                 <div className="flex items-center gap-3 text-xs text-dfc-muted">
                   <span className="h-px flex-1 bg-cyan-300/15" />
@@ -433,6 +437,15 @@ function OAuthButton({ href, label }: { href: string; label: string }) {
   return (
     <a href={href} className="maycat-button-secondary px-3 py-3 text-center text-sm font-black">
       {label}
+    </a>
+  );
+}
+
+function CommunityAuthLink({ href, label, helper }: { href: string; label: string; helper: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="maycat-button-secondary px-3 py-3 text-center text-sm font-black">
+      <span className="block">{label}</span>
+      <span className="mt-1 block text-[11px] font-semibold text-dfc-muted">{helper}</span>
     </a>
   );
 }

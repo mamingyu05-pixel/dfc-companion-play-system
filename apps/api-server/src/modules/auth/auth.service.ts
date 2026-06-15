@@ -528,6 +528,9 @@ export class AuthService {
   }
 
   getOAuthStartUrl(platform: OAuthPlatform, portal: OAuthPortal) {
+    if (platform === "kook") {
+      return process.env.SUPPORT_KOOK_URL || "https://kook.vip/i0o2qA";
+    }
     const config = this.getOAuthConfig(platform);
     const url = new URL(config.authorizeUrl);
     url.searchParams.set("client_id", config.clientId);
