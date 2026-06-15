@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { randomBytes, randomInt } = require("node:crypto");
 const bcrypt = require("bcryptjs");
-const { BotPlatform, PrismaClient, UserRole, UserStatus } = require("@prisma/client");
+const { BotPlatform, PrismaClient, UserRole, UserStatus } = require("./script-prisma-client");
 
 const DISCORD_API_BASE_URL = "https://discord.com/api/v10";
 const prisma = new PrismaClient();

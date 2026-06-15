@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const { PrismaClient, UserRole, UserStatus } = require("@prisma/client");
+const { PrismaClient, UserRole, UserStatus } = require("./script-prisma-client");
 
 const prisma = new PrismaClient();
 
