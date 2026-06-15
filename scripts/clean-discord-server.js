@@ -320,8 +320,16 @@ async function grantAdminRoles(token, guildId, env, userIds) {
 
   for (const userId of userIds) {
     for (const role of targetRoles) {
-      await discordRequest(token, `/guilds/${guildId}/members/${userId}/roles/${role.id}`, { method: "PUT" });
-      console.log(`grant ${role.name} (${role.id}) to Discord user ${userId}`);
+      try {
+        await discordRequest(token, `/guilds/${guildId}/members/${userId}/roles/${role.id}`, { method: "PUT" });
+        console.log(`grant ${role.name} (${role.id}) to Discord user ${userId}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`warn grant ${role.name} (${role.id}) to Discord user ${userId} failed: ${message}`);
+        if (message.includes("Missing Permissions") || message.includes("50013")) {
+          console.warn("  fix: Discord 服务器设置 -> 身份组，把 Bot 身份组拖到目标身份组上方，并确认 Bot 拥有“管理身份组”。");
+        }
+      }
     }
   }
 
