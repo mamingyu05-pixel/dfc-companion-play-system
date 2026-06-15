@@ -238,6 +238,17 @@ export default function SupportPage() {
                 <SupportLink href={publicConfig.support?.kookUrl ?? undefined} label="KOOK 联系客服" />
                 <SupportLink href={publicConfig.support?.discordUrl ?? undefined} label="Discord 联系客服" />
               </div>
+              <div className="mt-3 rounded-dfc-control border border-cyan-300/20 bg-[#07111f]/70 p-3 text-xs leading-6">
+                <div className="font-black text-white">链接打不开时</div>
+                <div>
+                  KOOK 客户端手动加入邀请码：
+                  <span className="ml-1 font-mono font-black text-cyan-200">i0o2qA</span>
+                </div>
+                <div>
+                  Discord 手动输入：
+                  <span className="ml-1 font-mono font-black text-cyan-200">discord.gg/dX5prAZMPu</span>
+                </div>
+              </div>
               <div className="mt-4 font-black text-white">复制给客服</div>
               <div className="mt-3 rounded-dfc-control border border-cyan-300/20 bg-[#07111f]/70 p-3 text-xs leading-6">
                 <div>账号昵称：{profile?.user.displayName ?? "-"}</div>

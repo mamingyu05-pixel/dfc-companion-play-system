@@ -28,6 +28,7 @@ type PublicConfig = {
 
 const DEFAULT_SUPPORT_KOOK_URL = "https://kook.vip/i0o2qA";
 const DEFAULT_SUPPORT_DISCORD_URL = "https://discord.gg/dX5prAZMPu";
+const KOOK_INVITE_CODE = "i0o2qA";
 
 export function CustomerAuthForm() {
   const [mode, setMode] = useState<Mode>("register");
@@ -196,6 +197,12 @@ export function CustomerAuthForm() {
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
               <CommunityLink href={publicConfig.support?.kookUrl || DEFAULT_SUPPORT_KOOK_URL} label="进入 KOOK 社群" />
               <CommunityLink href={publicConfig.support?.discordUrl || DEFAULT_SUPPORT_DISCORD_URL} label="进入 Discord 社群" />
+            </div>
+            <div className="mt-3 rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 px-3 py-3 text-xs leading-5 text-cyan-50/75">
+              KOOK 链接打不开时，打开 KOOK 客户端，使用邀请代码：
+              <span className="ml-1 font-mono text-sm font-black text-cyan-200">{KOOK_INVITE_CODE}</span>
+              <span className="mx-2 text-dfc-muted">/</span>
+              Discord 邀请链接：<span className="font-mono text-cyan-200">discord.gg/dX5prAZMPu</span>
             </div>
 
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
