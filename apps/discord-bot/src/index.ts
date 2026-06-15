@@ -140,6 +140,13 @@ async function handleSupportMessage(message: Message) {
   if (!isDirect && !isSupportChannel && !mentionedBot) return;
   if (!message.content.trim()) return;
 
+  const content = stripBotMention(message.content);
+  const bindingCode = parseBindingText(content);
+  if (bindingCode) {
+    await handleAccountBindingMessage(message, bindingCode);
+    return;
+  }
+
   try {
     const response = await callApi("/discord/support/messages", {
       discordUserId: message.author.id,
@@ -147,7 +154,7 @@ async function handleSupportMessage(message: Message) {
       guildId: message.guildId ?? undefined,
       channelId: message.channelId,
       messageId: message.id,
-      content: stripBotMention(message.content),
+      content,
       isDirect
     });
     if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
@@ -156,6 +163,26 @@ async function handleSupportMessage(message: Message) {
     if (data.reply) await message.reply({ content: data.reply.slice(0, 1900) });
   } catch (error) {
     await message.reply({ content: `客服助手暂时不可用，请人工客服处理。原因：${errorMessage(error).slice(0, 500)}` }).catch(() => undefined);
+  }
+}
+
+async function handleAccountBindingMessage(message: Message, code: string) {
+  try {
+    const response = await callApi("/discord/account-bindings/consume", {
+      code,
+      discordUserId: message.author.id,
+      displayName: message.member?.displayName ?? message.author.globalName ?? message.author.username
+    });
+    if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
+
+    const data = (await response.json().catch(() => ({}))) as { user?: { displayName?: string } };
+    await message.reply({
+      content: `绑定成功：${data.user?.displayName ?? "你的网站账号"}。以后 Discord 里的客服、派单和订单记录会关联到你的网站账号。`
+    });
+  } catch (error) {
+    await message.reply({
+      content: `绑定失败：${errorMessage(error).slice(0, 500)}。请回网站个人设置重新生成绑定码，10 分钟内使用。`
+    }).catch(() => undefined);
   }
 }
 
@@ -196,6 +223,11 @@ function parseApplyText(content: string) {
     draftNo: match[1].toUpperCase(),
     note: match[2]?.trim() || "文字报名，待补充段位、报价、性格和服务优势"
   };
+}
+
+function parseBindingText(content: string) {
+  const match = content.trim().match(/^(?:绑定|綁定|bind|绑定码|綁定碼)\s*[:：]?\s*([A-Z0-9]{6,12})$/i);
+  return match?.[1]?.toUpperCase();
 }
 
 async function callApi(path: string, body: unknown) {

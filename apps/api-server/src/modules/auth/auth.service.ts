@@ -24,6 +24,7 @@ const CUSTOMER_PASSWORD_RESET_EMAIL_PURPOSE = "CUSTOMER_PASSWORD_RESET";
 const EMAIL_CODE_TTL_MINUTES = 10;
 const EMAIL_CODE_RESEND_SECONDS = 60;
 const MAX_EMAIL_CODE_ATTEMPTS = 5;
+const PLATFORM_BINDING_CODE_TTL_MINUTES = 10;
 const DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/oauth2/authorize";
 const DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/oauth2/token";
 const DISCORD_OAUTH_USER_URL = "https://discord.com/api/users/@me";
@@ -411,6 +412,119 @@ export class AuthService {
         wechatQrUrl: process.env.SUPPORT_WECHAT_QR_URL || null
       }
     };
+  }
+
+  async createPlatformBindingCode(userId: string, body: { platform: BotPlatform | string }) {
+    const platform = parseBindingPlatform(body.platform);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true }
+    });
+    if (!user || user.status !== "ACTIVE") {
+      throw new UnauthorizedException("User is not active");
+    }
+
+    const code = generatePlatformBindingCode();
+    const expiresAt = new Date(Date.now() + PLATFORM_BINDING_CODE_TTL_MINUTES * 60 * 1000);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.platformBindingCode.deleteMany({
+        where: { userId, platform, consumedAt: null }
+      });
+      await tx.platformBindingCode.create({
+        data: {
+          userId,
+          platform,
+          codeHash: hashPlatformBindingCode(platform, code),
+          expiresAt
+        }
+      });
+    });
+
+    return {
+      platform,
+      code,
+      expiresAt,
+      instruction: `在 ${platformLabel(platform)} 客服机器人私聊或客服接待频道发送：绑定 ${code}`
+    };
+  }
+
+  async consumePlatformBindingCode(
+    platform: BotPlatform,
+    body: { code?: string; externalUserId?: string; displayName?: string }
+  ) {
+    const code = normalizeBindingCode(body.code);
+    const externalUserId = body.externalUserId?.trim();
+    if (!code || !externalUserId) {
+      throw new BadRequestException("code and externalUserId are required");
+    }
+
+    const codeHash = hashPlatformBindingCode(platform, code);
+    return this.prisma.$transaction(async (tx) => {
+      const binding = await tx.platformBindingCode.findUnique({
+        where: { codeHash },
+        include: {
+          user: {
+            select: { id: true, email: true, role: true, status: true, displayName: true }
+          }
+        }
+      });
+
+      if (!binding || binding.platform !== platform || binding.consumedAt || binding.expiresAt <= new Date()) {
+        throw new BadRequestException("绑定码无效或已过期");
+      }
+      if (binding.user.status !== "ACTIVE") {
+        throw new UnauthorizedException("User is not active");
+      }
+
+      const existingExternal = await tx.userExternalAccount.findUnique({
+        where: {
+          platform_externalUserId: {
+            platform,
+            externalUserId
+          }
+        },
+        select: { userId: true }
+      });
+      if (existingExternal && existingExternal.userId !== binding.userId) {
+        throw new BadRequestException("这个平台账号已经绑定其他网站账号");
+      }
+
+      const account = await tx.userExternalAccount.upsert({
+        where: {
+          userId_platform: {
+            userId: binding.userId,
+            platform
+          }
+        },
+        update: {
+          externalUserId,
+          displayName: sanitizePlatformDisplayName(body.displayName)
+        },
+        create: {
+          userId: binding.userId,
+          platform,
+          externalUserId,
+          displayName: sanitizePlatformDisplayName(body.displayName)
+        },
+        select: { id: true, platform: true, externalUserId: true, displayName: true }
+      });
+
+      await tx.platformBindingCode.update({
+        where: { id: binding.id },
+        data: { consumedAt: new Date() }
+      });
+
+      return {
+        user: {
+          id: binding.user.id,
+          email: binding.user.email,
+          role: binding.user.role,
+          displayName: binding.user.displayName
+        },
+        externalAccount: account
+      };
+    });
   }
 
   getOAuthStartUrl(platform: OAuthPlatform, portal: OAuthPortal) {
@@ -885,6 +999,37 @@ function hashEmailCode(email: string, code: string) {
     throw new InternalServerErrorException("JWT_SECRET is not configured");
   }
   return createHash("sha256").update(`${secret}:${email}:${code}`).digest("hex");
+}
+
+function generatePlatformBindingCode() {
+  return randomBytes(4).toString("hex").toUpperCase();
+}
+
+function normalizeBindingCode(code?: string) {
+  return code?.trim().replace(/\s+/g, "").toUpperCase();
+}
+
+function hashPlatformBindingCode(platform: BotPlatform, code: string) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new InternalServerErrorException("JWT_SECRET is not configured");
+  }
+  return createHash("sha256").update(`${secret}:${platform}:${normalizeBindingCode(code)}`).digest("hex");
+}
+
+function parseBindingPlatform(platform: BotPlatform | string) {
+  if (platform === BotPlatform.DISCORD || platform === "DISCORD") return BotPlatform.DISCORD;
+  if (platform === BotPlatform.KOOK || platform === "KOOK") return BotPlatform.KOOK;
+  throw new BadRequestException("platform must be DISCORD or KOOK");
+}
+
+function platformLabel(platform: BotPlatform) {
+  return platform === BotPlatform.DISCORD ? "Discord" : "KOOK";
+}
+
+function sanitizePlatformDisplayName(displayName?: string) {
+  const normalized = displayName?.normalize("NFKC").trim().replace(/\s+/g, " ");
+  return normalized ? normalized.slice(0, 64) : undefined;
 }
 
 async function generateUniqueReferralCode(tx: Prisma.TransactionClient, prefix: string) {

@@ -141,7 +141,16 @@ async function main() {
 }
 
 function buildMessage(title, lines) {
-  return [`**${title}**`, "", ...lines].join("\n");
+  return [
+    `**${title}**`,
+    "",
+    ...lines,
+    "",
+    "━━━━━━━━━━━━━━━━",
+    "Website: https://maycatplay.com/customer/",
+    "Account binding: https://maycatplay.com/customer/settings",
+    "May猫饼规则：下单、派单、充值、提现、投诉都以网站后台记录为准。"
+  ].join("\n");
 }
 
 function loadEnv(filePath) {

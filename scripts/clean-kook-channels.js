@@ -239,6 +239,9 @@ async function decorateAiDispatch(token, env, channels) {
     "",
     "━━━━━━━━━━━━━━━━",
     "",
+    "Website: https://maycatplay.com/customer/",
+    "Account binding: https://maycatplay.com/customer/settings",
+    "",
     "May猫饼规则：派单、报名、确认、结算都以网站后台记录为准。"
   ].join("\n");
 

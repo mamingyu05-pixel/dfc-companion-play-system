@@ -1,6 +1,7 @@
 import { Body, Controller, Post, UseGuards } from "@nestjs/common";
 import { BotPlatform, OrderSourcePlatform } from "@prisma/client";
 import { BotInternalGuard } from "../bot/bot-internal.guard";
+import { AuthService } from "../auth/auth.service";
 import { OrderDraftsService } from "../orders/order-drafts.service";
 import { OrdersService } from "../orders/orders.service";
 import { PlatformSupportService } from "../support/platform-support.service";
@@ -10,7 +11,8 @@ export class DiscordWebhookController {
   constructor(
     private readonly orders: OrdersService,
     private readonly orderDrafts: OrderDraftsService,
-    private readonly platformSupport: PlatformSupportService
+    private readonly platformSupport: PlatformSupportService,
+    private readonly auth: AuthService
   ) {}
 
   @Post("orders/accept")
@@ -67,6 +69,16 @@ export class DiscordWebhookController {
       messageId: body.messageId,
       content: body.content,
       isDirect: body.isDirect
+    });
+  }
+
+  @Post("account-bindings/consume")
+  @UseGuards(BotInternalGuard)
+  consumeAccountBinding(@Body() body: { code: string; discordUserId: string; displayName?: string }) {
+    return this.auth.consumePlatformBindingCode(BotPlatform.DISCORD, {
+      code: body.code,
+      externalUserId: body.discordUserId,
+      displayName: body.displayName
     });
   }
 }

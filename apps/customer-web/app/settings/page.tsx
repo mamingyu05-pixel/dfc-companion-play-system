@@ -5,8 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { CustomerShell } from "../components";
 
+type Platform = "DISCORD" | "KOOK";
+
 type ExternalAccount = {
-  platform: "DISCORD" | "KOOK";
+  platform: Platform;
   externalUserId: string;
   displayName?: string | null;
   createdAt: string;
@@ -38,6 +40,13 @@ type CustomerSettingsProfile = {
   externalAccounts?: ExternalAccount[];
 };
 
+type BindingCode = {
+  platform: Platform;
+  code: string;
+  expiresAt: string;
+  instruction: string;
+};
+
 type PublicConfig = {
   support?: {
     discordUrl?: string | null;
@@ -47,7 +56,7 @@ type PublicConfig = {
   };
 };
 
-const platformLabels: Record<ExternalAccount["platform"], string> = {
+const platformLabels: Record<Platform, string> = {
   DISCORD: "Discord",
   KOOK: "KOOK"
 };
@@ -55,6 +64,8 @@ const platformLabels: Record<ExternalAccount["platform"], string> = {
 export default function CustomerSettingsPage() {
   const [profile, setProfile] = useState<CustomerSettingsProfile | null>(null);
   const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
+  const [bindingCode, setBindingCode] = useState<BindingCode | null>(null);
+  const [bindingLoading, setBindingLoading] = useState<Platform | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -107,6 +118,34 @@ export default function CustomerSettingsPage() {
     }
   }
 
+  async function requestBindingCode(platform: Platform) {
+    const token = localStorage.getItem("dfc_customer_token");
+    if (!token) {
+      window.location.href = "/customer/";
+      return;
+    }
+
+    setError("");
+    setBindingLoading(platform);
+    try {
+      const response = await fetch("/api/auth/platform-binding-code", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ platform })
+      });
+      const data = (await response.json().catch(() => ({}))) as BindingCode & { message?: string };
+      if (!response.ok) throw new Error(data.message || "生成绑定码失败");
+      setBindingCode(data);
+    } catch (bindingError) {
+      setError(bindingError instanceof Error ? bindingError.message : "生成绑定码失败");
+    } finally {
+      setBindingLoading(null);
+    }
+  }
+
   function logout() {
     localStorage.removeItem("dfc_customer_token");
     localStorage.removeItem("dfc_customer_user");
@@ -120,7 +159,7 @@ export default function CustomerSettingsPage() {
           <div>
             <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Account Console</div>
             <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-5xl">
-              账号控制台。
+              账号控制台
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
               查看账号资料、邀请码、平台绑定、钱包状态和人工客服入口。这里不会显示后台密码、Token 或其他敏感凭据。
@@ -144,11 +183,11 @@ export default function CustomerSettingsPage() {
           <InfoLine label="会员等级" value={profile?.customerMembership?.name ?? "新人"} />
           <InfoLine label="累计充值" value={`¥${formatMoney(profile?.customerMembership?.totalApprovedRecharge ?? "0")}`} />
           <InfoLine label="首单状态" value={profile?.customerMembership?.hasCompletedOrder ? "已完成首单" : "未完成首单"} />
-          <InfoLine label="下一级门槛" value={profile?.customerMembership?.nextMinRecharge ? `¥${formatMoney(profile.customerMembership.nextMinRecharge)}` : "已满级"} />
+          <InfoLine label="下一等级门槛" value={profile?.customerMembership?.nextMinRecharge ? `¥${formatMoney(profile.customerMembership.nextMinRecharge)}` : "已满级"} />
           <InfoLine label="当前权益" value={profile?.customerMembership?.benefits?.join(" / ") || "人工客服引导"} />
           <InfoLine label="客户 ID" value={profile?.user.id ?? "-"} mono />
           <div className="mt-4 rounded-dfc-control border border-dfc-border bg-dfc-bg p-3 text-xs leading-5 text-dfc-subtext">
-            会员等级按累计审核通过充值金额自动计算，绑定 KOOK 后会同步到 KOOK 右侧成员列表。昵称、邮箱或平台账号异常时，联系人工客服处理。
+            会员等级按累计审核通过充值金额自动计算。绑定 KOOK 或 Discord 后，频道里的客服、派单和订单记录才能准确关联到这个网站账号。
           </div>
         </Panel>
 
@@ -166,7 +205,7 @@ export default function CustomerSettingsPage() {
             </button>
           </div>
           <div className="mt-3 text-xs leading-5 text-dfc-subtext">
-            老带新奖励、首充赠送和优惠码规则以后台活动配置为准，不由客服口头承诺。
+            老带新奖励、首充赠送和优惠码规则以后后台活动配置为准，不由客服口头承诺。
           </div>
         </Panel>
 
@@ -174,15 +213,36 @@ export default function CustomerSettingsPage() {
           <PlatformAccount account={kookAccount} platform="KOOK" />
           <PlatformAccount account={discordAccount} platform="DISCORD" />
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <a href="/api/auth/oauth/kook/start?portal=customer" className="maycat-button-secondary px-3 py-3 text-center text-sm font-black">
-              绑定 KOOK
-            </a>
-            <a href="/api/auth/oauth/discord/start?portal=customer" className="maycat-button-secondary px-3 py-3 text-center text-sm font-black">
-              绑定 Discord
-            </a>
+            <button
+              type="button"
+              onClick={() => requestBindingCode("KOOK")}
+              disabled={bindingLoading !== null}
+              className="maycat-button-secondary px-3 py-3 text-center text-sm font-black disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {bindingLoading === "KOOK" ? "生成中..." : "生成 KOOK 绑定码"}
+            </button>
+            <button
+              type="button"
+              onClick={() => requestBindingCode("DISCORD")}
+              disabled={bindingLoading !== null}
+              className="maycat-button-secondary px-3 py-3 text-center text-sm font-black disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {bindingLoading === "DISCORD" ? "生成中..." : "生成 Discord 绑定码"}
+            </button>
           </div>
+          {bindingCode ? (
+            <div className="mt-4 rounded-dfc border border-cyan-300/30 bg-cyan-300/10 p-4">
+              <div className="text-xs text-dfc-muted">{platformLabels[bindingCode.platform]} 绑定码</div>
+              <div className="mt-2 select-all break-all font-mono text-3xl font-black tracking-[0.18em] text-cyan-100">{bindingCode.code}</div>
+              <div className="mt-3 rounded-dfc-control border border-dfc-border bg-[#050711]/80 px-3 py-2 text-sm text-dfc-text">
+                在 {platformLabels[bindingCode.platform]} 客服机器人私聊或客服接待频道发送：
+                <span className="ml-1 font-mono text-cyan-200">绑定 {bindingCode.code}</span>
+              </div>
+              <div className="mt-2 text-xs text-dfc-subtext">10 分钟内有效。过期后重新生成即可。</div>
+            </div>
+          ) : null}
           <div className="mt-3 rounded-dfc-control border border-dfc-warning/30 bg-dfc-warning/10 px-3 py-2 text-xs text-dfc-warning">
-            平台绑定只用于识别 KOOK/DC 内的订单、派单和客服记录，不会自动扣款。
+            KOOK OAuth 如果因为备案审核无法接入，也可以使用绑定码。绑定后后台仍能看到 KOOK 用户、订单草稿、报名和客服记录。
           </div>
         </Panel>
 
@@ -245,7 +305,7 @@ function InfoLine({ label, value, mono }: { label: string; value: string; mono?:
   );
 }
 
-function PlatformAccount({ account, platform }: { account?: ExternalAccount; platform: ExternalAccount["platform"] }) {
+function PlatformAccount({ account, platform }: { account?: ExternalAccount; platform: Platform }) {
   return (
     <div className="mb-3 rounded-dfc-control border border-cyan-300/20 bg-[#07111f]/70 p-3">
       <div className="flex items-center justify-between gap-3">

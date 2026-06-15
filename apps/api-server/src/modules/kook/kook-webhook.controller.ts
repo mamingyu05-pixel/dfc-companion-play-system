@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, HttpCode, Post, UnauthorizedException, UseGuards } from "@nestjs/common";
 import { createDecipheriv } from "node:crypto";
 import { BotPlatform, OrderSourcePlatform } from "@prisma/client";
+import { AuthService } from "../auth/auth.service";
 import { BotInternalGuard } from "../bot/bot-internal.guard";
 import { BotNotificationService } from "../bot/bot-notification.service";
 import { OrderDraftsService } from "../orders/order-drafts.service";
@@ -13,7 +14,8 @@ export class KookWebhookController {
     private readonly orders: OrdersService,
     private readonly orderDrafts: OrderDraftsService,
     private readonly platformSupport: PlatformSupportService,
-    private readonly botNotifications: BotNotificationService
+    private readonly botNotifications: BotNotificationService,
+    private readonly auth: AuthService
   ) {}
 
   @Post("orders/accept")
@@ -111,6 +113,16 @@ export class KookWebhookController {
     });
   }
 
+  @Post("account-bindings/consume")
+  @UseGuards(BotInternalGuard)
+  consumeAccountBinding(@Body() body: { code: string; kookUserId: string; displayName?: string }) {
+    return this.auth.consumePlatformBindingCode(BotPlatform.KOOK, {
+      code: body.code,
+      externalUserId: body.kookUserId,
+      displayName: body.displayName
+    });
+  }
+
   private async handlePlatformTextMessage(body: KookWebhookBody) {
     const content = this.extractContent(body);
     const kookUserId = this.extractKookUserId(body);
@@ -121,6 +133,11 @@ export class KookWebhookController {
 
     if (!content || !kookUserId) return { ignored: true };
     if (body.d?.extra?.author?.bot) return { ignored: true };
+
+    const bindingCode = parseBindingText(content);
+    if (bindingCode) {
+      return this.handleAccountBinding(body, bindingCode, kookUserId);
+    }
 
     if (!isDirect && channelId && dispatchChannelIds.includes(channelId)) {
       return this.handleDispatchApplyText(body, content, kookUserId);
@@ -154,6 +171,34 @@ export class KookWebhookController {
     await this.platformSupport.markReplyMessage(result.conversationId, notification?.messageId);
 
     return { ...result, notification };
+  }
+
+  private async handleAccountBinding(body: KookWebhookBody, code: string, kookUserId: string) {
+    const channelId = this.extractChannelId(body);
+    const isDirect = body.d?.channel_type === "PERSON";
+
+    try {
+      const result = await this.auth.consumePlatformBindingCode(BotPlatform.KOOK, {
+        code,
+        externalUserId: kookUserId,
+        displayName: this.extractAuthorName(body)
+      });
+      const reply = `绑定成功：${result.user.displayName}。以后 KOOK 里的客服、派单和订单记录会关联到你的网站账号。`;
+      const notification = isDirect
+        ? await this.botNotifications.sendKookDirectMessage(kookUserId, reply)
+        : channelId
+          ? await this.botNotifications.sendKookChannelText(channelId, `(met)${kookUserId}(met) ${reply}`)
+          : null;
+      return { bound: true, notification };
+    } catch (error) {
+      const reply = `绑定失败：${errorMessage(error)}。请回网站个人设置重新生成绑定码，10 分钟内使用。`;
+      const notification = isDirect
+        ? await this.botNotifications.sendKookDirectMessage(kookUserId, reply)
+        : channelId
+          ? await this.botNotifications.sendKookChannelText(channelId, `(met)${kookUserId}(met) ${reply}`)
+          : null;
+      return { bound: false, notification };
+    }
   }
 
   private async handleDispatchApplyText(body: KookWebhookBody, content: string, kookUserId: string) {
@@ -264,6 +309,16 @@ export class KookWebhookController {
   private extractAuthorName(body: KookWebhookBody): string | undefined {
     return body.d?.extra?.author?.nickname ?? body.d?.extra?.author?.username;
   }
+}
+
+function parseBindingText(content: string) {
+  const match = content.trim().match(/^(?:绑定|綁定|bind|绑定码|綁定碼)\s*[:：]?\s*([A-Z0-9]{6,12})$/i);
+  return match?.[1]?.toUpperCase();
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 interface KookWebhookBody {

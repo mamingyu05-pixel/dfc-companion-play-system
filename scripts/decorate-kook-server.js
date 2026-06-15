@@ -384,6 +384,9 @@ function buildIntroMessage(item) {
     "",
     "━━━━━━━━━━━━━━━━",
     "",
+    "Website: https://maycatplay.com/customer/",
+    "Account binding: https://maycatplay.com/customer/settings",
+    "",
     "May猫饼电竞：下单、派单、充值、提现、投诉都以网站后台记录为准。"
   ].join("\n");
 }

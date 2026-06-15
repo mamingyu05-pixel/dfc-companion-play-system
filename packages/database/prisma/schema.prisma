@@ -247,6 +247,7 @@ model User {
   createdPromotionCodes      PromotionCode[]     @relation("PromotionCodeCreator")
   botEvents                  BotEvent[]          @relation("BotEventActor")
   externalAccounts           UserExternalAccount[]
+  platformBindingCodes       PlatformBindingCode[]
   supportConversations       AiSupportConversation[]
 
   @@unique([role, displayNameKey])
@@ -283,6 +284,22 @@ model UserExternalAccount {
   @@unique([userId, platform])
   @@index([userId])
   @@map("user_external_accounts")
+}
+
+model PlatformBindingCode {
+  id         String      @id @default(cuid())
+  userId     String
+  platform   BotPlatform
+  codeHash   String      @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime    @default(now())
+
+  user       User        @relation(fields: [userId], references: [id])
+
+  @@index([userId, platform])
+  @@index([expiresAt])
+  @@map("platform_binding_codes")
 }
 
 model CompanionProfile {

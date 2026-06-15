@@ -38,6 +38,12 @@ export class AuthController {
     return this.auth.getPublicConfig();
   }
 
+  @Post("platform-binding-code")
+  @UseGuards(JwtAuthGuard)
+  createPlatformBindingCode(@CurrentUser() user: AuthenticatedUser, @Body() body: { platform: "DISCORD" | "KOOK" }) {
+    return this.auth.createPlatformBindingCode(user.id, body);
+  }
+
   @Get("oauth/:platform/start")
   startOAuth(
     @Param("platform") platform: "discord" | "kook",
