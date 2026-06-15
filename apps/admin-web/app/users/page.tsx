@@ -281,12 +281,15 @@ export default function UsersPage() {
     ? users.filter((user) => [user.id, user.email, user.displayName, user.role, user.status].some((value) => value.toLowerCase().includes(normalizedSearch)))
     : users;
   const customerOptions = users.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
+  const companionCandidateOptions = users.filter(
+    (user) => ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "COMPANION"].includes(user.role) && user.status === "ACTIVE" && !user.companionProfile
+  );
   const passwordResetOptions = users.filter((user) => user.status === "ACTIVE");
   const promotableUserOptions = users.filter((user) => (user.role === "CUSTOMER" || user.role === "ADMIN") && user.status === "ACTIVE");
 
   const stats = useMemo(() => {
     const customers = users.filter((user) => user.role === "CUSTOMER").length;
-    const companions = users.filter((user) => user.role === "COMPANION").length;
+    const companions = users.filter((user) => Boolean(user.companionProfile)).length;
     const admins = users.filter((user) => user.role === "ADMIN" || user.role === "SUPER_ADMIN").length;
     const banned = users.filter((user) => user.status === "BANNED").length;
     return { customers, companions, admins, banned };
@@ -333,7 +336,7 @@ export default function UsersPage() {
       {status ? <Alert tone="success">{status}</Alert> : null}
 
       <section className="mb-6 grid gap-4 xl:grid-cols-2">
-        <AdminPanel title="客户转为陪玩" hint="适合老客户申请入驻。保留原账号、钱包、绑定和历史记录，转为待审核陪玩后再由后台上架。">
+        <AdminPanel title="给现有账号开通陪玩身份" hint="适合老客户、管理员前期兼职陪玩。保留原角色、账号、钱包、绑定和历史记录，只新增待审核陪玩资料。">
           <div className="grid gap-3 md:grid-cols-2">
             <select
               value={companionCustomerId}
@@ -345,8 +348,8 @@ export default function UsersPage() {
               }}
               className="input"
             >
-              <option value="">选择要转为陪玩的客户</option>
-              {customerOptions.map((user) => (
+              <option value="">选择要开通陪玩身份的账号</option>
+              {companionCandidateOptions.map((user) => (
                 <option key={user.id} value={user.id}>{user.displayName} / {user.email}</option>
               ))}
             </select>
@@ -357,7 +360,7 @@ export default function UsersPage() {
             <input value={companionPricePerHour} onChange={(event) => setCompanionPricePerHour(event.target.value)} className="input" placeholder="每小时价格，例如 100" inputMode="decimal" />
           </div>
           <input value={companionNote} onChange={(event) => setCompanionNote(event.target.value)} className="input mt-3" placeholder="备注，例如老客户申请入驻，已完成试音考核" />
-          <ActionButton onClick={() => void convertCustomerToCompanion()}>转为待审核陪玩</ActionButton>
+          <ActionButton onClick={() => void convertCustomerToCompanion()}>开通待审核陪玩身份</ActionButton>
         </AdminPanel>
 
         <AdminPanel title="搜索用户 / 人工调账" hint="客户余额手动增加或扣减都会写入钱包流水。">

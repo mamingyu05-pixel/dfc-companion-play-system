@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { BotPlatform, UserRole } from "@prisma/client";
+import { BotPlatform, UserStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
@@ -14,7 +14,7 @@ export class CompanionExternalAccountsService {
     actorId?: string
   ) {
     const companion = await this.prisma.user.findFirst({
-      where: { id: companionId, role: UserRole.COMPANION }
+      where: { id: companionId, status: UserStatus.ACTIVE, companionProfile: { isNot: null } }
     });
 
     if (!companion) throw new BadRequestException("Companion does not exist");

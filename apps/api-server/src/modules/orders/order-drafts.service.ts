@@ -302,7 +302,6 @@ export class OrderDraftsService {
           platform: platform === OrderSourcePlatform.DISCORD ? "DISCORD" : "KOOK",
           externalUserId: platformUserId,
           user: {
-            role: UserRole.COMPANION,
             status: UserStatus.ACTIVE,
             companionProfile: { is: { game: draft.game, status: CompanionProfileStatus.LISTED } }
           }
@@ -619,7 +618,6 @@ export class OrderDraftsService {
     const companion = await tx.user.findFirst({
       where: {
         id: companionId,
-        role: UserRole.COMPANION,
         status: UserStatus.ACTIVE,
         companionProfile: { is: { game, status: CompanionProfileStatus.LISTED } }
       },

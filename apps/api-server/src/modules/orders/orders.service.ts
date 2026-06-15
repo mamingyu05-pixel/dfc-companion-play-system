@@ -28,7 +28,7 @@ export class OrdersService {
       where: {
         game,
         status: CompanionProfileStatus.LISTED,
-        user: { is: { role: UserRole.COMPANION, status: UserStatus.ACTIVE } }
+        user: { is: { status: UserStatus.ACTIVE } }
       },
       orderBy: [{ onlineStatus: "asc" }, { updatedAt: "desc" }],
       include: {
@@ -82,7 +82,6 @@ export class OrdersService {
     const companion = await this.prisma.user.findFirst({
       where: {
         id: companionId,
-        role: UserRole.COMPANION,
         status: UserStatus.ACTIVE,
         companionProfile: { is: { status: CompanionProfileStatus.LISTED } }
       }
@@ -233,7 +232,6 @@ export class OrdersService {
       const companion = await tx.user.findFirst({
         where: {
           id: companionId,
-          role: UserRole.COMPANION,
           status: UserStatus.ACTIVE,
           companionProfile: {
             is: {
@@ -310,7 +308,7 @@ export class OrdersService {
       });
 
       if (!externalAccount) throw new BadRequestException("Platform user is not bound to a companion account");
-      if (externalAccount.user.role !== UserRole.COMPANION || externalAccount.user.status !== UserStatus.ACTIVE) {
+      if (externalAccount.user.status !== UserStatus.ACTIVE) {
         throw new BadRequestException("Bound user is not an active companion");
       }
 
@@ -394,7 +392,6 @@ export class OrdersService {
       const companion = await tx.user.findFirst({
         where: {
           id: companionId,
-          role: UserRole.COMPANION,
           status: UserStatus.ACTIVE,
           companionProfile: { is: { status: CompanionProfileStatus.LISTED } }
         }
@@ -663,7 +660,7 @@ export class OrdersService {
       });
     }
 
-    if (referral.referrer.role === UserRole.COMPANION && companionReferralReward.gt(0)) {
+    if (referral.sourceType === "COMPANION" && companionReferralReward.gt(0)) {
       const referrerWallet = referral.referrer.wallet
         ? await tx.wallet.update({
             where: { id: referral.referrer.wallet.id },
@@ -739,7 +736,7 @@ export class OrdersService {
         referrer: { include: { wallet: true } }
       }
     });
-    if (!referral || referral.sourceType !== "COMPANION" || referral.referrer.role !== UserRole.COMPANION) return;
+    if (!referral || referral.sourceType !== "COMPANION" || referral.referrer.status !== UserStatus.ACTIVE) return;
 
     const rate = await this.getPlatformSettingRate(tx, "COMPANION_REFERRAL_COMMISSION_RATE", "0.01");
     const rawReward = input.orderTotalAmount.mul(rate).toDecimalPlaces(2);
@@ -809,7 +806,6 @@ export class OrdersService {
         status: CompanionProfileStatus.LISTED,
         user: {
           is: {
-            role: UserRole.COMPANION,
             status: UserStatus.ACTIVE
           }
         }

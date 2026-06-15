@@ -22,8 +22,8 @@ export function CompanionAuthGate({ children }: { children: ReactNode }) {
         if (!response.ok) {
           throw new Error("Unauthorized");
         }
-        const data = (await response.json()) as { user?: { role?: string } };
-        if (data.user?.role !== "COMPANION") {
+        const data = (await response.json()) as { companionProfile?: unknown };
+        if (!data.companionProfile) {
           throw new Error("Forbidden");
         }
         setStatus("allowed");

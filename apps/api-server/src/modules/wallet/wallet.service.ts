@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import {
+  CompanionProfileStatus,
   Prisma,
   ReviewStatus,
   TransactionDirection,
@@ -82,6 +83,7 @@ export class WalletService {
   }
 
   async getCompanionWalletSummary(userId: string) {
+    await this.assertCompanionAccess(userId);
     const [wallet, withdrawalRequests] = await Promise.all([
       this.prisma.wallet.findUnique({
         where: { userId },
@@ -135,6 +137,7 @@ export class WalletService {
   }
 
   async getCompanionPayoutProfile(userId: string) {
+    await this.assertCompanionAccess(userId);
     const profile = await this.prisma.companionProfile.findUnique({
       where: { userId },
       select: {
@@ -152,6 +155,7 @@ export class WalletService {
     userId: string,
     body: { payoutMethod?: string; payoutAccountName?: string; payoutAccountNo?: string; payoutQrCodeUrl?: string }
   ) {
+    await this.assertCompanionAccess(userId);
     const payoutMethod = sanitizeText(body.payoutMethod || "ALIPAY", 30);
     const payoutAccountName = sanitizeText(body.payoutAccountName, 50);
     const payoutAccountNo = sanitizeText(body.payoutAccountNo, 120);
@@ -480,7 +484,11 @@ export class WalletService {
 
     return this.prisma.$transaction(async (tx) => {
       const companion = await tx.user.findFirst({
-        where: { id: companionId, role: UserRole.COMPANION, status: UserStatus.ACTIVE },
+        where: {
+          id: companionId,
+          status: UserStatus.ACTIVE,
+          companionProfile: { is: { status: { not: CompanionProfileStatus.BANNED } } }
+        },
         include: { wallet: true, companionProfile: true }
       });
       if (!companion?.wallet) throw new BadRequestException("Companion wallet does not exist");
@@ -525,6 +533,18 @@ export class WalletService {
 
       return request;
     });
+  }
+
+  private async assertCompanionAccess(userId: string) {
+    const companion = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        status: UserStatus.ACTIVE,
+        companionProfile: { is: { status: { not: CompanionProfileStatus.BANNED } } }
+      },
+      select: { id: true }
+    });
+    if (!companion) throw new BadRequestException("Companion profile does not exist or is unavailable");
   }
 
   async reviewWithdrawal(

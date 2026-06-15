@@ -277,13 +277,13 @@ export class AuthService {
         const referrer = body.referralCode
           ? await tx.user.findFirst({
               where: { referralCode: body.referralCode, status: "ACTIVE" },
-              select: { id: true, role: true }
+              select: { id: true, role: true, companionProfile: { select: { id: true } } }
             })
           : null;
         if (body.referralCode && !referrer) {
           throw new BadRequestException("Referral code is invalid");
         }
-        if (referrer?.role === UserRole.ADMIN || referrer?.role === UserRole.SUPER_ADMIN) {
+        if ((referrer?.role === UserRole.ADMIN || referrer?.role === UserRole.SUPER_ADMIN) && !referrer.companionProfile) {
           throw new BadRequestException("Referral code is invalid");
         }
 
@@ -305,7 +305,7 @@ export class AuthService {
             data: {
               referrerId: referrer.id,
               referredUserId: created.id,
-              sourceType: referrer.role === UserRole.COMPANION ? "COMPANION" : "CUSTOMER"
+              sourceType: referrer.companionProfile ? "COMPANION" : "CUSTOMER"
             }
           });
         }
@@ -386,7 +386,7 @@ export class AuthService {
       throw new UnauthorizedException("User is not active");
     }
 
-    if (!this.roleCanEnterPortal(user.role, body.portal)) {
+    if (!this.roleCanEnterPortal(user, body.portal)) {
       throw new ForbiddenPortalException();
     }
 
@@ -648,15 +648,18 @@ export class AuthService {
           externalUserId: profile.externalUserId
         }
       },
-      include: { user: true }
+      include: { user: { include: { companionProfile: true } } }
     });
 
     if (existingAccount) {
-      if (existingAccount.user.role !== role) {
-        throw new UnauthorizedException("这个第三方账号已绑定到其他入口");
-      }
       if (existingAccount.user.status !== "ACTIVE") {
         throw new UnauthorizedException("User is not active");
+      }
+      if (portal === "companion" && !existingAccount.user.companionProfile) {
+        throw new UnauthorizedException("Companion access is not enabled for this account");
+      }
+      if (portal === "customer" && existingAccount.user.role !== UserRole.CUSTOMER) {
+        throw new UnauthorizedException("This third-party account is already bound to another portal");
       }
       await this.prisma.userExternalAccount.update({
         where: { id: existingAccount.id },
@@ -914,10 +917,10 @@ export class AuthService {
     return this.jwt.signAsync(payload, { secret, expiresIn: process.env.JWT_EXPIRES_IN ?? "7d" });
   }
 
-  private roleCanEnterPortal(role: UserRole, portal: Portal) {
-    if (portal === "customer") return role === UserRole.CUSTOMER;
-    if (portal === "companion") return role === UserRole.COMPANION;
-    return role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN;
+  private roleCanEnterPortal(user: { role: UserRole; companionProfile?: { status: CompanionProfileStatus } | null }, portal: Portal) {
+    if (portal === "customer") return user.role === UserRole.CUSTOMER;
+    if (portal === "companion") return Boolean(user.companionProfile);
+    return user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
   }
 
   private async sendVerificationEmail(email: string, code: string, _actionLabel = "注册") {

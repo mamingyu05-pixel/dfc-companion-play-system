@@ -26,7 +26,7 @@ export class WalletController {
 
   @Get("companion-summary")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.COMPANION)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   getCompanionWalletSummary(@CurrentUser() user: AuthenticatedUser) {
     return this.wallet.getCompanionWalletSummary(user.id);
   }
@@ -43,7 +43,7 @@ export class WalletController {
 
   @Post("withdrawal-requests")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.COMPANION)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   createWithdrawalRequest(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: { amount: string; payoutAccount: string; note?: string }
@@ -53,14 +53,14 @@ export class WalletController {
 
   @Get("companion-payout-profile")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.COMPANION)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   getCompanionPayoutProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.wallet.getCompanionPayoutProfile(user.id);
   }
 
   @Patch("companion-payout-profile")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.COMPANION)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   updateCompanionPayoutProfile(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: { payoutMethod?: string; payoutAccountName?: string; payoutAccountNo?: string; payoutQrCodeUrl?: string }

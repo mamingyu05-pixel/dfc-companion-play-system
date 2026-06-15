@@ -1047,8 +1047,7 @@ export class AdminController {
     }
 
     const nickname = body.nickname.trim();
-    const displayNameKey = normalizeDisplayNameKey(nickname);
-    if (!nickname || !displayNameKey) {
+    if (!nickname) {
       throw new BadRequestException("nickname and pricePerHour are required");
     }
 
@@ -1067,16 +1066,12 @@ export class AdminController {
           include: { wallet: true, companionProfile: true }
         });
         if (!target) throw new BadRequestException("User does not exist");
-        if (target.status !== UserStatus.ACTIVE) throw new BadRequestException("User must be active before becoming companion");
-        if (target.role !== UserRole.CUSTOMER) throw new BadRequestException("Only customer accounts can become companion");
+        if (target.status !== UserStatus.ACTIVE) throw new BadRequestException("User must be active before enabling companion access");
         if (target.companionProfile) throw new BadRequestException("Companion profile already exists");
 
         const updated = await tx.user.update({
           where: { id },
           data: {
-            role: UserRole.COMPANION,
-            displayName: nickname,
-            displayNameKey,
             referralCode: target.referralCode ?? (await generateUniqueReferralCode(tx, "P")),
             wallet: target.wallet ? undefined : { create: {} },
             companionProfile: {
@@ -1110,7 +1105,7 @@ export class AdminController {
           data: {
             actorId: user.id,
             targetUserId: id,
-            action: "CONVERT_CUSTOMER_TO_COMPANION",
+            action: "ENABLE_COMPANION_ACCESS",
             entityType: "USER",
             entityId: id,
             detail: {

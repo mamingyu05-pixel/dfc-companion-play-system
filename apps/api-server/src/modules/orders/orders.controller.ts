@@ -32,14 +32,14 @@ export class OrdersController {
 
   @Get("companion/available")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.COMPANION)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   listAvailableOrders(@CurrentUser() user: AuthenticatedUser) {
     return this.orders.listAvailableOrdersForCompanion(user.id);
   }
 
   @Get("companion/my")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.COMPANION)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   listCompanionOrders(@CurrentUser() user: AuthenticatedUser) {
     return this.orders.listCompanionOrders(user.id);
   }
@@ -56,21 +56,21 @@ export class OrdersController {
 
   @Patch(":id/start")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   startOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.orders.startOrder(id, user.id);
   }
 
   @Patch(":id/accept")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.COMPANION)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   acceptOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.orders.acceptOrderFromWeb(id, user.id);
   }
 
   @Patch(":id/complete")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   completeOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.orders.completeOrder(id, user.id);
   }
