@@ -311,7 +311,9 @@ export default function UsersPage() {
       {user.companionProfile ? <div className="mt-1 text-xs text-cyan-200">{user.companionProfile.nickname} / ¥{formatMoney(user.companionProfile.pricePerHour)}/h</div> : null}
     </div>,
     <StatusBadge key={`${user.id}-role`} tone={user.role === "SUPER_ADMIN" ? "danger" : user.role === "ADMIN" ? "warning" : "default"}>{toUserRole(user.role)}</StatusBadge>,
-    <StatusBadge key={`${user.id}-status`} tone={user.status === "ACTIVE" ? "success" : "danger"}>{toUserStatus(user.status)}</StatusBadge>,
+    <StatusBadge key={`${user.id}-status`} tone={hasInvalidExternalAccount(user) ? "warning" : user.status === "ACTIVE" ? "success" : "danger"}>
+      {hasInvalidExternalAccount(user) ? "异常占位" : toUserStatus(user.status)}
+    </StatusBadge>,
     <div key={`${user.id}-wallet`} className="text-xs leading-5">
       <div className="font-black text-dfc-gold">余额 ¥{formatMoney(user.wallet?.availableBalance ?? "0")}</div>
       <div className="text-dfc-muted">冻结 ¥{formatMoney(user.wallet?.frozenBalance ?? "0")}</div>
@@ -523,6 +525,10 @@ function isValidExternalAccount(account: AdminUser["externalAccounts"][number]) 
   if (account.platform === "KOOK") return /^\d{6,}$/.test(account.externalUserId);
   if (account.platform === "DISCORD") return /^\d{15,22}$/.test(account.externalUserId);
   return true;
+}
+
+function hasInvalidExternalAccount(user: AdminUser) {
+  return user.externalAccounts.some((account) => !isValidExternalAccount(account));
 }
 
 function userOptionLabel(user: AdminUser) {
