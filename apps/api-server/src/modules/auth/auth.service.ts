@@ -406,8 +406,8 @@ export class AuthService {
         platformMatchUnitPrice: process.env.PLATFORM_MATCH_UNIT_PRICE || null
       },
       support: {
-        discordUrl: process.env.SUPPORT_DISCORD_URL || null,
-        kookUrl: process.env.SUPPORT_KOOK_URL || null,
+        discordUrl: process.env.SUPPORT_DISCORD_URL || "https://discord.gg/dX5prAZMPu",
+        kookUrl: process.env.SUPPORT_KOOK_URL || "https://kook.vip/i0o2qA",
         wechatId: process.env.SUPPORT_WECHAT_ID || null,
         wechatQrUrl: process.env.SUPPORT_WECHAT_QR_URL || null
       }

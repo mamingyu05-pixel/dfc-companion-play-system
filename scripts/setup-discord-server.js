@@ -135,7 +135,7 @@ const rolePlan = [
   ...customerLevelRolePlan,
   { env: "DISCORD_CUSTOMER_SPECIAL_NEON_ROLE_ID", name: "💎 霓虹贵宾", color: 0xf472b6, mentionable: false },
   { env: "DISCORD_CUSTOMER_SPECIAL_HALL_ROLE_ID", name: "👑 May名人堂", color: 0xfacc15, mentionable: false },
-  { env: "DISCORD_COMPANION_ROLE_ID", name: "🎮 认证陪玩", color: 0xa78bfa, mentionable: true },
+  { env: "DISCORD_COMPANION_ROLE_ID", name: "🎮 认证陪玩", color: 0xa78bfa, mentionable: true, hoist: true },
   { env: "DISCORD_VOICE_MOON_ROLE_ID", name: "🌙 月影声线", color: 0xf472b6, mentionable: true },
   { env: "DISCORD_VOICE_SOLAR_ROLE_ID", name: "☀️ 曜刃声线", color: 0x38bdf8, mentionable: true },
   { env: "DISCORD_GAME_DELTA_FORCE_ROLE_ID", name: "🎯 三角洲行动组", color: 0x22d3ee, mentionable: true },

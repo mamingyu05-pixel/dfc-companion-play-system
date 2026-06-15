@@ -16,6 +16,11 @@ type PublicConfig = {
   };
 };
 
+const DEFAULT_PLATFORM_URLS: Record<Platform, string> = {
+  DISCORD: "https://discord.gg/dX5prAZMPu",
+  KOOK: "https://kook.vip/i0o2qA"
+};
+
 type CustomerProfile = {
   user: {
     id: string;
@@ -385,9 +390,9 @@ function getPlatformRouting(accounts: CustomerProfile["externalAccounts"], confi
   const boundPlatforms = Array.from(
     new Set(accounts.map((account) => account.platform).filter((platform): platform is Platform => platform === "KOOK" || platform === "DISCORD"))
   );
-  const kookHref = config.support?.kookUrl || undefined;
-  const discordHref = config.support?.discordUrl || undefined;
-  const hrefByPlatform: Record<Platform, string | undefined> = {
+  const kookHref = config.support?.kookUrl || DEFAULT_PLATFORM_URLS.KOOK;
+  const discordHref = config.support?.discordUrl || DEFAULT_PLATFORM_URLS.DISCORD;
+  const hrefByPlatform: Record<Platform, string> = {
     KOOK: kookHref,
     DISCORD: discordHref
   };
