@@ -41,7 +41,11 @@ const labels: Record<string, { label: string; hint: string }> = {
   },
   COMPANION_REFERRAL_REWARD_AMOUNT: {
     label: "陪玩拉新奖励",
-    hint: "陪玩带来一个客户成功下单后奖励多少金额，需后续接邀请绑定。"
+    hint: "陪玩带来一个客户首单完成后奖励多少固定金额。"
+  },
+  COMPANION_REFERRAL_COMMISSION_RATE: {
+    label: "陪玩持续推广分成",
+    hint: "客户通过陪玩邀请码注册后，每次订单完成给该陪玩多少比例收益。填 0.01 表示 1%。"
   }
 };
 

@@ -95,6 +95,7 @@ function formatDateTime(value: string) {
 function toTransactionType(type: string) {
   const map: Record<string, string> = {
     ORDER_SETTLEMENT: "订单结算",
+    REFERRAL_REWARD: "推广分成",
     WITHDRAWAL: "提现",
     ADMIN_ADJUSTMENT: "管理员调账"
   };

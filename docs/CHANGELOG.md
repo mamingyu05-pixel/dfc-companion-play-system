@@ -2,6 +2,7 @@
 
 ## 2026-06-15
 
+- 陪玩邀请码新增持续推广分成：客户通过陪玩邀请码绑定后，每次订单完成都会按 `COMPANION_REFERRAL_COMMISSION_RATE` 给邀请陪玩结算收益，默认 1%。
 - 新增 Discord 客户会员等级角色同步，充值审核通过和订单完成后会同时尝试同步 KOOK / Discord 的客户等级、未下单客户和高等级专属身份。
 - Discord 初始化脚本新增客户等级角色输出，`.env.example` 和 `.env.production.example` 补齐 `DISCORD_CUSTOMER_*` 变量。
 - KOOK 派单报名按钮改为提示陪玩填写报名信息，避免空报名；真实报名以 `报名 TRY编号 段位/报价/时间/性格/试音` 文本写入后台候选列表。

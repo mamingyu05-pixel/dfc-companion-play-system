@@ -1162,7 +1162,8 @@ function promotionSettingDefaults(): Record<string, string> {
     NEW_CUSTOMER_FIRST_RECHARGE_BONUS_AMOUNT: "新客户首笔审核通过充值固定赠送金额。",
     CUSTOMER_REFERRER_REWARD_AMOUNT: "老客户邀请新客户奖励金额，需要邀请码/邀请绑定后自动发放。",
     CUSTOMER_INVITEE_BONUS_AMOUNT: "被邀请新客户奖励金额，需要邀请码/邀请绑定后自动发放。",
-    COMPANION_REFERRAL_REWARD_AMOUNT: "陪玩带来新客户的奖励金额，需要邀请绑定后自动发放。"
+    COMPANION_REFERRAL_REWARD_AMOUNT: "陪玩带来新客户的首单固定奖励金额，需要邀请绑定后自动发放。",
+    COMPANION_REFERRAL_COMMISSION_RATE: "陪玩邀请码客户每次完成订单的持续推广分成比例，0.01 表示订单金额 1%。"
   };
 }
 
@@ -1172,7 +1173,8 @@ function defaultPromotionSettingValue(key: string) {
     NEW_CUSTOMER_FIRST_RECHARGE_BONUS_AMOUNT: "0",
     CUSTOMER_REFERRER_REWARD_AMOUNT: "10",
     CUSTOMER_INVITEE_BONUS_AMOUNT: "10",
-    COMPANION_REFERRAL_REWARD_AMOUNT: "20"
+    COMPANION_REFERRAL_REWARD_AMOUNT: "20",
+    COMPANION_REFERRAL_COMMISSION_RATE: "0.01"
   };
   return defaults[key] ?? "0";
 }

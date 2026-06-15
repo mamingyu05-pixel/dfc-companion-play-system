@@ -586,6 +586,13 @@ export class OrdersService {
         }
       });
 
+      await this.settleCompanionRecurringReferralCommission(tx, {
+        customerId: order.customerId,
+        orderId,
+        operatorId: actorId,
+        orderTotalAmount: order.totalAmount,
+        platformFee
+      });
       await this.settleReferralReward(tx, order.customerId, orderId, actorId);
 
       await tx.orderStatusLog.create({
@@ -716,11 +723,71 @@ export class OrdersService {
     });
   }
 
+  private async settleCompanionRecurringReferralCommission(
+    tx: Prisma.TransactionClient,
+    input: {
+      customerId: string;
+      orderId: string;
+      operatorId: string;
+      orderTotalAmount: Prisma.Decimal;
+      platformFee: Prisma.Decimal;
+    }
+  ) {
+    const referral = await tx.userReferral.findUnique({
+      where: { referredUserId: input.customerId },
+      include: {
+        referrer: { include: { wallet: true } }
+      }
+    });
+    if (!referral || referral.sourceType !== "COMPANION" || referral.referrer.role !== UserRole.COMPANION) return;
+
+    const rate = await this.getPlatformSettingRate(tx, "COMPANION_REFERRAL_COMMISSION_RATE", "0.01");
+    const rawReward = input.orderTotalAmount.mul(rate).toDecimalPlaces(2);
+    const reward = rawReward.gt(input.platformFee) ? input.platformFee : rawReward;
+    if (reward.lte(0)) return;
+
+    const referrerWallet = referral.referrer.wallet
+      ? await tx.wallet.update({
+          where: { id: referral.referrer.wallet.id },
+          data: { availableIncome: { increment: reward } }
+        })
+      : await tx.wallet.create({
+          data: { userId: referral.referrerId, availableIncome: reward }
+        });
+
+    await tx.walletTransaction.create({
+      data: {
+        walletId: referrerWallet.id,
+        userId: referral.referrerId,
+        operatorId: input.operatorId,
+        type: WalletTransactionType.REFERRAL_REWARD,
+        direction: TransactionDirection.CREDIT,
+        amount: reward,
+        balanceAfter: referrerWallet.availableIncome,
+        referenceType: "ORDER_REFERRAL_COMMISSION",
+        referenceId: input.orderId,
+        note: "Companion recurring referral commission"
+      }
+    });
+  }
+
   private async getPlatformSettingDecimal(tx: Prisma.TransactionClient, key: string, fallback: string) {
     const setting = await tx.platformSetting.findUnique({ where: { key } });
     try {
       const value = new Prisma.Decimal(setting?.value ?? fallback);
       return value.lt(0) ? new Prisma.Decimal(0) : value.toDecimalPlaces(2);
+    } catch {
+      return new Prisma.Decimal(fallback);
+    }
+  }
+
+  private async getPlatformSettingRate(tx: Prisma.TransactionClient, key: string, fallback: string) {
+    const setting = await tx.platformSetting.findUnique({ where: { key } });
+    try {
+      const value = new Prisma.Decimal(setting?.value ?? fallback);
+      if (value.lt(0)) return new Prisma.Decimal(0);
+      if (value.gt(1)) return new Prisma.Decimal(1);
+      return value.toDecimalPlaces(4);
     } catch {
       return new Prisma.Decimal(fallback);
     }
