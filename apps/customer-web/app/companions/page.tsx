@@ -72,17 +72,17 @@ export default function CompanionsPage() {
 
   return (
     <CustomerShell>
-      <section className="maycat-lobby-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 sm:p-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="maycat-lobby-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 md:p-5">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div>
             <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Match Terminal</div>
-            <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-5xl">
+            <h1 className="maycat-text-glow mt-4 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">
               选择今晚的队友。
             </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-dfc-subtext md:text-base">
               先看在线状态、语音偏好和价格，再进入详情或试音。May猫饼会把下单、派单、接单和结算记录完整留在后台。
             </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <Link href="/order" className="maycat-button px-5 py-3 text-center text-sm font-black">
                 直接下单
               </Link>
@@ -92,7 +92,7 @@ export default function CompanionsPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
             <LobbyMetric label="已上架陪玩" value={String(companions.length)} hint="真实后台数据" />
             <LobbyMetric label="当前在线" value={String(onlineCount)} hint="可优先试音/下单" />
             <LobbyMetric label="三角洲行动" value={String(deltaForceCount)} hint="首期重点游戏" />
@@ -100,7 +100,7 @@ export default function CompanionsPage() {
         </div>
       </section>
 
-      <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {games.slice(0, 8).map((game) => (
           <Link
               key={game.code}
@@ -116,7 +116,7 @@ export default function CompanionsPage() {
         ))}
       </section>
 
-      <section className="mt-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <section className="mt-7 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <SectionHeader title="陪玩大厅" desc={`共 ${companions.length} 位陪玩，${onlineCount} 位在线，${voiceCount} 位支持语音。`} />
         <div className="rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 px-3 py-2 text-sm text-dfc-subtext">
           当前筛选：{filters.find((filter) => filter.id === activeFilter)?.label}

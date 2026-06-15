@@ -136,18 +136,18 @@ export default function OrderPage() {
 
   return (
     <CustomerShell>
-      <section className="maycat-order-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 sm:p-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="maycat-order-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 md:p-5">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-end">
           <div>
             <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Order Console</div>
-            <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-5xl">
+            <h1 className="maycat-text-glow mt-4 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">
               提交订单，进入派单队列。
             </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-dfc-subtext md:text-base">
               选择游戏和服务方式，写清楚语音、段位、时间需求。金额由后端计算并冻结余额，管理员确认后进入派单或接单流程。
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
             <OrderStep index="01" title="选游戏" desc={selectedGame?.name ?? game} active />
             <OrderStep index="02" title="定人选" desc={assignmentType === "DIRECT" ? selectedCompanion?.nickname || "指定陪玩" : "平台人工挑人"} active={Boolean(companionId) || assignmentType === "MATCH"} />
             <OrderStep index="03" title="确认金额" desc={priceConfigured ? `¥${formatMoney(String(totalAmount))}` : "待报价"} active={priceConfigured} />
@@ -155,7 +155,7 @@ export default function OrderPage() {
         </div>
       </section>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
+      <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,760px)_320px]">
         <form onSubmit={submit} className="maycat-card p-4 md:p-5">
           <div className="flex flex-col gap-2 border-b border-cyan-300/15 pb-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -194,17 +194,25 @@ export default function OrderPage() {
           {assignmentType === "DIRECT" ? (
             <label className="mt-4 block">
               <span className="text-sm font-semibold text-cyan-50/80">陪玩</span>
-              <select value={companionId} onChange={(event) => setCompanionId(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm">
-                {companions.length ? (
-                  companions.map((companion) => (
+              {companions.length ? (
+                <select value={companionId} onChange={(event) => setCompanionId(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm">
+                  {companions.map((companion) => (
                     <option key={companion.id} value={companion.id}>
                       {companion.nickname} / {companion.deltaForceRank} / ¥{formatMoney(companion.pricePerHour)}/小时
                     </option>
-                  ))
-                ) : (
-                  <option value="">当前游戏暂无上架陪玩，请选择平台人工挑人</option>
-                )}
-              </select>
+                  ))}
+                </select>
+              ) : (
+                <div className="maycat-inline-empty mt-2">
+                  <div>
+                    <div className="text-sm font-black text-white">当前游戏暂无上架陪玩</div>
+                    <p className="mt-1 text-xs leading-5 text-dfc-subtext">可以先提交需求，由客服按语音、段位和预算人工匹配。</p>
+                  </div>
+                  <button type="button" onClick={() => setAssignmentType("MATCH")} className="maycat-button-secondary px-3 py-2 text-xs font-black">
+                    改用人工挑人
+                  </button>
+                </div>
+              )}
             </label>
           ) : null}
 
@@ -304,9 +312,9 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
 
 function OrderStep({ index, title, desc, active }: { index: string; title: string; desc: string; active?: boolean }) {
   return (
-    <div className={`rounded-dfc border p-4 ${active ? "border-cyan-300/35 bg-cyan-300/10" : "border-cyan-300/15 bg-[#07111f]/60"}`}>
-      <div className="text-xs font-black text-fuchsia-300">{index}</div>
-      <div className="mt-2 text-sm font-black text-white">{title}</div>
+    <div className={`rounded-dfc border px-3 py-3 ${active ? "border-cyan-300/35 bg-cyan-300/10" : "border-cyan-300/15 bg-[#07111f]/60"}`}>
+      <div className="text-[11px] font-black text-fuchsia-300">{index}</div>
+      <div className="mt-1 text-sm font-black text-white">{title}</div>
       <div className="mt-1 truncate text-xs text-dfc-subtext">{desc}</div>
     </div>
   );

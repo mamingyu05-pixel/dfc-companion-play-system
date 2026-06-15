@@ -139,18 +139,18 @@ export default function RechargePage() {
 
   return (
     <CustomerShell>
-      <section className="maycat-recharge-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 sm:p-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <section className="maycat-recharge-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 md:p-5">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div>
             <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Wallet Dock</div>
-            <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-5xl">
+            <h1 className="maycat-text-glow mt-4 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">
               余额补给，等待人工确认。
             </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-dfc-subtext md:text-base">
               上传转账截图后进入管理员审核。审核通过才会入账，订单支付、退款和优惠赠送都会保留钱包记录。
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
             <WalletMetric label="可用余额" value={`¥${formatMoney(availableBalance)}`} hint="当前账号钱包" />
             <WalletMetric label="审核中" value={`¥${formatMoney(pendingRechargeAmount)}`} hint="待管理员确认" />
             <WalletMetric label="到账方式" value="人工审核" hint="截图确认后入账" />
@@ -158,7 +158,7 @@ export default function RechargePage() {
         </div>
       </section>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+      <section className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-6">
           <section className="maycat-card p-4">
             <div className="flex items-end justify-between gap-3">
@@ -310,7 +310,7 @@ function WalletMetric({ label, value, hint }: { label: string; value: string; hi
 function SupportPanel({ publicConfig }: { publicConfig: PublicConfig }) {
   return (
     <section className="maycat-support-panel p-4">
-      <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <div>
           <h2 className="text-lg font-black text-white">人工客服充值</h2>
           <p className="mt-2 text-sm leading-6 text-dfc-subtext">
@@ -328,7 +328,7 @@ function SupportPanel({ publicConfig }: { publicConfig: PublicConfig }) {
 
         <div className="rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 p-4">
           <div className="text-sm font-black text-white">微信扫码添加人工客服</div>
-          <div className="mt-3 grid gap-4 sm:grid-cols-[160px_1fr] sm:items-center">
+          <div className="maycat-qr-layout mt-3">
             {publicConfig.support?.wechatQrUrl ? (
               <img
                 src={publicConfig.support.wechatQrUrl}
