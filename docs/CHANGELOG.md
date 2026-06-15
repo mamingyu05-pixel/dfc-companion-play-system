@@ -2,6 +2,7 @@
 
 ## 2026-06-15
 
+- 管理端用户管理新增“客户转为陪玩”：已注册 ACTIVE 客户可保留原账号、钱包、平台绑定和历史记录，转为待审核陪玩后再人工上架。
 - 陪玩邀请码新增持续推广分成：客户通过陪玩邀请码绑定后，每次订单完成都会按 `COMPANION_REFERRAL_COMMISSION_RATE` 给邀请陪玩结算收益，默认 1%。
 - 新增 Discord 客户会员等级角色同步，充值审核通过和订单完成后会同时尝试同步 KOOK / Discord 的客户等级、未下单客户和高等级专属身份。
 - Discord 初始化脚本新增客户等级角色输出，`.env.example` 和 `.env.production.example` 补齐 `DISCORD_CUSTOMER_*` 变量。

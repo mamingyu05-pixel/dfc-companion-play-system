@@ -29,6 +29,17 @@ type AdminUser = {
   }>;
 };
 
+const gameOptions = [
+  ["DELTA_FORCE", "三角洲行动"],
+  ["LEAGUE_OF_LEGENDS", "英雄联盟"],
+  ["VALORANT", "无畏契约"],
+  ["COUNTER_STRIKE_2", "CS2"],
+  ["PUBG", "PUBG 绝地求生"],
+  ["APEX_LEGENDS", "Apex 英雄"],
+  ["HONOR_OF_KINGS", "王者荣耀"],
+  ["PEACEKEEPER_ELITE", "和平精英"]
+] as const;
+
 export default function UsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState("");
@@ -46,6 +57,11 @@ export default function UsersPage() {
   const [promoteUserId, setPromoteUserId] = useState("");
   const [promoteRole, setPromoteRole] = useState<"ADMIN" | "SUPER_ADMIN">("ADMIN");
   const [promoteNote, setPromoteNote] = useState("");
+  const [companionCustomerId, setCompanionCustomerId] = useState("");
+  const [companionNickname, setCompanionNickname] = useState("");
+  const [companionGame, setCompanionGame] = useState("DELTA_FORCE");
+  const [companionPricePerHour, setCompanionPricePerHour] = useState("");
+  const [companionNote, setCompanionNote] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
@@ -221,6 +237,45 @@ export default function UsersPage() {
     await loadUsers();
   }
 
+  async function convertCustomerToCompanion() {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) return;
+    if (!companionCustomerId) {
+      setError("请先选择要转为陪玩的客户");
+      return;
+    }
+
+    setError("");
+    setStatus("");
+    const response = await fetch(`/api/admin/users/${companionCustomerId}/become-companion`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        nickname: companionNickname,
+        game: companionGame,
+        pricePerHour: companionPricePerHour,
+        note: companionNote
+      })
+    });
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    if (!response.ok) {
+      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      setError(toFriendlyError(message));
+      return;
+    }
+
+    setStatus("已把客户转为待审核陪玩。请到陪玩管理页完善资料并审核上架。");
+    setCompanionCustomerId("");
+    setCompanionNickname("");
+    setCompanionGame("DELTA_FORCE");
+    setCompanionPricePerHour("");
+    setCompanionNote("");
+    await loadUsers();
+  }
+
   const normalizedSearch = search.trim().toLowerCase();
   const filteredUsers = normalizedSearch
     ? users.filter((user) => [user.id, user.email, user.displayName, user.role, user.status].some((value) => value.toLowerCase().includes(normalizedSearch)))
@@ -278,6 +333,33 @@ export default function UsersPage() {
       {status ? <Alert tone="success">{status}</Alert> : null}
 
       <section className="mb-6 grid gap-4 xl:grid-cols-2">
+        <AdminPanel title="客户转为陪玩" hint="适合老客户申请入驻。保留原账号、钱包、绑定和历史记录，转为待审核陪玩后再由后台上架。">
+          <div className="grid gap-3 md:grid-cols-2">
+            <select
+              value={companionCustomerId}
+              onChange={(event) => {
+                const nextId = event.target.value;
+                setCompanionCustomerId(nextId);
+                const selected = users.find((item) => item.id === nextId);
+                if (selected && !companionNickname) setCompanionNickname(selected.displayName);
+              }}
+              className="input"
+            >
+              <option value="">选择要转为陪玩的客户</option>
+              {customerOptions.map((user) => (
+                <option key={user.id} value={user.id}>{user.displayName} / {user.email}</option>
+              ))}
+            </select>
+            <input value={companionNickname} onChange={(event) => setCompanionNickname(event.target.value)} className="input" placeholder="陪玩昵称" />
+            <select value={companionGame} onChange={(event) => setCompanionGame(event.target.value)} className="input">
+              {gameOptions.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+            </select>
+            <input value={companionPricePerHour} onChange={(event) => setCompanionPricePerHour(event.target.value)} className="input" placeholder="每小时价格，例如 100" inputMode="decimal" />
+          </div>
+          <input value={companionNote} onChange={(event) => setCompanionNote(event.target.value)} className="input mt-3" placeholder="备注，例如老客户申请入驻，已完成试音考核" />
+          <ActionButton onClick={() => void convertCustomerToCompanion()}>转为待审核陪玩</ActionButton>
+        </AdminPanel>
+
         <AdminPanel title="搜索用户 / 人工调账" hint="客户余额手动增加或扣减都会写入钱包流水。">
           <input value={search} onChange={(event) => setSearch(event.target.value)} className="input" placeholder="搜索昵称、邮箱、ID、角色或状态" />
           <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -425,7 +507,13 @@ function toFriendlyError(message?: string) {
   if (message.includes("User does not exist")) return "用户不存在";
   if (message.includes("User must be active before becoming admin")) return "用户必须是 ACTIVE 状态才能设置为管理员";
   if (message.includes("Companion accounts cannot be promoted to admin")) return "陪玩账号不能直接设置为管理员，请单独创建管理员账号";
+  if (message.includes("Only customer accounts can become companion")) return "只有客户账号可以转为陪玩";
+  if (message.includes("User must be active before becoming companion")) return "用户必须是正常状态才能转为陪玩";
+  if (message.includes("Companion profile already exists")) return "该用户已经有陪玩资料";
   if (message.includes("Display name is already taken")) return "该昵称在目标角色下已存在，请先修改昵称";
+  if (message.includes("nickname and pricePerHour are required")) return "请填写陪玩昵称和每小时价格";
+  if (message.includes("pricePerHour must be a valid amount")) return "请输入正确的每小时价格";
+  if (message.includes("pricePerHour must be greater than 0")) return "每小时价格必须大于 0";
   if (message.includes("Customer does not exist or is not active")) return "客户不存在或不可用";
   if (message.includes("amount must be a valid amount")) return "请输入正确金额";
   if (message.includes("amount must be greater than 0")) return "金额必须大于 0";

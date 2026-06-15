@@ -1023,6 +1023,114 @@ export class AdminController {
     }
   }
 
+  @Patch("users/:id/become-companion")
+  async convertCustomerToCompanion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body()
+    body: {
+      nickname: string;
+      pricePerHour: string;
+      commissionRate?: string;
+      avatarUrl?: string;
+      gender?: string;
+      game?: GameCode;
+      deltaForceRank?: DeltaForceRank;
+      skillModes?: string[];
+      bio?: string;
+      voicePreference?: VoicePreference;
+      note?: string;
+    }
+  ) {
+    if (!body.nickname || !body.pricePerHour) {
+      throw new BadRequestException("nickname and pricePerHour are required");
+    }
+
+    const nickname = body.nickname.trim();
+    const displayNameKey = normalizeDisplayNameKey(nickname);
+    if (!nickname || !displayNameKey) {
+      throw new BadRequestException("nickname and pricePerHour are required");
+    }
+
+    let pricePerHour: Prisma.Decimal;
+    try {
+      pricePerHour = new Prisma.Decimal(body.pricePerHour);
+    } catch {
+      throw new BadRequestException("pricePerHour must be a valid amount");
+    }
+    if (pricePerHour.lte(0)) throw new BadRequestException("pricePerHour must be greater than 0");
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const target = await tx.user.findUnique({
+          where: { id },
+          include: { wallet: true, companionProfile: true }
+        });
+        if (!target) throw new BadRequestException("User does not exist");
+        if (target.status !== UserStatus.ACTIVE) throw new BadRequestException("User must be active before becoming companion");
+        if (target.role !== UserRole.CUSTOMER) throw new BadRequestException("Only customer accounts can become companion");
+        if (target.companionProfile) throw new BadRequestException("Companion profile already exists");
+
+        const updated = await tx.user.update({
+          where: { id },
+          data: {
+            role: UserRole.COMPANION,
+            displayName: nickname,
+            displayNameKey,
+            referralCode: target.referralCode ?? (await generateUniqueReferralCode(tx, "P")),
+            wallet: target.wallet ? undefined : { create: {} },
+            companionProfile: {
+              create: {
+                nickname,
+                avatarUrl: body.avatarUrl,
+                gender: body.gender,
+                game: body.game ?? GameCode.DELTA_FORCE,
+                deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
+                skillModes: body.skillModes ?? [],
+                pricePerHour,
+                commissionRate: parseCommissionRate(body.commissionRate ?? "0.2"),
+                onlineStatus: OnlineStatus.OFFLINE,
+                bio: body.bio,
+                voicePreference: body.voicePreference ?? VoicePreference.OPTIONAL,
+                status: CompanionProfileStatus.PENDING_REVIEW
+              }
+            }
+          },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            displayName: true,
+            referralCode: true,
+            companionProfile: true
+          }
+        });
+
+        await tx.adminLog.create({
+          data: {
+            actorId: user.id,
+            targetUserId: id,
+            action: "CONVERT_CUSTOMER_TO_COMPANION",
+            entityType: "USER",
+            entityId: id,
+            detail: {
+              nickname,
+              pricePerHour: body.pricePerHour,
+              note: body.note
+            }
+          }
+        });
+
+        return updated;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new BadRequestException(isDisplayNameUniqueError(error) ? "Display name is already taken" : "Referral code or account data conflicts");
+      }
+      throw error;
+    }
+  }
+
   @Patch("companions/:id/status")
   async updateCompanionProfileStatus(
     @CurrentUser() user: AuthenticatedUser,
