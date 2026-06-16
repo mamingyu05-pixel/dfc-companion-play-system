@@ -19,12 +19,20 @@ main()
 
 async function main() {
   const env = { ...loadEnv(path.resolve(process.cwd(), ".env")), ...process.env };
+  const args = process.argv.slice(2);
   const token = env.KOOK_TOKEN;
-  const guildId = env.KOOK_GUILD_ID || process.argv[2];
-  const shouldDeactivateInvalid = process.argv.includes("--deactivate-invalid-placeholders");
+  const guildId = env.KOOK_GUILD_ID || firstPositionalArg(args);
+  const targetUserId = readArg(args, "--user-id");
+  const manualDisplayName = readArg(args, "--display-name");
+  const shouldDeactivateInvalid = args.includes("--deactivate-invalid-placeholders");
 
   if (!token) throw new Error("KOOK_TOKEN is missing in .env");
   if (!guildId) throw new Error("KOOK_GUILD_ID is missing in .env. You can also pass it as the first argument.");
+
+  if (targetUserId) {
+    await inspectAndSyncSingleKookUser(token, guildId, targetUserId, manualDisplayName);
+    return;
+  }
 
   const members = await listGuildMembers(token, guildId);
   const realMembers = members.filter((member) => isRealKookUserId(member.id) && !member.bot);
@@ -123,6 +131,85 @@ async function upsertKookCustomer(member) {
   return "created";
 }
 
+async function inspectAndSyncSingleKookUser(token, guildId, userId, manualDisplayName) {
+  console.log(`Inspect KOOK user: ${userId}`);
+  const account = await prisma.userExternalAccount.findUnique({
+    where: {
+      platform_externalUserId: {
+        platform: BotPlatform.KOOK,
+        externalUserId: userId
+      }
+    },
+    include: { user: true }
+  });
+
+  if (!account) {
+    console.log("DB account: not found");
+  } else {
+    console.log(`DB account: ${account.user.displayName} | ${account.displayName || "(no external displayName)"} | ${account.user.email}`);
+  }
+
+  if (manualDisplayName) {
+    if (!account) throw new Error(`Cannot manually rename KOOK ${userId}: DB account not found`);
+    await updateExistingKookAccountName(account, manualDisplayName);
+    console.log(`Manual displayName applied: ${manualDisplayName}`);
+    return;
+  }
+
+  const fromView = await getKookUserView(token, guildId, userId);
+  if (fromView) {
+    console.log(
+      `KOOK user/view: id=${fromView.id || userId}, username=${fromView.username || ""}, nickname=${fromView.nickname || ""}, identify_num=${fromView.identify_num || ""}`
+    );
+    const result = await upsertKookCustomer({ ...fromView, id: fromView.id || userId });
+    console.log(`Sync result from user/view: ${result}`);
+    return;
+  }
+
+  const fromList = await findKookMemberInGuildList(token, guildId, userId);
+  if (fromList) {
+    console.log(
+      `KOOK guild/user-list: id=${fromList.id || userId}, username=${fromList.username || ""}, nickname=${fromList.nickname || ""}, identify_num=${fromList.identify_num || ""}`
+    );
+    const result = await upsertKookCustomer({ ...fromList, id: fromList.id || userId });
+    console.log(`Sync result from guild/user-list: ${result}`);
+    return;
+  }
+
+  console.log("KOOK API returned no nickname for this user. If you can see the real nickname in KOOK, run with --display-name \"nickname#0000\".");
+}
+
+async function updateExistingKookAccountName(account, desiredName) {
+  const displayName = sanitizeDisplayName(desiredName);
+  if (!displayName) throw new Error("displayName is empty after sanitizing");
+
+  const userDisplayName = isSyntheticKookCustomer(account.user)
+    ? await getAvailableDisplayName(displayName, account.userId)
+    : undefined;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.userExternalAccount.update({
+      where: {
+        platform_externalUserId: {
+          platform: BotPlatform.KOOK,
+          externalUserId: account.externalUserId
+        }
+      },
+      data: { displayName }
+    });
+
+    if (userDisplayName) {
+      await tx.user.update({
+        where: { id: account.userId },
+        data: {
+          displayName: userDisplayName,
+          displayNameKey: normalizeDisplayNameKey(userDisplayName)
+        }
+      });
+    }
+  });
+}
+
 async function syncExistingAccountsByUserView(token, guildId, listedMemberIds) {
   const rows = await prisma.userExternalAccount.findMany({
     where: {
@@ -174,6 +261,18 @@ async function listGuildMembers(token, guildId) {
     if (page >= pageTotal || items.length === 0) break;
   }
   return all;
+}
+
+async function findKookMemberInGuildList(token, guildId, userId) {
+  for (let page = 1; page <= 100; page += 1) {
+    const data = await kookApi(token, `/api/v3/guild/user-list?guild_id=${encodeURIComponent(guildId)}&page=${page}&page_size=100`);
+    const items = Array.isArray(data.items) ? data.items : [];
+    const found = items.find((item) => item.id === userId);
+    if (found) return found;
+    const pageTotal = Number(data.meta?.page_total ?? 1);
+    if (page >= pageTotal || items.length === 0) break;
+  }
+  return null;
 }
 
 async function kookApi(token, pathName) {
@@ -333,4 +432,15 @@ function loadEnv(filePath) {
       env[key] = value;
       return env;
     }, {});
+}
+
+function readArg(args, name) {
+  const equalsArg = args.find((arg) => arg.startsWith(`${name}=`));
+  if (equalsArg) return equalsArg.slice(name.length + 1);
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
+function firstPositionalArg(args) {
+  return args.find((arg) => !arg.startsWith("--"));
 }
