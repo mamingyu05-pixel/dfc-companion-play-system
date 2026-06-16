@@ -527,7 +527,13 @@ export class PlatformSupportService {
     if (existing) return this.refreshPlatformAccountDisplayName(existing, input);
 
     const resolvedDisplayName = (await this.resolvePlatformDisplayName(input)) ?? input.displayName;
-    const displayName = await this.getAvailablePlatformCustomerDisplayName(input.platform, resolvedDisplayName);
+    const realDisplayName = sanitizePlatformDisplayName(resolvedDisplayName);
+    if (!realDisplayName) {
+      this.logger.warn(`Skip auto-creating ${input.platform} customer ${input.platformUserId}: platform displayName is unavailable`);
+      return null;
+    }
+
+    const displayName = await this.getAvailablePlatformCustomerDisplayName(input.platform, realDisplayName);
     const displayNameKey = normalizeDisplayNameKey(displayName);
     const email = buildPlatformCustomerEmail(input.platform, input.platformUserId);
     const passwordHash = await createPasswordHash(randomBytes(32).toString("hex"));
@@ -723,9 +729,8 @@ export class PlatformSupportService {
   }
 
   private async getAvailablePlatformCustomerDisplayName(platform: BotPlatform, displayName?: string, currentUserId?: string) {
-    const baseName =
-      sanitizePlatformDisplayName(displayName) ??
-      `${platform === BotPlatform.KOOK ? "KOOK" : "Discord"}客户${randomInt(1000, 9999)}`;
+    const baseName = sanitizePlatformDisplayName(displayName);
+    if (!baseName) throw new Error(`${platform} displayName is required before creating a platform customer`);
 
     for (let index = 0; index < 50; index += 1) {
       const candidate = index === 0 ? baseName : `${baseName}-${index + 1}`;

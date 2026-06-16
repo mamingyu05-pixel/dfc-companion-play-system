@@ -67,6 +67,10 @@ async function main() {
 async function upsertKookCustomer(member) {
   const externalUserId = member.id;
   const displayName = formatKookDisplayName(member);
+  if (!displayName) {
+    console.log(`skip KOOK user ${externalUserId}: nickname is unavailable`);
+    return "skipped";
+  }
   const existing = await prisma.userExternalAccount.findUnique({
     where: {
       platform_externalUserId: {
@@ -101,7 +105,7 @@ async function upsertKookCustomer(member) {
     return Object.keys(data).length > 0 || shouldRenameUser ? "updated" : "unchanged";
   }
 
-  const displayNameForUser = await getAvailableDisplayName(displayName || `KOOK客户${randomInt(1000, 9999)}`);
+  const displayNameForUser = await getAvailableDisplayName(displayName);
   const passwordHash = await bcrypt.hash(randomBytes(32).toString("hex"), 12);
 
   await prisma.$transaction(async (tx) => {
@@ -298,7 +302,8 @@ async function getKookUserView(token, guildId, userId) {
 }
 
 async function getAvailableDisplayName(baseName, currentUserId) {
-  const sanitized = sanitizeDisplayName(baseName) || `KOOK客户${randomInt(1000, 9999)}`;
+  const sanitized = sanitizeDisplayName(baseName);
+  if (!sanitized) throw new Error("KOOK displayName is required before creating a platform customer");
   for (let index = 0; index < 50; index += 1) {
     const candidate = index === 0 ? sanitized : `${sanitized}-${index + 1}`;
     const displayNameKey = normalizeDisplayNameKey(candidate);
