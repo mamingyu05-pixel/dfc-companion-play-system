@@ -2,7 +2,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomBytes, randomInt } = require("node:crypto");
-const bcrypt = require("bcryptjs");
+const bcrypt = require("./script-bcryptjs");
 const { BotPlatform, PrismaClient, UserRole, UserStatus } = require("./script-prisma-client");
 
 const KOOK_API_BASE_URL = "https://www.kookapp.cn";
