@@ -105,6 +105,34 @@ export class OrdersService {
     return orders.map((order) => this.serializeOrder(order));
   }
 
+  async searchCustomersForCompanion(query = "") {
+    const keyword = query.trim();
+    if (keyword.length < 2) return [];
+
+    const customers = await this.prisma.user.findMany({
+      where: {
+        role: UserRole.CUSTOMER,
+        status: UserStatus.ACTIVE,
+        OR: [
+          { email: { contains: keyword, mode: "insensitive" } },
+          { displayName: { contains: keyword, mode: "insensitive" } },
+          { externalAccounts: { some: { displayName: { contains: keyword, mode: "insensitive" } } } },
+          { externalAccounts: { some: { externalUserId: { contains: keyword } } } }
+        ]
+      },
+      take: 20,
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        externalAccounts: { select: { platform: true, externalUserId: true, displayName: true } }
+      }
+    });
+
+    return customers;
+  }
+
   async listAdminOrders() {
     const orders = await this.prisma.order.findMany({
       orderBy: { createdAt: "desc" },
@@ -295,6 +323,65 @@ export class OrdersService {
       order,
       notifications
     };
+  }
+
+  async startAssignedOrderByAdmin(orderId: string, adminId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const actor = await tx.user.findUnique({ where: { id: adminId }, select: { role: true } });
+      if (!actor || (actor.role !== UserRole.ADMIN && actor.role !== UserRole.SUPER_ADMIN)) {
+        throw new BadRequestException("Only admin can start assigned orders");
+      }
+
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: { id: true, status: true, companionId: true }
+      });
+
+      if (!order) throw new NotFoundException("Order not found");
+      if (order.status !== OrderStatus.ASSIGNED) {
+        throw new BadRequestException(`Only ASSIGNED orders can be started by admin. Current status: ${order.status}`);
+      }
+      if (!order.companionId) throw new BadRequestException("Order has no assigned companion");
+
+      const now = new Date();
+      const updated = await tx.order.updateMany({
+        where: { id: orderId, status: OrderStatus.ASSIGNED },
+        data: { status: OrderStatus.IN_PROGRESS, acceptedAt: now, startedAt: now }
+      });
+      if (updated.count !== 1) throw new BadRequestException("Order was already changed");
+
+      await tx.orderStatusLog.createMany({
+        data: [
+          {
+            orderId,
+            fromStatus: OrderStatus.ASSIGNED,
+            toStatus: OrderStatus.ACCEPTED,
+            actorId: adminId,
+            reason: "ADMIN_FORCE_ACCEPT_AFTER_ASSIGN"
+          },
+          {
+            orderId,
+            fromStatus: OrderStatus.ACCEPTED,
+            toStatus: OrderStatus.IN_PROGRESS,
+            actorId: adminId,
+            reason: "ADMIN_START_AFTER_ASSIGN"
+          }
+        ]
+      });
+
+      await tx.adminLog.create({
+        data: {
+          actorId: adminId,
+          targetUserId: order.companionId,
+          action: "START_ASSIGNED_ORDER",
+          entityType: "ORDER",
+          entityId: orderId,
+          detail: { companionId: order.companionId }
+        }
+      });
+
+      return tx.order.findUniqueOrThrow({ where: { id: orderId } });
+    });
   }
 
   async acceptOrderFromPlatform(platform: BotPlatform, orderId: string, platformUserId: string, platformMessageId?: string) {

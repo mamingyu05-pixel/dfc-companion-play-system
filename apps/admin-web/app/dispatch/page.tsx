@@ -29,6 +29,8 @@ export default function DispatchPage() {
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [selectedCompanionId, setSelectedCompanionId] = useState("");
+  const [companionQuery, setCompanionQuery] = useState("");
+  const [autoStart, setAutoStart] = useState(true);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -68,7 +70,7 @@ export default function DispatchPage() {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ companionId: selectedCompanionId })
+      body: JSON.stringify({ companionId: selectedCompanionId, autoStart })
     });
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
     if (!response.ok) {
@@ -77,12 +79,16 @@ export default function DispatchPage() {
       return;
     }
 
-    setStatus("派单成功，系统已尝试通知 Discord / KOOK。");
+    setStatus(autoStart ? "派单成功，订单已直接开始，并已尝试通知 Discord / KOOK。" : "派单成功，系统已尝试通知 Discord / KOOK。");
     await loadData();
   }
 
   const pending = orders.filter((order) => order.status === "PAID");
-  const listedCompanions = companions.filter((companion) => companion.status === "LISTED");
+  const listedCompanions = companions.filter((companion) => {
+    const keyword = companionQuery.trim().toLowerCase();
+    const matchesKeyword = !keyword || [companion.nickname, companion.email].some((value) => value.toLowerCase().includes(keyword));
+    return companion.status === "LISTED" && matchesKeyword;
+  });
   const onlineCount = listedCompanions.filter((companion) => companion.onlineStatus === "ONLINE").length;
   const selectedOrder = pending.find((order) => order.id === selectedOrderId);
   const selectedCompanion = listedCompanions.find((companion) => companion.userId === selectedCompanionId);
@@ -101,7 +107,7 @@ export default function DispatchPage() {
       </section>
 
       <section className="admin-panel mb-6">
-        <div className="grid gap-4 xl:grid-cols-[1fr_1fr_180px]">
+        <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr_1fr_180px]">
           <label>
             <span className="mb-2 block text-xs font-black text-dfc-muted">选择待派单订单</span>
             <select value={selectedOrderId} onChange={(event) => setSelectedOrderId(event.target.value)} className="input">
@@ -112,6 +118,10 @@ export default function DispatchPage() {
                 </option>
               ))}
             </select>
+          </label>
+          <label>
+            <span className="mb-2 block text-xs font-black text-dfc-muted">搜索陪玩</span>
+            <input value={companionQuery} onChange={(event) => setCompanionQuery(event.target.value)} className="input" placeholder="陪玩昵称/邮箱" />
           </label>
           <label>
             <span className="mb-2 block text-xs font-black text-dfc-muted">选择陪玩</span>
@@ -135,6 +145,13 @@ export default function DispatchPage() {
           <Preview title="当前订单" lines={selectedOrder ? [selectedOrder.orderNo, `${gameName(selectedOrder.game)} / ${selectedOrder.mode}`, `客户：${selectedOrder.customer?.displayName ?? "-"}`, `金额：¥${formatMoney(selectedOrder.totalAmount)}`] : ["未选择订单"]} />
           <Preview title="当前陪玩" lines={selectedCompanion ? [selectedCompanion.nickname, `状态：${toOnlineStatus(selectedCompanion.onlineStatus)}`, `价格：¥${formatMoney(selectedCompanion.pricePerHour)}/h`, selectedCompanion.email] : ["未选择陪玩"]} />
         </div>
+        <label className="mt-4 flex items-start gap-3 rounded-dfc-control border border-cyan-300/15 bg-[#07111f]/70 p-3 text-sm text-dfc-subtext">
+          <input type="checkbox" checked={autoStart} onChange={(event) => setAutoStart(event.target.checked)} className="mt-1 accent-cyan-300" />
+          <span>
+            <span className="block font-black text-white">派单后直接开始</span>
+            <span className="mt-1 block text-xs leading-5">用于人工客服已经确认好时间、陪玩和老板的场景。关闭后订单会停留在已派单，等待陪玩接单。</span>
+          </span>
+        </label>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">

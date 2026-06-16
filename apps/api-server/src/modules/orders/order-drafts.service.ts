@@ -42,6 +42,15 @@ type ParsedDispatchDemand = {
   preferences: string[];
 };
 
+type CreateDraftFromCompanionBody = {
+  customerId: string;
+  game?: GameCode;
+  mode: string;
+  hours?: string;
+  budgetAmount?: string;
+  note?: string;
+};
+
 @Injectable()
 export class OrderDraftsService {
   constructor(
@@ -204,6 +213,122 @@ export class OrderDraftsService {
 
     const notifications = await this.botNotifications.sendOrderDraftDispatchNotifications(draft.id);
     return { draft, parsed, notifications };
+  }
+
+  async createDraftFromCompanion(companionId: string, body: CreateDraftFromCompanionBody) {
+    if (!body.customerId) throw new BadRequestException("customerId is required");
+    if (!body.mode?.trim()) throw new BadRequestException("mode is required");
+
+    const companion = await this.prisma.user.findFirst({
+      where: {
+        id: companionId,
+        status: UserStatus.ACTIVE,
+        companionProfile: { is: { status: CompanionProfileStatus.LISTED } }
+      },
+      include: { companionProfile: true }
+    });
+    if (!companion?.companionProfile) throw new BadRequestException("Companion is not listed, active or does not exist");
+
+    const game = body.game ?? companion.companionProfile.game;
+    const hours = body.hours ? this.positiveDecimal(body.hours, "hours") : undefined;
+    const budgetAmount = body.budgetAmount ? this.positiveDecimal(body.budgetAmount, "budgetAmount") : undefined;
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertActiveCustomer(tx, body.customerId);
+      await this.assertListedCompanion(tx, companionId, game);
+
+      const draft = await tx.orderDraft.create({
+        data: {
+          draftNo: this.generateDraftNo(),
+          customerId: body.customerId,
+          serviceAdminId: companionId,
+          selectedCompanionId: companionId,
+          sourcePlatform: OrderSourcePlatform.WEB,
+          game,
+          mode: body.mode.trim(),
+          hours,
+          budgetAmount,
+          status: OrderDraftStatus.SELECTED,
+          note: body.note?.trim() || "Companion created this draft after private customer request."
+        }
+      });
+
+      await tx.orderDraftCandidate.create({
+        data: {
+          draftId: draft.id,
+          companionId,
+          recommendedById: companionId,
+          status: OrderDraftCandidateStatus.SELECTED,
+          note: body.note?.trim() || "Companion private request"
+        }
+      });
+
+      await this.writeDraftEvent(tx, {
+        draftId: draft.id,
+        actorUserId: companionId,
+        actorType: OrderDraftActorType.COMPANION,
+        platform: OrderSourcePlatform.WEB,
+        eventType: OrderDraftEventType.DRAFT_CREATED,
+        content: body.note,
+        metadata: { customerId: body.customerId, mode: body.mode, hours: body.hours, budgetAmount: body.budgetAmount }
+      });
+
+      await this.writeDraftEvent(tx, {
+        draftId: draft.id,
+        actorUserId: companionId,
+        actorType: OrderDraftActorType.COMPANION,
+        platform: OrderSourcePlatform.WEB,
+        eventType: OrderDraftEventType.CUSTOMER_SELECTED_COMPANION,
+        content: "Companion was pre-selected because the customer contacted this companion directly.",
+        metadata: { companionId }
+      });
+
+      return { draft };
+    });
+  }
+
+  async expireStaleDrafts() {
+    const staleMinutes = Math.max(10, Number(process.env.ORDER_DRAFT_STALE_MINUTES ?? 60));
+    const cutoff = new Date(Date.now() - staleMinutes * 60_000);
+    const staleDrafts = await this.prisma.orderDraft.findMany({
+      where: {
+        status: { in: [OrderDraftStatus.OPEN, OrderDraftStatus.TRIALING, OrderDraftStatus.SELECTED] },
+        updatedAt: { lt: cutoff }
+      },
+      select: { id: true, draftNo: true, sourcePlatform: true, customerPlatformUserId: true, note: true }
+    });
+
+    const expired: Array<{ id: string; draftNo: string }> = [];
+    for (const draft of staleDrafts) {
+      const note = `Flow expired: no companion accepted or customer did not choose within ${staleMinutes} minutes.`;
+      const result = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.orderDraft.updateMany({
+          where: {
+            id: draft.id,
+            status: { in: [OrderDraftStatus.OPEN, OrderDraftStatus.TRIALING, OrderDraftStatus.SELECTED] }
+          },
+          data: { status: OrderDraftStatus.CANCELLED, note: [draft.note, note].filter(Boolean).join("\n") }
+        });
+        if (updated.count !== 1) return false;
+        await this.writeDraftEvent(tx, {
+          draftId: draft.id,
+          actorType: OrderDraftActorType.BOT,
+          platform: draft.sourcePlatform,
+          platformUserId: draft.customerPlatformUserId,
+          eventType: OrderDraftEventType.DRAFT_CANCELLED,
+          content: note,
+          metadata: { reason: "STALE_TIMEOUT", staleMinutes }
+        });
+        return true;
+      });
+
+      if (result) {
+        expired.push({ id: draft.id, draftNo: draft.draftNo });
+        await this.botNotifications.sendOrderDraftFailedNotification(draft.id, note).catch(() => undefined);
+      }
+    }
+
+    return { expiredCount: expired.length, expired, staleMinutes };
   }
 
   async addCandidate(adminId: string, draftId: string, body: { companionId: string; note?: string }) {
@@ -437,7 +562,7 @@ export class OrderDraftsService {
   async selectCompanion(adminId: string, draftId: string, body: { companionId: string; note?: string }) {
     if (!body.companionId) throw new BadRequestException("companionId is required");
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const draft = await this.assertEditableDraft(tx, draftId);
       await this.assertListedCompanion(tx, body.companionId, draft.game);
 
@@ -483,6 +608,9 @@ export class OrderDraftsService {
       });
       return updated;
     });
+
+    await this.botNotifications.sendOrderDraftSelectedCompanionNotification(draftId, body.companionId).catch(() => undefined);
+    return updated;
   }
 
   async confirmDraft(adminId: string, draftId: string, body: { note?: string }) {

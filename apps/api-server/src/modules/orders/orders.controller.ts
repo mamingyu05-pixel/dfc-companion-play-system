@@ -5,11 +5,15 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { AuthenticatedUser } from "../auth/auth.types";
+import { OrderDraftsService } from "./order-drafts.service";
 import { OrdersService } from "./orders.service";
 
 @Controller("orders")
 export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(
+    private readonly orders: OrdersService,
+    private readonly orderDrafts: OrderDraftsService
+  ) {}
 
   @Get("public/companions")
   listPublicCompanions(@Query("game") game?: GameCode) {
@@ -42,6 +46,23 @@ export class OrdersController {
   @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   listCompanionOrders(@CurrentUser() user: AuthenticatedUser) {
     return this.orders.listCompanionOrders(user.id);
+  }
+
+  @Get("companion/customers")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  searchCustomersForCompanion(@Query("query") query?: string) {
+    return this.orders.searchCustomersForCompanion(query);
+  }
+
+  @Post("companion/customer-drafts")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  createCustomerDraftFromCompanion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { customerId: string; game?: GameCode; mode: string; hours?: string; budgetAmount?: string; note?: string }
+  ) {
+    return this.orderDrafts.createDraftFromCompanion(user.id, body);
   }
 
   @Post()

@@ -33,7 +33,26 @@ const client = new Client({
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Maycat Discord Bot ready as ${readyClient.user.tag}`);
+  startStaleDraftSweep();
 });
+
+function startStaleDraftSweep() {
+  const intervalSeconds = Math.max(60, Number(process.env.ORDER_DRAFT_EXPIRE_CHECK_SECONDS ?? 300));
+  setInterval(() => {
+    void runStaleDraftSweep();
+  }, intervalSeconds * 1000);
+}
+
+async function runStaleDraftSweep() {
+  try {
+    const response = await callApi("/discord/order-drafts/expire-stale", {});
+    if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
+    const data = (await response.json().catch(() => ({}))) as { expiredCount?: number };
+    if (data.expiredCount) console.log(`Expired stale order drafts: ${data.expiredCount}`);
+  } catch (error) {
+    console.warn(`Failed to expire stale order drafts: ${errorMessage(error)}`);
+  }
+}
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isModalSubmit() && interaction.customId.startsWith("order-draft.apply-note.")) {

@@ -44,6 +44,12 @@ export class KookWebhookController {
     });
   }
 
+  @Post("order-drafts/expire-stale")
+  @UseGuards(BotInternalGuard)
+  expireStaleOrderDrafts() {
+    return this.orderDrafts.expireStaleDrafts();
+  }
+
   @Post("webhook")
   @HttpCode(200)
   async webhook(@Body() body: KookWebhookBody) {

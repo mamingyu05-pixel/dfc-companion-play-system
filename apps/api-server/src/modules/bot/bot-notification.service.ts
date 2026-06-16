@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { BotEventStatus, BotEventType, BotPlatform, OrderStatus, ReviewStatus, UserRole, type Prisma } from "@prisma/client";
+import { BotEventStatus, BotEventType, BotPlatform, OrderSourcePlatform, OrderStatus, ReviewStatus, UserRole, type Prisma } from "@prisma/client";
 import { getConfiguredDiscordCustomerLevelRoles, getConfiguredKookCustomerLevelRoles, getCustomerMembershipLevel } from "../customer-membership";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -129,6 +129,134 @@ export class BotNotificationService {
     } catch (error) {
       return this.recordGenericNotificationFailure(BotPlatform.KOOK, { userId, content }, this.errorMessage(error));
     }
+  }
+
+  async sendDiscordChannelText(channelId: string, content: string): Promise<NotificationResult> {
+    if (!process.env.DISCORD_TOKEN) {
+      return this.recordGenericNotificationFailure(BotPlatform.DISCORD, { channelId, content }, "DISCORD_TOKEN is not configured");
+    }
+
+    try {
+      const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ content })
+      });
+      if (!response.ok) throw new Error(`Discord API HTTP ${response.status}`);
+      const body = (await response.json()) as { id: string; guild_id?: string; channel_id?: string };
+      await this.recordGenericBotEvent(BotPlatform.DISCORD, BotEventStatus.SENT, { channelId, content }, {
+        platformGuildId: body.guild_id,
+        platformChannelId: body.channel_id ?? channelId,
+        platformMessageId: body.id
+      });
+      return { platform: BotPlatform.DISCORD, status: BotEventStatus.SENT, messageId: body.id };
+    } catch (error) {
+      return this.recordGenericNotificationFailure(BotPlatform.DISCORD, { channelId, content }, this.errorMessage(error));
+    }
+  }
+
+  async sendOrderDraftFailedNotification(draftId: string, note: string): Promise<NotificationResult[]> {
+    const draft = await this.prisma.orderDraft.findUnique({
+      where: { id: draftId },
+      select: { draftNo: true, sourcePlatform: true, sourceChannelId: true, game: true, mode: true }
+    });
+    if (!draft) return [];
+
+    const content = [
+      `May猫饼派单 ${draft.draftNo} 已流单`,
+      `游戏：${draft.game}`,
+      `模式：${draft.mode}`,
+      `原因：${note}`,
+      "后台已取消该派单草稿，客服可重新确认需求后再次发布。"
+    ].join("\n");
+
+    const tasks: Array<Promise<NotificationResult>> = [];
+    const discordChannelId =
+      draft.sourcePlatform === OrderSourcePlatform.DISCORD
+        ? draft.sourceChannelId || process.env.DISCORD_AI_DISPATCH_CHANNEL_ID || process.env.DISCORD_DISPATCH_CHANNEL_ID
+        : process.env.DISCORD_AI_DISPATCH_CHANNEL_ID || process.env.DISCORD_DISPATCH_CHANNEL_ID;
+    const kookChannelId =
+      draft.sourcePlatform === OrderSourcePlatform.KOOK
+        ? draft.sourceChannelId || process.env.KOOK_AI_DISPATCH_CHANNEL_ID || process.env.KOOK_DISPATCH_CHANNEL_ID
+        : process.env.KOOK_AI_DISPATCH_CHANNEL_ID || process.env.KOOK_DISPATCH_CHANNEL_ID;
+
+    if ((draft.sourcePlatform === OrderSourcePlatform.DISCORD || draft.sourcePlatform === OrderSourcePlatform.WEB) && discordChannelId) {
+      tasks.push(this.sendDiscordChannelText(discordChannelId, content));
+    }
+    if ((draft.sourcePlatform === OrderSourcePlatform.KOOK || draft.sourcePlatform === OrderSourcePlatform.WEB) && kookChannelId) {
+      tasks.push(this.sendKookChannelText(kookChannelId, content));
+    }
+
+    const results = await Promise.allSettled(tasks);
+    return results.map((result, index) =>
+      result.status === "fulfilled"
+        ? result.value
+        : {
+            platform: index === 0 ? BotPlatform.DISCORD : BotPlatform.KOOK,
+            status: BotEventStatus.FAILED,
+            error: this.errorMessage(result.reason)
+          }
+    );
+  }
+
+  async sendOrderDraftSelectedCompanionNotification(draftId: string, companionId: string): Promise<NotificationResult[]> {
+    const draft = await this.prisma.orderDraft.findUnique({
+      where: { id: draftId },
+      select: {
+        draftNo: true,
+        sourcePlatform: true,
+        sourceChannelId: true,
+        game: true,
+        mode: true,
+        selectedCompanion: {
+          select: {
+            id: true,
+            displayName: true,
+            email: true,
+            externalAccounts: {
+              where: { platform: { in: [BotPlatform.DISCORD, BotPlatform.KOOK] } },
+              select: { platform: true, externalUserId: true, displayName: true }
+            }
+          }
+        }
+      }
+    });
+    if (!draft?.selectedCompanion) return [];
+
+    const discordAccount = draft.selectedCompanion.externalAccounts.find((account) => account.platform === BotPlatform.DISCORD);
+    const kookAccount = draft.selectedCompanion.externalAccounts.find((account) => account.platform === BotPlatform.KOOK);
+    const companionName = draft.selectedCompanion.displayName || draft.selectedCompanion.email;
+    const results: NotificationResult[] = [];
+
+    if (draft.sourcePlatform === OrderSourcePlatform.DISCORD || draft.sourcePlatform === OrderSourcePlatform.WEB) {
+      const channelId = draft.sourceChannelId || process.env.DISCORD_AI_DISPATCH_CHANNEL_ID || process.env.DISCORD_DISPATCH_CHANNEL_ID;
+      if (channelId) {
+        const mention = discordAccount?.externalUserId ? `<@${discordAccount.externalUserId}>` : companionName;
+        results.push(await this.sendDiscordChannelText(channelId, [
+          `May猫饼派单 ${draft.draftNo} 已指定陪玩`,
+          `陪玩：${mention}`,
+          `游戏：${draft.game}`,
+          `模式：${draft.mode}`,
+          "请陪玩尽快联系客户确认时间、语音和服务细节。"
+        ].join("\n")));
+      }
+    }
+
+    if (draft.sourcePlatform === OrderSourcePlatform.KOOK || draft.sourcePlatform === OrderSourcePlatform.WEB) {
+      const channelId = draft.sourceChannelId || process.env.KOOK_AI_DISPATCH_CHANNEL_ID || process.env.KOOK_DISPATCH_CHANNEL_ID;
+      if (channelId) {
+        const mention = kookAccount?.externalUserId ? `(met)${kookAccount.externalUserId}(met)` : companionName;
+        results.push(await this.sendKookChannelText(channelId, [
+          `May猫饼派单 ${draft.draftNo} 已指定陪玩`,
+          `陪玩：${mention}`,
+          `游戏：${draft.game}`,
+          `模式：${draft.mode}`,
+          "请陪玩尽快联系客户确认时间、语音和服务细节。"
+        ].join("\n")));
+      }
+    }
+
+    return results;
   }
 
   async syncCustomerMembershipLevels(userId: string): Promise<NotificationResult[]> {

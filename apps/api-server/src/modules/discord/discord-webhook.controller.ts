@@ -48,6 +48,12 @@ export class DiscordWebhookController {
     });
   }
 
+  @Post("order-drafts/expire-stale")
+  @UseGuards(BotInternalGuard)
+  expireStaleOrderDrafts() {
+    return this.orderDrafts.expireStaleDrafts();
+  }
+
   @Post("support/messages")
   @UseGuards(BotInternalGuard)
   supportMessage(

@@ -40,7 +40,9 @@ async function main() {
     if (result === "updated") updated += 1;
   }
 
-  console.log(`Synced KOOK customers. created=${created}, updated=${updated}`);
+  const repairedByUserView = await syncExistingAccountsByUserView(token, guildId, new Set(realMembers.map((member) => member.id)));
+
+  console.log(`Synced KOOK customers. created=${created}, updated=${updated}, repairedByUserView=${repairedByUserView}`);
 
   if (shouldDeactivateInvalid) {
     const deactivated = await deactivateInvalidKookPlaceholders();
@@ -121,6 +123,36 @@ async function upsertKookCustomer(member) {
   return "created";
 }
 
+async function syncExistingAccountsByUserView(token, guildId, listedMemberIds) {
+  const rows = await prisma.userExternalAccount.findMany({
+    where: {
+      platform: BotPlatform.KOOK,
+      user: {
+        role: UserRole.CUSTOMER,
+        email: { endsWith: "@platform.maycatplay.local" }
+      }
+    },
+    include: { user: true }
+  });
+
+  let count = 0;
+  for (const row of rows) {
+    if (!isRealKookUserId(row.externalUserId)) continue;
+    if (listedMemberIds.has(row.externalUserId) && row.displayName && !isSyntheticKookDisplayName(row.user.displayName)) continue;
+
+    const member = await getKookUserView(token, guildId, row.externalUserId);
+    if (!member) {
+      console.log(`nickname lookup skipped: KOOK user ${row.externalUserId} not returned by user/view`);
+      continue;
+    }
+
+    const result = await upsertKookCustomer(member);
+    if (result === "updated") count += 1;
+  }
+
+  return count;
+}
+
 async function renameUserSafely(userId, desiredName) {
   const displayName = await getAvailableDisplayName(desiredName, userId);
   await prisma.user.update({
@@ -152,6 +184,18 @@ async function kookApi(token, pathName) {
   const result = await response.json();
   if (result.code !== 0) throw new Error(`KOOK API error ${result.code}: ${result.message}`);
   return result.data;
+}
+
+async function getKookUserView(token, guildId, userId) {
+  const query = new URLSearchParams({ user_id: userId });
+  if (guildId) query.set("guild_id", guildId);
+  try {
+    const data = await kookApi(token, `/api/v3/user/view?${query.toString()}`);
+    return data?.id ? data : { ...data, id: userId };
+  } catch (error) {
+    console.log(`nickname lookup failed for KOOK user ${userId}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 async function getAvailableDisplayName(baseName, currentUserId) {
@@ -194,6 +238,10 @@ function buildPlatformCustomerEmail(externalUserId) {
 
 function isSyntheticKookCustomer(user) {
   return user.role === UserRole.CUSTOMER && /^customer-kook-.+@platform\.maycatplay\.local$/i.test(user.email);
+}
+
+function isSyntheticKookDisplayName(value) {
+  return /^KOOK客户\d+$/i.test(String(value ?? "")) || String(value ?? "").includes("未同步");
 }
 
 function isRealKookUserId(value) {

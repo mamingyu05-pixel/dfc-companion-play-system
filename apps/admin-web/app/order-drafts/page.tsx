@@ -97,6 +97,7 @@ export default function OrderDraftsPage() {
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [candidateId, setCandidateId] = useState("");
   const [selectedCompanionId, setSelectedCompanionId] = useState("");
+  const [companionQuery, setCompanionQuery] = useState("");
   const [customerMessage, setCustomerMessage] = useState("");
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [error, setError] = useState("");
@@ -139,8 +140,15 @@ export default function OrderDraftsPage() {
   const customers = users.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
   const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId);
   const listedCompanions = useMemo(
-    () => companions.filter((companion) => companion.status === "LISTED" && (!selectedDraft || companion.game === selectedDraft.game)),
-    [companions, selectedDraft]
+    () => {
+      const keyword = companionQuery.trim().toLowerCase();
+      return companions.filter((companion) => {
+        const matchesGame = !selectedDraft || companion.game === selectedDraft.game;
+        const matchesKeyword = !keyword || [companion.nickname, companion.email].some((value) => value.toLowerCase().includes(keyword));
+        return companion.status === "LISTED" && matchesGame && matchesKeyword;
+      });
+    },
+    [companions, selectedDraft, companionQuery]
   );
   const stats = useMemo(() => {
     const open = drafts.filter((draft) => !["CONVERTED", "CANCELLED"].includes(draft.status)).length;
@@ -253,14 +261,15 @@ export default function OrderDraftsPage() {
   }
 
   async function selectCompanion() {
-    if (!selectedDraftId || !selectedCompanionId) {
+    const companionToSelect = selectedCompanionId || candidateId;
+    if (!selectedDraftId || !companionToSelect) {
       setError("请先选择草稿和最终陪玩");
       return;
     }
     try {
       await callApi(`/api/admin/order-drafts/${selectedDraftId}/select-companion`, {
         method: "PATCH",
-        body: JSON.stringify({ companionId: selectedCompanionId })
+        body: JSON.stringify({ companionId: companionToSelect })
       });
       setStatus("已记录客户最终选择。");
       await loadData();
@@ -313,6 +322,19 @@ export default function OrderDraftsPage() {
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "标记流单失败");
+    }
+  }
+
+  async function expireStaleDrafts() {
+    try {
+      const data = await callApi<{ expiredCount: number; staleMinutes: number }>("/api/admin/order-drafts/expire-stale", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      setStatus(`已处理 ${data.expiredCount} 个超过 ${data.staleMinutes} 分钟未推进的流单。`);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "处理超时流单失败");
     }
   }
 
@@ -376,13 +398,14 @@ export default function OrderDraftsPage() {
 
       <section className="admin-panel mb-6">
         <h2 className="text-base font-black text-white">派单操作台</h2>
-        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_1fr_auto]">
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr_1fr_auto]">
           <select value={selectedDraftId} onChange={(event) => setSelectedDraftId(event.target.value)} className="input">
             <option value="">选择试音草稿</option>
             {drafts.map((draft) => (
               <option key={draft.id} value={draft.id}>{draft.draftNo} / {draft.customer?.displayName ?? draft.customerDisplayName ?? "未绑定客户"} / {toDraftStatus(draft.status)}</option>
             ))}
           </select>
+          <input value={companionQuery} onChange={(event) => setCompanionQuery(event.target.value)} className="input" placeholder="搜索陪玩昵称/邮箱" />
           <select value={candidateId} onChange={(event) => setCandidateId(event.target.value)} className="input">
             <option value="">选择候选陪玩</option>
             {listedCompanions.map((companion) => (
@@ -397,6 +420,7 @@ export default function OrderDraftsPage() {
           <ActionButton onClick={() => void convertDraft()}>转正式订单</ActionButton>
           <ActionButton tone="danger" onClick={() => void failDraft()}>标记流单</ActionButton>
           <ActionButton tone="danger" onClick={() => void cancelDraft()}>取消草稿</ActionButton>
+          <ActionButton tone="secondary" onClick={() => void expireStaleDrafts()}>处理超时流单</ActionButton>
         </div>
 
         {recommendations.length ? (
@@ -431,13 +455,15 @@ export default function OrderDraftsPage() {
 
       <section className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
         <DataTable
-          columns={["草稿", "客户", "来源", "游戏/模式", "候选", "状态", "正式订单"]}
+          columns={["草稿", "客户", "备注", "来源", "游戏/模式", "候选", "已选陪玩", "状态", "正式订单"]}
           rows={drafts.map((draft) => [
             <button key={draft.id} type="button" onClick={() => setSelectedDraftId(draft.id)} className="text-left font-black text-cyan-200">{draft.draftNo}</button>,
             <Person key={`${draft.id}-customer`} name={draft.customer?.displayName ?? draft.customerDisplayName ?? "未绑定"} sub={draft.customer?.email ?? draft.customerPlatformUserId ?? "-"} />,
+            <span key={`note-${draft.id}`} className="line-clamp-2 text-xs text-dfc-subtext">{draft.note || "-"}</span>,
             <Person key={`${draft.id}-source`} name={draft.sourcePlatform} sub={`语音：${draft.voiceRoomId || "-"}`} />,
             `${gameName(draft.game)} / ${draft.mode || "-"}`,
             `${draft.candidates.length} 人`,
+            <Person key={`selected-${draft.id}`} name={draft.selectedCompanion?.displayName ?? "-"} sub={draft.selectedCompanion?.email ?? ""} />,
             <StatusBadge key={`${draft.id}-status`} tone={statusTone(draft.status)}>{toDraftStatus(draft.status, draft.note)}</StatusBadge>,
             draft.convertedOrder ? `${draft.convertedOrder.orderNo} / ${draft.convertedOrder.status}` : "-"
           ])}

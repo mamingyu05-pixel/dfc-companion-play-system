@@ -13,6 +13,7 @@ type AdminOrder = {
   unitPrice: string;
   totalAmount: string;
   status: string;
+  notes?: string | null;
   voiceTrialRequested: boolean;
   customer?: { email: string; displayName: string };
   companion?: { email: string; displayName: string } | null;
@@ -132,7 +133,7 @@ export default function OrdersPage() {
           </Link>
         </div>
         <DataTable
-          columns={["草稿号", "客户来源", "已发布", "客户", "游戏", "模式", "时长", "预算", "报名", "状态", "人工操作"]}
+          columns={["草稿号", "客户来源", "已发布", "客户", "游戏", "模式", "备注", "时长", "预算", "报名", "状态", "人工操作"]}
           rows={drafts.slice(0, 8).map((draft) => [
             <Link key={`${draft.id}-no`} href="/order-drafts" className="font-black text-cyan-200">{draft.draftNo}</Link>,
             <PlatformBadge key={`${draft.id}-source`} platform={draft.sourcePlatform} />,
@@ -140,6 +141,7 @@ export default function OrdersPage() {
             draft.customer ? <Person key={`${draft.id}-customer`} name={draft.customer.displayName} email={draft.customer.email} /> : <Person key={`${draft.id}-platform-customer`} name={draft.customerDisplayName ?? "频道客户"} email={draft.customerPlatformUserId ?? "未绑定站内客户"} />,
             gameName(draft.game),
             draft.mode || "-",
+            <span key={`${draft.id}-note`} className="line-clamp-2 text-xs text-dfc-subtext">{draft.note || "-"}</span>,
             draft.hours ? `${formatMoney(draft.hours)}h` : "-",
             draft.budgetAmount ? <span key={`${draft.id}-budget`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(draft.budgetAmount)}</span> : <span key={`${draft.id}-budget-empty`} className="text-dfc-muted">按报价</span>,
             `${draft.candidates.length} 人`,
@@ -155,13 +157,14 @@ export default function OrdersPage() {
       </div>
 
       <DataTable
-        columns={["订单号", "客户", "陪玩", "游戏", "模式", "时长", "金额", "试音", "状态", "创建时间"]}
+        columns={["订单号", "客户", "陪玩", "游戏", "模式", "备注", "时长", "金额", "试音", "状态", "创建时间"]}
         rows={orders.map((order) => [
           <span key={`${order.id}-no`} className="font-black text-white">{order.orderNo}</span>,
           order.customer ? <Person key={`${order.id}-customer`} name={order.customer.displayName} email={order.customer.email} /> : "-",
           order.companion ? <Person key={`${order.id}-companion`} name={order.companion.displayName} email={order.companion.email} /> : <span className="text-dfc-gold">平台待匹配</span>,
           gameName(order.game),
           order.mode,
+          <span key={`${order.id}-notes`} className="line-clamp-2 text-xs text-dfc-subtext">{order.notes || "-"}</span>,
           `${formatMoney(order.hours)}h`,
           <span key={`${order.id}-amount`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(order.totalAmount)}</span>,
           order.voiceTrialRequested ? <StatusBadge key={`${order.id}-voice`} tone="warning">需要</StatusBadge> : <span className="text-dfc-muted">不需要</span>,

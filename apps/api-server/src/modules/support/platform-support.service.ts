@@ -48,6 +48,7 @@ type PlatformSupportMessage = {
 };
 
 type PlatformCustomerIdentity = Pick<PlatformSupportMessage, "platform" | "platformUserId" | "displayName">;
+type PlatformAccountWithUser = Prisma.UserExternalAccountGetPayload<{ include: { user: true } }>;
 
 const SUPPORT_RULES: SupportRule[] = [
   {
@@ -216,6 +217,8 @@ export class PlatformSupportService {
 
     if (!account) {
       account = await this.findOrCreatePlatformCustomer(input);
+    } else {
+      account = await this.refreshPlatformAccountDisplayName(account, input);
     }
 
     const history = await this.loadConversationHistory({
@@ -227,13 +230,23 @@ export class PlatformSupportService {
     const dispatchIntent = this.isDispatchIntent(message) || this.isDemandContinuation(message, history);
     const customerId = account?.user?.role === UserRole.CUSTOMER && account.user.status === UserStatus.ACTIVE ? account.userId : undefined;
     let finalAnswer = result.answer;
+    let matchedTopic = result.matchedTopic;
+    let handoffRequired = result.handoffRequired;
     let draft: { id: string; draftNo: string } | null = null;
+    const selectedCandidate = await this.trySelectDraftCandidate(input, account, message);
 
-    if (dispatchIntent) {
+    if (selectedCandidate) {
+      draft = { id: selectedCandidate.draftId, draftNo: selectedCandidate.draftNo };
+      finalAnswer = selectedCandidate.reply;
+      matchedTopic = "选择陪玩";
+      handoffRequired = false;
+    } else if (dispatchIntent) {
       const facts = this.withExplicitPublishDefaults(message, this.buildDemandFacts(message, history));
       const dispatchResult = await this.maybeCreateDispatchDraft(input, customerId, message, facts);
       draft = dispatchResult.draft;
       finalAnswer = dispatchResult.reply;
+      matchedTopic = "找陪玩";
+      handoffRequired = true;
     }
 
     const conversation = await this.prisma.aiSupportConversation.create({
@@ -246,16 +259,16 @@ export class PlatformSupportService {
         platformMessageId: input.messageId,
         message,
         answer: finalAnswer,
-        matchedTopic: dispatchIntent ? "找陪玩" : result.matchedTopic,
-        handoffRequired: dispatchIntent || result.handoffRequired
+        matchedTopic,
+        handoffRequired
       }
     });
 
     return {
       conversationId: conversation.id,
       reply: finalAnswer,
-      matchedTopic: dispatchIntent ? "找陪玩" : result.matchedTopic,
-      handoffRequired: dispatchIntent || result.handoffRequired,
+      matchedTopic,
+      handoffRequired,
       draft
     };
   }
@@ -271,22 +284,7 @@ export class PlatformSupportService {
   async ensurePlatformCustomer(input: PlatformCustomerIdentity) {
     const account = await this.findOrCreatePlatformCustomer(input);
     if (!account) return null;
-
-    const displayName = sanitizePlatformDisplayName(input.displayName);
-    if (displayName && account.displayName !== displayName) {
-      return this.prisma.userExternalAccount.update({
-        where: {
-          platform_externalUserId: {
-            platform: input.platform,
-            externalUserId: input.platformUserId
-          }
-        },
-        data: { displayName },
-        include: { user: true }
-      });
-    }
-
-    return account;
+    return this.refreshPlatformAccountDisplayName(account, input);
   }
 
   private async maybeCreateDispatchDraft(input: PlatformSupportMessage, customerId: string | undefined, message: string, facts: DemandFacts) {
@@ -329,6 +327,71 @@ export class PlatformSupportService {
       draft: { id: result.draft.id, draftNo: result.draft.draftNo },
       reply: this.buildDispatchPublishedReply(result.draft.draftNo, facts, result.notifications)
     };
+  }
+
+  private async trySelectDraftCandidate(input: PlatformSupportMessage, account: PlatformAccountWithUser | null, message: string) {
+    const normalized = message.normalize("NFKC").trim().toLowerCase();
+    if (!/(选|选择|就|要|这个|第|号|1|2|3|一|二|三)/.test(normalized)) return null;
+
+    const sourcePlatform = input.platform === BotPlatform.DISCORD ? OrderSourcePlatform.DISCORD : OrderSourcePlatform.KOOK;
+    const draft = await this.prisma.orderDraft.findFirst({
+      where: {
+        sourcePlatform,
+        status: { in: ["OPEN", "TRIALING", "SELECTED"] },
+        OR: [
+          account?.userId ? { customerId: account.userId } : undefined,
+          { customerPlatformUserId: input.platformUserId },
+          input.channelId ? { sourceChannelId: input.channelId } : undefined
+        ].filter(Boolean) as Prisma.OrderDraftWhereInput[]
+      },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        candidates: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            companion: {
+              include: { companionProfile: true }
+            }
+          }
+        }
+      }
+    });
+    if (!draft?.candidates.length) return null;
+
+    const ordinal = this.extractCandidateOrdinal(normalized);
+    let selected = typeof ordinal === "number" ? draft.candidates[ordinal - 1] : undefined;
+    if (!selected) {
+      selected = draft.candidates.find((candidate) => {
+        const profile = candidate.companion.companionProfile;
+        const names = [profile?.nickname, candidate.companion.displayName, candidate.companion.email]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase());
+        return names.some((name) => normalized.includes(name));
+      });
+    }
+    if (!selected) return null;
+
+    const serviceAdmin = await this.findServiceAdmin();
+    if (!serviceAdmin) return null;
+
+    await this.orderDrafts.selectCompanion(serviceAdmin.id, draft.id, {
+      companionId: selected.companionId,
+      note: `Customer selected this companion from ${sourcePlatform}: ${message}`
+    });
+
+    const companionName = selected.companion.companionProfile?.nickname ?? selected.companion.displayName;
+    return {
+      draftId: draft.id,
+      draftNo: draft.draftNo,
+      reply: `已记录你选择的陪玩：${companionName}。后台已指定该陪玩，客服会继续确认价格、时长和开始时间。`
+    };
+  }
+
+  private extractCandidateOrdinal(normalized: string) {
+    if (/第?\s*1\s*号?|一号|第一个|选一|选1/.test(normalized)) return 1;
+    if (/第?\s*2\s*号?|二号|第二个|选二|选2/.test(normalized)) return 2;
+    if (/第?\s*3\s*号?|三号|第三个|选三|选3/.test(normalized)) return 3;
+    return null;
   }
 
   private async resolveSupportAnswer(message: string, history: SupportHistoryTurn[] = []): Promise<SupportResult> {
@@ -461,9 +524,10 @@ export class PlatformSupportService {
       },
       include: { user: true }
     });
-    if (existing) return existing;
+    if (existing) return this.refreshPlatformAccountDisplayName(existing, input);
 
-    const displayName = await this.getAvailablePlatformCustomerDisplayName(input.platform, input.displayName);
+    const resolvedDisplayName = (await this.resolvePlatformDisplayName(input)) ?? input.displayName;
+    const displayName = await this.getAvailablePlatformCustomerDisplayName(input.platform, resolvedDisplayName);
     const displayNameKey = normalizeDisplayNameKey(displayName);
     const email = buildPlatformCustomerEmail(input.platform, input.platformUserId);
     const passwordHash = await createPasswordHash(randomBytes(32).toString("hex"));
@@ -486,7 +550,7 @@ export class PlatformSupportService {
             userId: created.id,
             platform: input.platform,
             externalUserId: input.platformUserId,
-            displayName: sanitizePlatformDisplayName(input.displayName)
+            displayName: sanitizePlatformDisplayName(resolvedDisplayName)
           }
         });
         return created;
@@ -517,7 +581,148 @@ export class PlatformSupportService {
     }
   }
 
-  private async getAvailablePlatformCustomerDisplayName(platform: BotPlatform, displayName?: string) {
+  private async refreshPlatformAccountDisplayName(account: PlatformAccountWithUser, input: PlatformCustomerIdentity) {
+    const resolvedDisplayName = (await this.resolvePlatformDisplayName(input)) ?? input.displayName;
+    const displayName = sanitizePlatformDisplayName(resolvedDisplayName);
+    if (!displayName) return account;
+
+    const shouldUpdateAccount = account.displayName !== displayName;
+    const shouldRenameUser = isSyntheticPlatformCustomer(account.user, input.platform) && account.user.displayName !== displayName;
+    if (!shouldUpdateAccount && !shouldRenameUser) return account;
+
+    const userDisplayName = shouldRenameUser
+      ? await this.getAvailablePlatformCustomerDisplayName(input.platform, displayName, account.userId)
+      : undefined;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (shouldUpdateAccount) {
+        await tx.userExternalAccount.update({
+          where: {
+            platform_externalUserId: {
+              platform: input.platform,
+              externalUserId: input.platformUserId
+            }
+          },
+          data: { displayName }
+        });
+      }
+
+      if (userDisplayName) {
+        await tx.user.update({
+          where: { id: account.userId },
+          data: {
+            displayName: userDisplayName,
+            displayNameKey: normalizeDisplayNameKey(userDisplayName)
+          }
+        });
+      }
+    });
+
+    return this.prisma.userExternalAccount.findUniqueOrThrow({
+      where: {
+        platform_externalUserId: {
+          platform: input.platform,
+          externalUserId: input.platformUserId
+        }
+      },
+      include: { user: true }
+    });
+  }
+
+  private async resolvePlatformDisplayName(input: PlatformCustomerIdentity) {
+    const directDisplayName = sanitizePlatformDisplayName(input.displayName);
+    if (directDisplayName) return directDisplayName;
+    if (input.platform === BotPlatform.KOOK) return this.fetchKookDisplayName(input.platformUserId);
+    if (input.platform === BotPlatform.DISCORD) return this.fetchDiscordDisplayName(input.platformUserId);
+    return undefined;
+  }
+
+  private async fetchKookDisplayName(kookUserId: string) {
+    const token = process.env.KOOK_TOKEN;
+    if (!token) return undefined;
+
+    const query = new URLSearchParams({ user_id: kookUserId });
+    if (process.env.KOOK_GUILD_ID) query.set("guild_id", process.env.KOOK_GUILD_ID);
+
+    const fromView = await this.fetchKookUserView(token, query);
+    if (fromView) return fromView;
+
+    const guildId = process.env.KOOK_GUILD_ID;
+    if (!guildId) return undefined;
+    return this.fetchKookDisplayNameFromGuildList(token, guildId, kookUserId);
+  }
+
+  private async fetchKookUserView(token: string, query: URLSearchParams) {
+    try {
+      const response = await fetch(`https://www.kookapp.cn/api/v3/user/view?${query.toString()}`, {
+        headers: { Authorization: `Bot ${token}` }
+      });
+      if (!response.ok) return undefined;
+      const result = (await response.json()) as {
+        code?: number;
+        data?: { nickname?: string; username?: string; identify_num?: string };
+      };
+      if (result.code !== 0 || !result.data) return undefined;
+      return formatKookPlatformDisplayName(result.data);
+    } catch (error) {
+      this.logger.warn(`KOOK nickname lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    }
+  }
+
+  private async fetchKookDisplayNameFromGuildList(token: string, guildId: string, kookUserId: string) {
+    try {
+      for (let page = 1; page <= 20; page += 1) {
+        const query = new URLSearchParams({
+          guild_id: guildId,
+          page: String(page),
+          page_size: "100"
+        });
+        const response = await fetch(`https://www.kookapp.cn/api/v3/guild/user-list?${query.toString()}`, {
+          headers: { Authorization: `Bot ${token}` }
+        });
+        if (!response.ok) return undefined;
+        const result = (await response.json()) as {
+          code?: number;
+          data?: {
+            items?: Array<{ id?: string; nickname?: string; username?: string; identify_num?: string }>;
+            meta?: { page_total?: number };
+          };
+        };
+        if (result.code !== 0 || !result.data) return undefined;
+        const member = result.data.items?.find((item) => item.id === kookUserId);
+        if (member) return formatKookPlatformDisplayName(member);
+        const pageTotal = Number(result.data.meta?.page_total ?? 1);
+        if (page >= pageTotal) break;
+      }
+    } catch (error) {
+      this.logger.warn(`KOOK guild nickname lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return undefined;
+  }
+
+  private async fetchDiscordDisplayName(discordUserId: string) {
+    const token = process.env.DISCORD_TOKEN;
+    const guildId = process.env.DISCORD_GUILD_ID;
+    if (!token || !guildId) return undefined;
+
+    try {
+      const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${discordUserId}`, {
+        headers: { Authorization: `Bot ${token}` }
+      });
+      if (!response.ok) return undefined;
+      const member = (await response.json()) as {
+        nick?: string;
+        user?: { global_name?: string; username?: string };
+      };
+      return sanitizePlatformDisplayName(member.nick || member.user?.global_name || member.user?.username);
+    } catch (error) {
+      this.logger.warn(`Discord nickname lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    }
+  }
+
+  private async getAvailablePlatformCustomerDisplayName(platform: BotPlatform, displayName?: string, currentUserId?: string) {
     const baseName =
       sanitizePlatformDisplayName(displayName) ??
       `${platform === BotPlatform.KOOK ? "KOOK" : "Discord"}客户${randomInt(1000, 9999)}`;
@@ -526,7 +731,11 @@ export class PlatformSupportService {
       const candidate = index === 0 ? baseName : `${baseName}-${index + 1}`;
       const displayNameKey = normalizeDisplayNameKey(candidate);
       const existing = await this.prisma.user.findFirst({
-        where: { role: UserRole.CUSTOMER, displayNameKey },
+        where: {
+          role: UserRole.CUSTOMER,
+          displayNameKey,
+          ...(currentUserId ? { id: { not: currentUserId } } : {})
+        },
         select: { id: true }
       });
       if (!existing) return candidate;
@@ -951,6 +1160,22 @@ function isValidPlatformUserId(platform: BotPlatform, value: string) {
   if (platform === BotPlatform.KOOK) return /^\d{6,}$/.test(value);
   if (platform === BotPlatform.DISCORD) return /^\d{15,22}$/.test(value);
   return false;
+}
+
+function formatKookPlatformDisplayName(user: { nickname?: string; username?: string; identify_num?: string }) {
+  const name = sanitizePlatformDisplayName(user.nickname || user.username);
+  const identifyNum = sanitizePlatformDisplayName(user.identify_num);
+  if (name && identifyNum) return `${name}#${identifyNum}`;
+  return name;
+}
+
+function isSyntheticPlatformCustomer(user: { role: UserRole; email: string }, platform: BotPlatform) {
+  const platformKey = platform === BotPlatform.KOOK ? "kook" : "discord";
+  return (
+    user.role === UserRole.CUSTOMER &&
+    user.email.toLowerCase().startsWith(`customer-${platformKey}-`) &&
+    user.email.toLowerCase().endsWith("@platform.maycatplay.local")
+  );
 }
 
 async function generateUniqueReferralCode(tx: Prisma.TransactionClient, prefix: string) {

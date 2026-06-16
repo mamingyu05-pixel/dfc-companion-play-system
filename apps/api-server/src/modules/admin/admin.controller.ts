@@ -705,6 +705,11 @@ export class AdminController {
     return this.orderDrafts.failDraft(user.id, id, body);
   }
 
+  @Post("order-drafts/expire-stale")
+  expireStaleOrderDrafts() {
+    return this.orderDrafts.expireStaleDrafts();
+  }
+
   @Post("order-drafts/:id/convert")
   convertOrderDraft(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.orderDrafts.convertDraftToOrder(user.id, id);
@@ -1222,8 +1227,11 @@ export class AdminController {
   }
 
   @Patch("orders/:id/assign")
-  assignOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { companionId: string }) {
-    return this.orders.assignOrder(id, body.companionId, user.id);
+  async assignOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { companionId: string; autoStart?: boolean }) {
+    const assignment = await this.orders.assignOrder(id, body.companionId, user.id);
+    if (!body.autoStart) return assignment;
+    const startedOrder = await this.orders.startAssignedOrderByAdmin(id, user.id);
+    return { ...assignment, order: startedOrder, autoStarted: true };
   }
 
   @Post("companions/:id/external-accounts")

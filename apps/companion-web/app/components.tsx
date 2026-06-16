@@ -6,6 +6,7 @@ const navItems = [
   ["工作台", "/dashboard"],
   ["可接订单", "/available-orders"],
   ["我的订单", "/orders"],
+  ["????", "/customer-drafts"],
   ["收益", "/earnings"],
   ["提现", "/withdrawals"],
   ["资料", "/profile"]
@@ -115,14 +116,14 @@ export function StatusBadge({ children, tone = "default" }: { children: ReactNod
   return <span className={`rounded-dfc-control border px-2 py-1 text-xs font-bold ${styles[tone]}`}>{children}</span>;
 }
 
-export function ActionButton({ children, tone = "primary", onClick, disabled }: { children: ReactNode; tone?: "primary" | "secondary" | "danger"; onClick?: () => void; disabled?: boolean }) {
+export function ActionButton({ children, tone = "primary", onClick, disabled, type = "button" }: { children: ReactNode; tone?: "primary" | "secondary" | "danger"; onClick?: () => void; disabled?: boolean; type?: "button" | "submit" }) {
   const styles = {
     primary: "border-cyan-300/60 bg-cyan-300 text-slate-950 hover:bg-cyan-200",
     secondary: "border-cyan-300/20 bg-[#101827] text-dfc-text hover:border-cyan-300/45 hover:text-cyan-100",
     danger: "border-dfc-danger/50 bg-dfc-danger text-white hover:bg-red-400"
   };
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={`rounded-dfc-control border px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60 ${styles[tone]}`}>
+    <button type={type} onClick={onClick} disabled={disabled} className={`rounded-dfc-control border px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60 ${styles[tone]}`}>
       {children}
     </button>
   );
