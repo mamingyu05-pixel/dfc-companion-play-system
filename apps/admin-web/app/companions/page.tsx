@@ -55,6 +55,7 @@ export default function CompanionsPage() {
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [search, setSearch] = useState("");
 
   async function loadCompanions() {
     const token = localStorage.getItem("dfc_admin_token");
@@ -173,6 +174,11 @@ export default function CompanionsPage() {
     return { listed, online, pendingIncome };
   }, [companions]);
 
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredCompanions = normalizedSearch
+    ? companions.filter((item) => getSearchableCompanionText(item).includes(normalizedSearch))
+    : companions;
+
   return (
     <AdminShell>
       <SectionHeader eyebrow="Companion Roster" title="陪玩管理" desc="管理真实陪玩资料、上架状态、价格、平台抽成比例和 KOOK / Discord 绑定。上架后客户才可下单。" />
@@ -186,9 +192,28 @@ export default function CompanionsPage() {
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
+      <section className="mb-4 rounded-dfc border border-cyan-300/15 bg-[#0a1020]/75 px-4 py-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-base font-black text-white">陪玩列表</h2>
+            <p className="mt-1 text-xs text-dfc-muted">
+              当前显示 {filteredCompanions.length} / {companions.length} 个陪玩。支持搜索昵称、账号、平台 ID、游戏、状态和段位。
+            </p>
+          </div>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="input xl:max-w-md"
+            placeholder="搜索陪玩昵称、账号、Discord / KOOK、游戏或状态"
+          />
+        </div>
+      </section>
+
       <DataTable
         columns={["ID", "资料", "游戏", "账号", "段位", "价格/抽成", "资料状态", "在线", "收益", "操作"]}
-        rows={companions.map((item) => [
+        maxHeightClassName="max-h-[680px]"
+        stickyHeader
+        rows={filteredCompanions.map((item) => [
           shortId(item.userId),
           <div key={`${item.userId}-profile`} className="flex items-center gap-3">
             <SafeAvatar nickname={item.nickname} avatarUrl={item.avatarUrl} />
@@ -205,15 +230,15 @@ export default function CompanionsPage() {
           />,
           formatAccountEmail(item.email),
           item.deltaForceRank,
-          <div key={`${item.userId}-pricing`} className="space-y-3">
-            <CompanionPricingEditor
-              pricePerHour={item.pricePerHour}
-              kookPricePerHour={item.kookPricePerHour}
-              discordPricePerHour={item.discordPricePerHour}
-              onSave={(base, kook, discord) => void updatePricing(item.userId, base, kook, discord)}
-            />
-            <CompanionCommissionEditor pricePerHour={item.pricePerHour} commissionRate={item.commissionRate} onSave={(value) => void updateCommission(item.userId, value)} />
-          </div>,
+          <CompanionCommercialEditor
+            key={`${item.userId}-pricing`}
+            pricePerHour={item.pricePerHour}
+            kookPricePerHour={item.kookPricePerHour}
+            discordPricePerHour={item.discordPricePerHour}
+            commissionRate={item.commissionRate}
+            onSavePricing={(base, kook, discord) => void updatePricing(item.userId, base, kook, discord)}
+            onSaveCommission={(value) => void updateCommission(item.userId, value)}
+          />,
           <StatusBadge key={`${item.userId}-s`} tone={item.status === "LISTED" ? "success" : item.status === "BANNED" ? "danger" : "warning"}>{toCompanionStatus(item.status)}</StatusBadge>,
           <StatusBadge key={`${item.userId}-online`} tone={item.onlineStatus === "ONLINE" ? "success" : "default"}>{toOnlineStatus(item.onlineStatus)}</StatusBadge>,
           <div key={`${item.userId}-income`} className="text-xs leading-5">
@@ -329,6 +354,44 @@ function SafeAvatar({ nickname, avatarUrl }: { nickname: string; avatarUrl?: str
   );
 }
 
+function CompanionCommercialEditor({
+  pricePerHour,
+  kookPricePerHour,
+  discordPricePerHour,
+  commissionRate,
+  onSavePricing,
+  onSaveCommission
+}: {
+  pricePerHour: string;
+  kookPricePerHour?: string | null;
+  discordPricePerHour?: string | null;
+  commissionRate: string;
+  onSavePricing: (pricePerHour: string, kookPricePerHour: string, discordPricePerHour: string) => void;
+  onSaveCommission: (value: string) => void;
+}) {
+  return (
+    <div className="min-w-56 text-xs">
+      <div className="font-black text-dfc-gold">¥{formatMoney(pricePerHour)}/h</div>
+      <div className="mt-1 text-dfc-muted">
+        KOOK {kookPricePerHour ? `¥${formatMoney(kookPricePerHour)}` : "沿用默认"} / DC {discordPricePerHour ? `¥${formatMoney(discordPricePerHour)}` : "沿用默认"}
+      </div>
+      <div className="mt-1 text-dfc-muted">平台抽成 {formatPercent(commissionRate)}</div>
+      <details className="mt-2">
+        <summary className="cursor-pointer text-cyan-200 hover:text-cyan-100">编辑价格/抽成</summary>
+        <div className="mt-2 space-y-3 rounded-dfc-control border border-cyan-300/15 bg-[#050711]/70 p-2">
+          <CompanionPricingEditor
+            pricePerHour={pricePerHour}
+            kookPricePerHour={kookPricePerHour}
+            discordPricePerHour={discordPricePerHour}
+            onSave={onSavePricing}
+          />
+          <CompanionCommissionEditor pricePerHour={pricePerHour} commissionRate={commissionRate} onSave={onSaveCommission} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function CompanionPricingEditor({
   pricePerHour,
   kookPricePerHour,
@@ -428,6 +491,27 @@ function formatAccountEmail(email: string) {
 function platformSummary(accounts: Companion["externalAccounts"]) {
   if (!accounts.length) return "未绑定 KOOK / Discord";
   return accounts.map((account) => `${account.platform}:${account.displayName || account.externalUserId}`).join(" / ");
+}
+
+function getSearchableCompanionText(item: Companion) {
+  return [
+    item.userId,
+    item.email,
+    item.nickname,
+    item.status,
+    item.onlineStatus,
+    item.deltaForceRank,
+    item.pricePerHour,
+    item.kookPricePerHour ?? "",
+    item.discordPricePerHour ?? "",
+    item.commissionRate,
+    ...(item.games?.length ? item.games : [item.game]).flatMap((game) => [game, gameName(game)]),
+    ...((item.externalAccounts ?? []).flatMap((account) => [
+      account.platform,
+      account.externalUserId,
+      account.displayName ?? ""
+    ]))
+  ].join(" ").toLowerCase();
 }
 
 function toFriendlyError(message?: string) {
