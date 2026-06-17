@@ -262,7 +262,7 @@ export default function ProfilePage() {
 
       <section className="companion-card mt-6 grid gap-4 p-4 md:grid-cols-[160px_1fr]">
         <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-dfc border border-cyan-300/20 bg-[#101827] text-3xl font-black text-cyan-200">
-          {avatarUrl ? <img src={avatarUrl} alt="陪玩头像" className="h-full w-full object-cover" /> : profile.user.displayName.slice(0, 1)}
+          <SafeMediaImage src={avatarUrl} alt="陪玩头像" className="h-full w-full object-cover" fallbackText={profile.user.displayName.slice(0, 1)} />
         </div>
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -286,13 +286,13 @@ export default function ProfilePage() {
         <p className="mt-1 text-sm leading-6 text-dfc-subtext">头像、照片和语音会影响客户点击率。请不要上传联系方式、二维码或违规内容。</p>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
           <UploadBox label="头像" hint="用于陪玩列表和详情页" accept="image/*" uploading={uploading === "avatar"} onChange={handleAvatarChange}>
-            {avatarUrl ? <img src={avatarUrl} alt="头像预览" className="h-24 w-24 rounded-dfc object-cover" /> : null}
+            {avatarUrl ? <SafeMediaImage src={avatarUrl} alt="头像预览" className="h-24 w-24 rounded-dfc object-cover" fallbackText="头像预览" /> : null}
           </UploadBox>
           <UploadBox label="展示照片" hint="最多 9 张，点击缩略图可删除" accept="image/*" multiple uploading={uploading === "photo"} onChange={handlePhotosChange}>
             <div className="grid grid-cols-3 gap-2">
               {photoUrls.map((url) => (
                 <button key={url} type="button" onClick={() => setPhotoUrls((current) => current.filter((item) => item !== url))} className="overflow-hidden rounded-dfc-control border border-cyan-300/20">
-                  <img src={url} alt="展示照片" className="h-16 w-full object-cover" />
+                  <SafeMediaImage src={url} alt="展示照片" className="h-16 w-full object-cover" fallbackText="照片" />
                 </button>
               ))}
             </div>
@@ -329,6 +329,24 @@ export default function ProfilePage() {
       </form>
     </CompanionShell>
   );
+}
+
+function SafeMediaImage({ src, alt, className, fallbackText }: { src: string; alt: string; className: string; fallbackText: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (!src || failed) {
+    return (
+      <div className={`${className} flex items-center justify-center border border-cyan-300/20 bg-[#101827] px-2 text-center text-sm font-black text-cyan-200`}>
+        {fallbackText}
+      </div>
+    );
+  }
+
+  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
 }
 
 function Field({ label, value }: { label: string; value: string }) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AdminShell, SectionHeader } from "../../components";
 
@@ -29,8 +29,27 @@ const gameOptions = [
 ] as const;
 
 type UploadPurpose = "avatar" | "photo" | "voice";
+type CreationMode = "existing" | "email";
+
+type AdminUser = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  displayName: string;
+  companionProfile: { nickname: string } | null;
+  externalAccounts: Array<{
+    platform: string;
+    externalUserId: string;
+    displayName?: string | null;
+  }>;
+};
 
 export default function NewCompanionPage() {
+  const [mode, setMode] = useState<CreationMode>("existing");
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
@@ -47,6 +66,39 @@ export default function NewCompanionPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState("");
+
+  async function loadUsers() {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) return;
+    setIsLoadingUsers(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error("无法加载用户列表");
+      setUsers((await response.json()) as AdminUser[]);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadUsers().catch(() => {
+      setIsLoadingUsers(false);
+      setError("无法加载已注册或平台入会用户，请刷新后重试");
+    });
+  }, []);
+
+  const companionCandidates = useMemo(
+    () =>
+      users.filter(
+        (user) =>
+          ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "COMPANION"].includes(user.role) &&
+          user.status === "ACTIVE" &&
+          !user.companionProfile
+      ),
+    [users]
+  );
 
   async function uploadMedia(file: File, purpose: UploadPurpose) {
     const token = localStorage.getItem("dfc_admin_token");
@@ -120,15 +172,21 @@ export default function NewCompanionPage() {
     setError("");
     setStatus("");
 
-    const response = await fetch("/api/admin/companions", {
-      method: "POST",
+    if (mode === "existing" && !selectedUserId) {
+      setError("请先选择一个已注册或已进入 Discord / KOOK 的账号");
+      return;
+    }
+
+    const endpoint = mode === "existing" ? `/api/admin/users/${selectedUserId}/become-companion` : "/api/admin/companions";
+    const method = mode === "existing" ? "PATCH" : "POST";
+    const response = await fetch(endpoint, {
+      method,
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        email,
-        password,
+        ...(mode === "email" ? { email, password } : {}),
         nickname,
         avatarUrl: avatarUrl || undefined,
         photoUrls,
@@ -139,26 +197,29 @@ export default function NewCompanionPage() {
         deltaForceRank,
         skillModes: skillModes.split(",").map((item) => item.trim()).filter(Boolean),
         bio,
-        voicePreference
+        voicePreference,
+        note: mode === "existing" ? "管理端添加陪玩页开通陪玩身份" : undefined
       })
     });
 
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
     if (!response.ok) {
       const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(message ?? "创建陪玩失败");
+      setError(message ?? (mode === "existing" ? "开通陪玩身份失败" : "创建陪玩失败"));
       return;
     }
 
     setEmail("");
     setPassword("");
+    setSelectedUserId("");
     setNickname("");
     setAvatarUrl("");
     setPhotoUrls([]);
     setVoiceIntroUrl("");
     setGender("MOON");
     setBio("");
-    setStatus("陪玩账号已创建，默认待审核。请到陪玩管理页审核上架。");
+    setStatus(mode === "existing" ? "陪玩身份已开通，默认待审核。请到陪玩管理页审核上架。" : "陪玩账号已创建，默认待审核。请到陪玩管理页审核上架。");
+    await loadUsers().catch(() => undefined);
   }
 
   return (
@@ -169,9 +230,41 @@ export default function NewCompanionPage() {
 
       <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <form onSubmit={submit} className="admin-panel">
+          <div className="mb-5 grid gap-3 md:grid-cols-2">
+            <ModeButton active={mode === "existing"} title="已入会用户开通" desc="优先选择 Discord / KOOK / 已注册账号，不需要邮箱和初始密码。" onClick={() => setMode("existing")} />
+            <ModeButton active={mode === "email"} title="邮箱创建账号" desc="只在对方没有 Discord / KOOK，也没有网站账号时使用。" onClick={() => setMode("email")} />
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="邮箱" value={email} onChange={setEmail} type="email" required />
-            <Field label="初始密码" value={password} onChange={setPassword} type="password" required />
+            {mode === "existing" ? (
+              <label className="block md:col-span-2">
+                <span className="mb-2 block text-xs font-black text-dfc-muted">选择要开通陪玩身份的账号</span>
+                <select
+                  value={selectedUserId}
+                  onChange={(event) => {
+                    const user = users.find((item) => item.id === event.target.value);
+                    setSelectedUserId(event.target.value);
+                    if (user && !nickname) setNickname(user.displayName);
+                  }}
+                  className="input"
+                  required
+                >
+                  <option value="">{isLoadingUsers ? "正在加载用户..." : "选择 Discord / KOOK / 已注册账号"}</option>
+                  {companionCandidates.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {userOptionLabel(user)}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-2 block text-xs leading-5 text-dfc-subtext">
+                  没看到账号时，先让对方进入 Discord / KOOK 或登录网站，再运行同步用户脚本。邮箱创建只作为备用方式。
+                </span>
+              </label>
+            ) : (
+              <>
+                <Field label="邮箱" value={email} onChange={setEmail} type="email" required />
+                <Field label="初始密码" value={password} onChange={setPassword} type="password" required />
+              </>
+            )}
             <Field label="昵称" value={nickname} onChange={setNickname} required />
             <Field label="每小时价格" value={pricePerHour} onChange={setPricePerHour} required />
             <label className="block">
@@ -212,13 +305,13 @@ export default function NewCompanionPage() {
 
           <div className="mt-5 grid gap-4 md:grid-cols-3">
             <UploadBox label="头像" hint="建议方图，展示在列表和详情页" accept="image/*" uploading={uploading === "avatar"} onChange={handleAvatarChange}>
-              {avatarUrl ? <img src={avatarUrl} alt="头像预览" className="h-24 w-24 rounded-dfc object-cover" /> : null}
+              {avatarUrl ? <SafeMediaImage src={avatarUrl} alt="头像预览" className="h-24 w-24 rounded-dfc object-cover" fallbackText="头像预览" /> : null}
             </UploadBox>
             <UploadBox label="展示照片" hint="最多 9 张，用于陪玩详情展示" accept="image/*" multiple uploading={uploading === "photo"} onChange={handlePhotosChange}>
               <div className="grid grid-cols-3 gap-2">
                 {photoUrls.map((url) => (
                   <button key={url} type="button" onClick={() => setPhotoUrls((current) => current.filter((item) => item !== url))} className="overflow-hidden rounded-dfc-control border border-cyan-300/20">
-                    <img src={url} alt="展示照片" className="h-16 w-full object-cover" />
+                    <SafeMediaImage src={url} alt="展示照片" className="h-16 w-full object-cover" fallbackText="照片" />
                   </button>
                 ))}
               </div>
@@ -237,7 +330,7 @@ export default function NewCompanionPage() {
             <textarea value={bio} onChange={(event) => setBio(event.target.value)} className="input min-h-28" />
           </label>
           <button className="mt-5 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200">
-            创建陪玩
+            {mode === "existing" ? "开通陪玩身份" : "创建陪玩"}
           </button>
         </form>
 
@@ -255,6 +348,21 @@ export default function NewCompanionPage() {
   );
 }
 
+function ModeButton({ active, title, desc, onClick }: { active: boolean; title: string; desc: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-dfc border p-4 text-left transition ${
+        active ? "border-cyan-300/60 bg-cyan-300/15 shadow-dfc-glow" : "border-cyan-300/15 bg-[#050711]/60 hover:border-cyan-300/35"
+      }`}
+    >
+      <div className="text-sm font-black text-white">{title}</div>
+      <div className="mt-1 text-xs leading-5 text-dfc-subtext">{desc}</div>
+    </button>
+  );
+}
+
 function Field({ label, value, onChange, type = "text", required }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
   return (
     <label className="block">
@@ -262,6 +370,36 @@ function Field({ label, value, onChange, type = "text", required }: { label: str
       <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="input" />
     </label>
   );
+}
+
+function SafeMediaImage({ src, alt, className, fallbackText }: { src: string; alt: string; className: string; fallbackText: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (!src || failed) {
+    return (
+      <div className={`${className} flex items-center justify-center border border-cyan-300/20 bg-[#101827] px-2 text-center text-xs font-black text-cyan-200`}>
+        {fallbackText}
+      </div>
+    );
+  }
+
+  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+}
+
+function userOptionLabel(user: AdminUser) {
+  const platform = user.externalAccounts.map((account) => `${account.platform}:${account.displayName || account.externalUserId}`).join(" / ");
+  const account = formatAccountEmail(user.email);
+  return `${user.displayName} / ${platform || account}`;
+}
+
+function formatAccountEmail(email: string) {
+  if (email.endsWith("@platform.maycatplay.local")) return "平台频道用户";
+  if (email.endsWith("@oauth.maycatplay.local")) return "第三方登录用户";
+  return email;
 }
 
 function UploadBox({ label, hint, accept, multiple, uploading, onChange, children }: { label: string; hint: string; accept: string; multiple?: boolean; uploading: boolean; onChange: (event: ChangeEvent<HTMLInputElement>) => void; children?: ReactNode }) {

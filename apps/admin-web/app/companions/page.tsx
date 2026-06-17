@@ -113,9 +113,7 @@ export default function CompanionsPage() {
         rows={companions.map((item) => [
           shortId(item.userId),
           <div key={`${item.userId}-profile`} className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-dfc border border-cyan-300/20 bg-[#101827] text-sm font-black text-cyan-200">
-              {item.avatarUrl ? <img src={item.avatarUrl} alt={`${item.nickname} 头像`} className="h-full w-full object-cover" /> : item.nickname.slice(0, 1)}
-            </div>
+            <SafeAvatar nickname={item.nickname} avatarUrl={item.avatarUrl} />
             <div>
               <div className="font-semibold text-white">{item.nickname}</div>
               <div className="mt-1 max-w-56 truncate text-xs text-dfc-muted">{platformSummary(item.externalAccounts)}</div>
@@ -139,6 +137,24 @@ export default function CompanionsPage() {
         ])}
       />
     </AdminShell>
+  );
+}
+
+function SafeAvatar({ nickname, avatarUrl }: { nickname: string; avatarUrl?: string | null }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [avatarUrl]);
+
+  return (
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-dfc border border-cyan-300/20 bg-[#101827] text-sm font-black text-cyan-200">
+      {avatarUrl && !failed ? (
+        <img src={avatarUrl} alt={`${nickname} 头像`} className="h-full w-full object-cover" onError={() => setFailed(true)} />
+      ) : (
+        nickname.slice(0, 1)
+      )}
+    </div>
   );
 }
 
