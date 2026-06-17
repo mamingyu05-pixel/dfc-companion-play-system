@@ -64,3 +64,9 @@
 - 客户注册新增真实邮箱验证码步骤，新增 `email_verification_codes` 表和 SMTP 配置项。
 - 客户注册、后台创建管理员/陪玩账号统一邮箱规范化和重复邮箱拦截。
 - 新增 `users.displayNameKey` 和同角色昵称唯一约束，防止客户用户名重复。
+# 2026-06-17
+
+- Added GitHub Actions security workflow with Gitleaks secret scanning and Trivy vulnerability reporting.
+- Added Dependabot weekly checks for npm/pnpm workspace dependencies and GitHub Actions.
+- Added `/api/health` endpoint for uptime monitoring and deployment smoke checks.
+- Added `scripts/smoke-production.sh` for post-deploy checks against `/api/health`, `/customer/`, `/admin/`, and `/companion/`.
