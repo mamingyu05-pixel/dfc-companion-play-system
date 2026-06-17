@@ -83,6 +83,7 @@ export default function UsersPage() {
   const [companionNote, setCompanionNote] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [isUserTableOpen, setIsUserTableOpen] = useState(true);
 
   async function loadUsers() {
     const token = localStorage.getItem("dfc_admin_token");
@@ -484,7 +485,35 @@ export default function UsersPage() {
         </AdminPanel>
       </section>
 
-      <DataTable columns={["ID", "资料", "角色", "状态", "钱包", "绑定", "操作"]} rows={rows} />
+      <section className="mt-6">
+        <div className="mb-3 flex flex-col gap-3 rounded-dfc border border-cyan-300/15 bg-[#0a1020]/75 px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-base font-black text-white">用户列表</h2>
+            <p className="mt-1 text-xs text-dfc-muted">
+              当前显示 {filteredUsers.length} / {users.length} 个账号。列表区域固定高度滚动，避免用户多时页面过长。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsUserTableOpen((value) => !value)}
+            className="shrink-0 rounded-dfc-control border border-cyan-300/30 bg-[#050711] px-4 py-2 text-xs font-black text-cyan-100 transition hover:border-cyan-300/60"
+          >
+            {isUserTableOpen ? "收起列表" : "展开列表"}
+          </button>
+        </div>
+        {isUserTableOpen ? (
+          <DataTable
+            columns={["ID", "资料", "角色", "状态", "钱包", "绑定", "操作"]}
+            rows={rows}
+            maxHeightClassName="max-h-[620px]"
+            stickyHeader
+          />
+        ) : (
+          <div className="rounded-dfc border border-cyan-300/15 bg-[#050711]/75 px-4 py-6 text-sm text-dfc-subtext">
+            用户列表已收起。需要查看、封禁或搜索结果时点击“展开列表”。
+          </div>
+        )}
+      </section>
     </AdminShell>
   );
 }

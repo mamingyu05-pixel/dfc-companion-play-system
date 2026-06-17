@@ -91,12 +91,22 @@ export function MetricCard({ label, value, hint }: { label: string; value: strin
   );
 }
 
-export function DataTable({ columns, rows }: { columns: string[]; rows: Array<Array<ReactNode>> }) {
+export function DataTable({
+  columns,
+  rows,
+  maxHeightClassName,
+  stickyHeader = false
+}: {
+  columns: string[];
+  rows: Array<Array<ReactNode>>;
+  maxHeightClassName?: string;
+  stickyHeader?: boolean;
+}) {
   return (
     <div className="admin-table-wrap">
-      <div className="overflow-x-auto">
+      <div className={`overflow-x-auto ${maxHeightClassName ? `${maxHeightClassName} overflow-y-auto` : ""}`}>
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-cyan-300/15 bg-[#101827] text-xs text-dfc-muted">
+          <thead className={`border-b border-cyan-300/15 bg-[#101827] text-xs text-dfc-muted ${stickyHeader ? "sticky top-0 z-10" : ""}`}>
             <tr>
               {columns.map((column) => (
                 <th key={column} className="whitespace-nowrap px-4 py-3 font-black">
