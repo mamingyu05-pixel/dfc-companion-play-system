@@ -70,3 +70,4 @@
 - Added Dependabot weekly checks for npm/pnpm workspace dependencies and GitHub Actions.
 - Added `/api/health` endpoint for uptime monitoring and deployment smoke checks.
 - Added `scripts/smoke-production.sh` for post-deploy checks against `/api/health`, `/customer/`, `/admin/`, and `/companion/`.
+- Fixed Trivy GitHub Action reference to the current `v0.36.0` tag.
