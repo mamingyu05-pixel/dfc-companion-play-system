@@ -304,14 +304,21 @@ export default function UsersPage() {
   }
 
   const normalizedSearch = normalizeSearchValue(search);
-  const rankedUsers = normalizedSearch ? rankUsersBySearch(users, normalizedSearch) : users;
+  const rankedUsers = useMemo(() => (normalizedSearch ? rankUsersBySearch(users, normalizedSearch) : users), [users, normalizedSearch]);
   const filteredUsers = rankedUsers;
-  const customerOptions = rankedUsers.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
-  const companionCandidateOptions = users.filter(
+  const customerOptions = useMemo(() => rankedUsers.filter((user) => user.status === "ACTIVE" && Boolean(user.wallet)), [rankedUsers]);
+  const companionCandidateOptions = rankedUsers.filter(
     (user) => ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "COMPANION"].includes(user.role) && user.status === "ACTIVE" && !user.companionProfile
   );
-  const passwordResetOptions = users.filter((user) => user.status === "ACTIVE");
-  const promotableUserOptions = users.filter((user) => (user.role === "CUSTOMER" || user.role === "ADMIN") && user.status === "ACTIVE");
+  const passwordResetOptions = rankedUsers.filter((user) => user.status === "ACTIVE");
+  const promotableUserOptions = rankedUsers.filter((user) => (user.role === "CUSTOMER" || user.role === "ADMIN") && user.status === "ACTIVE");
+
+  useEffect(() => {
+    if (!normalizedSearch) return;
+    const stillVisible = customerOptions.some((user) => user.id === selectedCustomerId);
+    if (stillVisible) return;
+    setSelectedCustomerId(customerOptions[0]?.id ?? "");
+  }, [normalizedSearch, customerOptions, selectedCustomerId]);
 
   const stats = useMemo(() => {
     const customers = users.filter((user) => user.role === "CUSTOMER").length;
@@ -429,6 +436,13 @@ export default function UsersPage() {
               <option value="DEBIT">扣减余额 / 冲正</option>
             </select>
           </div>
+          {normalizedSearch ? (
+            <div className="mt-2 text-xs text-dfc-muted">
+              {customerOptions.length
+                ? `已按搜索匹配 ${customerOptions.length} 个账号，当前优先：${userOptionLabel(customerOptions[0])}`
+                : "没有匹配到可调账账号，请换昵称、邮箱、ID、KOOK/DC 名称再搜。"}
+            </div>
+          ) : null}
           <input value={creditAmount} onChange={(event) => setCreditAmount(event.target.value)} className="input mt-3" placeholder="金额，例如 300" inputMode="decimal" />
           <input value={creditNote} onChange={(event) => setCreditNote(event.target.value)} className="input mt-3" placeholder="备注，例如微信转账已确认" />
           <button type="button" onClick={() => void creditCustomerBalance()} className={`mt-4 rounded-dfc-control border px-4 py-3 text-sm font-black ${adjustmentDirection === "CREDIT" ? "border-cyan-300/60 bg-cyan-300 text-slate-950" : "border-dfc-gold/60 bg-dfc-gold text-slate-950"}`}>
@@ -691,14 +705,44 @@ function scoreSearchField(value: string | null | undefined, query: string, token
   else if (text.startsWith(query)) score += weight * 5;
   else if (text.includes(query)) score += weight * 2;
 
+  const compactText = compactSearchValue(text);
+  const compactQuery = compactSearchValue(query);
+  if (compactQuery && compactText !== text) {
+    if (compactText === compactQuery) score += weight * 6;
+    else if (compactText.startsWith(compactQuery)) score += weight * 3;
+    else if (compactText.includes(compactQuery)) score += weight * 1.5;
+    else if (isSubsequence(compactQuery, compactText)) score += weight * 0.8;
+  }
+
   for (const token of tokens) {
     if (token === query) continue;
     if (text === token) score += weight * 4;
     else if (text.startsWith(token)) score += weight * 2;
     else if (text.includes(token)) score += weight;
+
+    const compactToken = compactSearchValue(token);
+    if (compactToken && compactToken !== token) {
+      if (compactText === compactToken) score += weight * 2;
+      else if (compactText.startsWith(compactToken)) score += weight;
+      else if (compactText.includes(compactToken)) score += weight * 0.5;
+    }
   }
 
   return score;
+}
+
+function compactSearchValue(value: string) {
+  return value.replace(/[\s\-_/\\#：:@.]+/g, "");
+}
+
+function isSubsequence(query: string, text: string) {
+  if (!query || query.length > text.length) return false;
+  let index = 0;
+  for (const char of text) {
+    if (char === query[index]) index += 1;
+    if (index === query.length) return true;
+  }
+  return false;
 }
 
 function formatExternalAccount(account: AdminUser["externalAccounts"][number]) {
