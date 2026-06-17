@@ -493,13 +493,30 @@ export default function UsersPage() {
               当前显示 {filteredUsers.length} / {users.length} 个账号。列表区域固定高度滚动，避免用户多时页面过长。
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsUserTableOpen((value) => !value)}
-            className="shrink-0 rounded-dfc-control border border-cyan-300/30 bg-[#050711] px-4 py-2 text-xs font-black text-cyan-100 transition hover:border-cyan-300/60"
-          >
-            {isUserTableOpen ? "收起列表" : "展开列表"}
-          </button>
+          <div className="flex w-full flex-col gap-2 md:w-auto md:min-w-[420px] md:flex-row md:items-center">
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="input md:min-w-72"
+              placeholder="搜索昵称、邮箱、ID、Discord / KOOK"
+            />
+            {search ? (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="rounded-dfc-control border border-cyan-300/20 bg-[#050711] px-3 py-2 text-xs font-black text-dfc-subtext transition hover:border-cyan-300/50 hover:text-cyan-100"
+              >
+                清空
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setIsUserTableOpen((value) => !value)}
+              className="shrink-0 rounded-dfc-control border border-cyan-300/30 bg-[#050711] px-4 py-2 text-xs font-black text-cyan-100 transition hover:border-cyan-300/60"
+            >
+              {isUserTableOpen ? "收起列表" : "展开列表"}
+            </button>
+          </div>
         </div>
         {isUserTableOpen ? (
           <DataTable
