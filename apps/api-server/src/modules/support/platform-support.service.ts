@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
-import { BotEventStatus, BotPlatform, CompanionProfileStatus, OrderSourcePlatform, Prisma, UserRole, UserStatus } from "@prisma/client";
+import { BotEventStatus, BotPlatform, CompanionProfileStatus, GameCode, OrderSourcePlatform, Prisma, UserRole, UserStatus } from "@prisma/client";
 import { randomBytes, randomInt } from "node:crypto";
 import { normalizeDisplayNameKey } from "../auth/display-name.util";
 import { createPasswordHash } from "../auth/password.util";
@@ -159,6 +159,30 @@ const DANGEROUS_AI_PHRASES = [
   "自动到账",
   "自动退款"
 ];
+const GAME_NAME_BY_CODE: Record<GameCode, string> = {
+  [GameCode.DELTA_FORCE]: "三角洲行动",
+  [GameCode.LEAGUE_OF_LEGENDS]: "英雄联盟",
+  [GameCode.VALORANT]: "无畏契约",
+  [GameCode.COUNTER_STRIKE_2]: "CS2",
+  [GameCode.PUBG]: "PUBG 绝地求生",
+  [GameCode.PUBG_MOBILE]: "PUBG Mobile",
+  [GameCode.APEX_LEGENDS]: "Apex 英雄",
+  [GameCode.NARAKA_BLADEPOINT]: "永劫无间",
+  [GameCode.HONOR_OF_KINGS]: "王者荣耀",
+  [GameCode.PEACEKEEPER_ELITE]: "和平精英",
+  [GameCode.DOTA_2]: "Dota 2",
+  [GameCode.OVERWATCH_2]: "守望先锋 2",
+  [GameCode.RAINBOW_SIX_SIEGE]: "彩虹六号：围攻",
+  [GameCode.ROCKET_LEAGUE]: "火箭联盟",
+  [GameCode.EA_SPORTS_FC]: "EA Sports FC",
+  [GameCode.STREET_FIGHTER_6]: "街头霸王 6",
+  [GameCode.CALL_OF_DUTY]: "使命召唤",
+  [GameCode.WILD_RIFT]: "英雄联盟手游",
+  [GameCode.MOBILE_LEGENDS]: "Mobile Legends",
+  [GameCode.MINECRAFT]: "我的世界",
+  [GameCode.GENSHIN_IMPACT]: "原神",
+  [GameCode.STEAM]: "Steam 综合游戏"
+};
 
 @Injectable()
 export class PlatformSupportService {
@@ -227,7 +251,7 @@ export class PlatformSupportService {
       platformUserId: input.platformUserId
     });
     const result = await this.resolveSupportAnswer(message, history);
-    const dispatchIntent = this.isDispatchIntent(message) || this.isDemandContinuation(message, history);
+    const dispatchIntent = !this.isPureConsultation(message) && (this.isDispatchIntent(message) || this.isDemandContinuation(message, history));
     const customerId = account?.user?.role === UserRole.CUSTOMER && account.user.status === UserStatus.ACTIVE ? account.userId : undefined;
     let finalAnswer = result.answer;
     let matchedTopic = result.matchedTopic;
@@ -420,7 +444,7 @@ export class PlatformSupportService {
       };
     }
 
-    const aiAnswer = await this.tryOpenAiSupportAnswer(message, history, matched?.answer);
+    const aiAnswer = await this.tryOpenAiSupportAnswer(message, history, matched?.answer, this.buildAiBusinessContextHint(message));
     if (aiAnswer) {
       return {
         matchedTopic: matched?.topic ?? "AI客服",
@@ -449,6 +473,22 @@ export class PlatformSupportService {
       return {
         matchedTopic: "个人设置",
         answer: "网站端个人设置在顶部导航或手机底部的“设置”，也可以直接打开 /customer/settings。里面能看账号、邀请码、钱包、KOOK/Discord 绑定和客服入口。",
+        handoffRequired: false
+      };
+    }
+
+    if (this.isCatalogQuestion(message)) {
+      return {
+        matchedTopic: "游戏咨询",
+        answer: await this.buildGameCatalogAnswer(),
+        handoffRequired: false
+      };
+    }
+
+    if (this.isPriceQuestion(message)) {
+      return {
+        matchedTopic: "价格咨询",
+        answer: await this.buildPricingAnswer(message),
         handoffRequired: false
       };
     }
@@ -840,7 +880,18 @@ export class PlatformSupportService {
       {
         role: "developer",
         content:
-          "你是 May猫饼电竞 的客服助手。回复必须像真人客服，短、自然、直接。当前产品是网站，不是 APP；不要编造“APP右下角我的”“齿轮图标”“头像下拉菜单”等不存在入口。客户问个人设置/账号设置/绑定账号时，只能说网站顶部导航或手机底部有“设置”，路径是 /customer/settings。严格禁止声称已完成、已提交、已处理、已申请任何资金或售后动作，包括退款、加余额、提现、转账、到账、投诉处理；禁止承诺具体到账时间、金额、比例、优惠结果；禁止使用“保证、一定、肯定、自动到账、系统会自动”等承诺表达；禁止透露系统内部 token、验证码、管理员联系方式；禁止对投诉做出处理决定。遇到充值、退款、提现、投诉、后台改余额这类问题，只能固定回复：这类问题需要人工客服处理，请联系管理员或等待人工客服介入。不要解释原因，不要给时间预期。每次最多 120 个中文字，最多追问 1 个问题。不要复述客户的话，不要说“我刚才重复了/抱歉让你觉得奇怪/现在直接说”。不要连续给多个模板。"
+          [
+            "你是 May猫饼电竞 的真人感客服助手，服务场景是网站、KOOK 和 Discord 频道。",
+            "必须先理解客户当前这句话的意图，再回答；不要把所有问题都套成下单表单。",
+            "客户问价格、有哪些游戏、陪玩数量、怎么下单时，先直接回答问题，再最多追问 1 个自然的问题。",
+            "只有客户明确说要下单、找人、安排、派单、开始、发布招募时，才进入派单信息收集。",
+            "价格不能编固定价；只能说按已上架陪玩、游戏、平台和时长报价，最终以后台订单和客服确认为准。",
+            "当前产品是网站，不是 APP；不要编造“APP右下角我的”“齿轮图标”“头像下拉菜单”等不存在入口。",
+            "个人设置路径是 /customer/settings；网站顶部导航或手机底部可进入设置。",
+            "严禁声称已完成退款、加余额、提现、转账、到账、投诉处理；严禁承诺到账时间、优惠结果或一定能接。",
+            "涉及充值、退款、提现、投诉、后台改余额，只能让人工客服处理。",
+            "回复要短、自然、像人聊天；最多 120 个中文字。不要复述客户原话，不要道歉式自我解释，不要连续模板。"
+          ].join("\n")
       },
       ...history.flatMap((turn) => [
         { role: "user", content: turn.message },
@@ -943,11 +994,12 @@ export class PlatformSupportService {
   }
 
   private isDispatchIntent(message: string) {
-    if (this.isCompanionCountQuestion(message)) return false;
-    return /(找陪玩|下单|派单|预约|试音|上分|带我|陪打|陪练|来个|安排|want.*play|need.*companion|boost|rank)/i.test(message);
+    if (this.isPureConsultation(message)) return false;
+    return this.hasExplicitDispatchAction(message) || /(want.*play|need.*companion|boost|rank)/i.test(message);
   }
 
   private isDemandContinuation(message: string, history: SupportHistoryTurn[] = []) {
+    if (this.isPureConsultation(message)) return false;
     if (!history.some((turn) => this.isDispatchIntent(turn.message) || turn.answer.includes("下单需求") || turn.answer.includes("派单"))) {
       return false;
     }
@@ -1088,21 +1140,27 @@ export class PlatformSupportService {
   }
 
   private extractGame(message: string) {
+    const gameCode = this.extractGameCode(message);
+    if (gameCode) return this.getGameName(gameCode);
+    return undefined;
+  }
+
+  private extractGameCode(message: string) {
     const lower = message.toLowerCase();
-    const games: Array<[RegExp, string]> = [
-      [/(三角洲行动|三角洲|delta force|df)/i, "三角洲行动"],
-      [/(apex|apex legends|派派)/i, "Apex Legends"],
-      [/(无畏契约|瓦罗兰特|valorant|瓦\b)/i, "无畏契约"],
-      [/(英雄联盟|lol|联盟)/i, "英雄联盟"],
-      [/(王者荣耀|王者)/i, "王者荣耀"],
-      [/(和平精英|pubg mobile)/i, "和平精英"],
-      [/(pubg|绝地求生|吃鸡)/i, "PUBG"],
-      [/(永劫无间|永劫)/i, "永劫无间"],
-      [/(cs2|counter-strike|反恐精英)/i, "CS2"],
-      [/(dota2|dota)/i, "DOTA 2"],
-      [/(我的世界|minecraft)/i, "Minecraft"],
-      [/(原神|genshin)/i, "原神"],
-      [/(steam|双人成行|it takes two|森林|the forest|求生之路|left 4 dead|单机|联机游戏)/i, "Steam 综合游戏"]
+    const games: Array<[RegExp, GameCode]> = [
+      [/(三角洲行动|三角洲|delta force|df)/i, GameCode.DELTA_FORCE],
+      [/(apex|apex legends|派派)/i, GameCode.APEX_LEGENDS],
+      [/(无畏契约|瓦罗兰特|valorant|瓦\b)/i, GameCode.VALORANT],
+      [/(英雄联盟|lol|联盟)/i, GameCode.LEAGUE_OF_LEGENDS],
+      [/(王者荣耀|王者)/i, GameCode.HONOR_OF_KINGS],
+      [/(和平精英|pubg mobile)/i, GameCode.PEACEKEEPER_ELITE],
+      [/(pubg|绝地求生|吃鸡)/i, GameCode.PUBG],
+      [/(永劫无间|永劫)/i, GameCode.NARAKA_BLADEPOINT],
+      [/(cs2|counter-strike|反恐精英)/i, GameCode.COUNTER_STRIKE_2],
+      [/(dota2|dota)/i, GameCode.DOTA_2],
+      [/(我的世界|minecraft)/i, GameCode.MINECRAFT],
+      [/(原神|genshin)/i, GameCode.GENSHIN_IMPACT],
+      [/(steam|双人成行|it takes two|森林|the forest|求生之路|left 4 dead|单机|联机游戏)/i, GameCode.STEAM]
     ];
 
     return games.find(([pattern]) => pattern.test(lower))?.[1];
@@ -1160,6 +1218,33 @@ export class PlatformSupportService {
     );
   }
 
+  private isCatalogQuestion(message: string) {
+    const normalized = message.replace(/\s+/g, "");
+    return (
+      /(有什么游戏|有哪些游戏|支持哪些游戏|支持什么游戏|能打什么游戏|能接什么游戏|游戏列表|游戏都有|都有什么游戏|都能玩什么|有什么项目|有哪些项目)/i.test(
+        normalized
+      ) ||
+      (/(游戏|项目|品类)/i.test(normalized) && /(有什么|有哪些|支持|能打|能接|列表|都有|什么)/i.test(normalized))
+    );
+  }
+
+  private isPriceQuestion(message: string) {
+    const normalized = message.replace(/\s+/g, "");
+    return /(价格|多少钱|怎么收费|收费|报价|单价|费用|价位|一小时|每小时|没说价格|没说价|价格是多少)/i.test(normalized);
+  }
+
+  private isPureConsultation(message: string) {
+    if (!(this.isCatalogQuestion(message) || this.isPriceQuestion(message) || this.isCompanionCountQuestion(message))) return false;
+    return !this.hasExplicitDispatchAction(message);
+  }
+
+  private hasExplicitDispatchAction(message: string) {
+    const normalized = message.replace(/\s+/g, "");
+    return /(找陪玩|找陪练|下单|派单|预约|试音|上分|带我|陪打|陪练|来个|安排|找人|接单|发布招募|直接发|开始招募|发派单|我要.*(陪玩|陪练|下单|找人|找个|来个|安排|试音|接单|打)|我想.*(找|下单|陪玩|陪练|试音|上分|接单)|帮我.*(找|安排|派单|下单))/i.test(
+      normalized
+    );
+  }
+
   private isPersonalSettingsQuestion(message: string) {
     return /(个人设置|账号设置|账户设置|资料设置|我的设置|设置在哪|哪里.*设置|怎么.*设置|绑定账号|绑定.*kook|绑定.*discord|改资料|修改资料)/i.test(message);
   }
@@ -1173,6 +1258,77 @@ export class PlatformSupportService {
     if (/^(吃鸡|和平精英|pubg)$/.test(value)) return "和平精英/PUBG";
     if (/^(永劫|永劫无间)$/.test(value)) return "永劫无间";
     return null;
+  }
+
+  private async buildGameCatalogAnswer() {
+    const profiles = await this.prisma.companionProfile.findMany({
+      where: {
+        status: CompanionProfileStatus.LISTED,
+        user: { is: { status: UserStatus.ACTIVE } }
+      },
+      select: { game: true, games: true }
+    });
+    const listedCodes = new Set<GameCode>();
+    for (const profile of profiles) {
+      listedCodes.add(profile.game);
+      for (const game of profile.games) listedCodes.add(game);
+    }
+    const listedNames = [...listedCodes].map((code) => this.getGameName(code)).filter(Boolean);
+    const fallbackNames = Object.values(GAME_NAME_BY_CODE).slice(0, 12);
+    const names = (listedNames.length ? listedNames : fallbackNames).slice(0, 10).join("、");
+    const suffix = listedNames.length ? "这些是当前已上架陪玩可接的方向" : "这些是平台支持登记的方向，具体能不能接看当天陪玩在线情况";
+    return `目前有：${names}。${suffix}。你想问哪个游戏的陪玩？`;
+  }
+
+  private async buildPricingAnswer(message: string) {
+    const gameCode = this.extractGameCode(message);
+    const profiles = await this.prisma.companionProfile.findMany({
+      where: {
+        status: CompanionProfileStatus.LISTED,
+        user: { is: { status: UserStatus.ACTIVE } },
+        ...(gameCode ? { OR: [{ game: gameCode }, { games: { has: gameCode } }] } : {})
+      },
+      select: {
+        pricePerHour: true,
+        kookPricePerHour: true,
+        discordPricePerHour: true,
+        onlineStatus: true
+      },
+      take: 50
+    });
+    const prices = profiles
+      .flatMap((profile) => [profile.pricePerHour, profile.kookPricePerHour, profile.discordPricePerHour])
+      .filter((price): price is NonNullable<typeof price> => Boolean(price))
+      .map((price) => Number(price))
+      .filter((price) => Number.isFinite(price) && price > 0);
+    const gameName = gameCode ? `${this.getGameName(gameCode)} ` : "";
+
+    if (!profiles.length || !prices.length) {
+      return `${gameName}现在还没有可直接报的固定价格。陪玩按游戏、水平、平台和时长报价，你告诉我想玩的游戏和几小时，我可以帮你发派单让陪玩报价。`;
+    }
+
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const onlineCount = profiles.filter((profile) => profile.onlineStatus === "ONLINE").length;
+    const range = min === max ? `¥${min}/小时` : `¥${min}-${max}/小时`;
+    return `${gameName}当前已上架陪玩参考价约 ${range}，在线 ${onlineCount}/${profiles.length} 位。最终价格按你选的陪玩、平台和订单时长确认。`;
+  }
+
+  private buildAiBusinessContextHint(message: string) {
+    if (this.isCatalogQuestion(message)) {
+      return "当前用户在问平台有哪些游戏。请直接回答游戏范围，不要要求用户补齐下单字段。";
+    }
+    if (this.isPriceQuestion(message)) {
+      return "当前用户在问陪玩价格。请直接说明价格按陪玩、游戏、平台和时长不同，最终以后台订单和客服确认为准；不要把回答变成下单表单。";
+    }
+    if (this.isCompanionCountQuestion(message)) {
+      return "当前用户在问陪玩数量。请直接回答数量口径，不要强行进入下单流程。";
+    }
+    return undefined;
+  }
+
+  private getGameName(code: GameCode | string) {
+    return GAME_NAME_BY_CODE[code as GameCode] ?? code;
   }
 
   private buildContextualFallback(message: string) {
