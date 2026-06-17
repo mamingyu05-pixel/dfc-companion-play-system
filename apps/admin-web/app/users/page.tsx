@@ -303,11 +303,10 @@ export default function UsersPage() {
     await loadUsers();
   }
 
-  const normalizedSearch = search.trim().toLowerCase();
-  const filteredUsers = normalizedSearch
-    ? users.filter((user) => getSearchableUserText(user).includes(normalizedSearch))
-    : users;
-  const customerOptions = users.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
+  const normalizedSearch = normalizeSearchValue(search);
+  const rankedUsers = normalizedSearch ? rankUsersBySearch(users, normalizedSearch) : users;
+  const filteredUsers = rankedUsers;
+  const customerOptions = rankedUsers.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
   const companionCandidateOptions = users.filter(
     (user) => ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "COMPANION"].includes(user.role) && user.status === "ACTIVE" && !user.companionProfile
   );
@@ -650,19 +649,56 @@ function formatDateTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function getSearchableUserText(user: AdminUser) {
-  return [
-    user.id,
-    user.email,
-    user.displayName,
-    user.role,
-    user.status,
+function normalizeSearchValue(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function rankUsersBySearch(users: AdminUser[], query: string) {
+  const tokens = query.split(/\s+/).filter(Boolean);
+  return users
+    .map((user) => ({ user, score: getUserSearchScore(user, query, tokens) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || new Date(b.user.createdAt).getTime() - new Date(a.user.createdAt).getTime())
+    .map((item) => item.user);
+}
+
+function getUserSearchScore(user: AdminUser, query: string, tokens: string[]) {
+  const fields: Array<{ value?: string | null; weight: number }> = [
+    { value: user.displayName, weight: 140 },
+    { value: user.companionProfile?.nickname, weight: 130 },
+    { value: user.email, weight: 90 },
+    { value: user.id, weight: 80 },
+    { value: shortId(user.id), weight: 70 },
+    { value: user.role, weight: 45 },
+    { value: user.status, weight: 35 },
     ...user.externalAccounts.flatMap((account) => [
-      account.platform,
-      account.externalUserId,
-      account.displayName ?? ""
+      { value: account.displayName, weight: 135 },
+      { value: account.externalUserId, weight: 100 },
+      { value: shortId(account.externalUserId), weight: 85 },
+      { value: account.platform, weight: 55 }
     ])
-  ].join(" ").toLowerCase();
+  ];
+
+  return fields.reduce((total, field) => total + scoreSearchField(field.value, query, tokens, field.weight), 0);
+}
+
+function scoreSearchField(value: string | null | undefined, query: string, tokens: string[], weight: number) {
+  const text = normalizeSearchValue(value ?? "");
+  if (!text) return 0;
+
+  let score = 0;
+  if (text === query) score += weight * 8;
+  else if (text.startsWith(query)) score += weight * 5;
+  else if (text.includes(query)) score += weight * 2;
+
+  for (const token of tokens) {
+    if (token === query) continue;
+    if (text === token) score += weight * 4;
+    else if (text.startsWith(token)) score += weight * 2;
+    else if (text.includes(token)) score += weight;
+  }
+
+  return score;
 }
 
 function formatExternalAccount(account: AdminUser["externalAccounts"][number]) {
