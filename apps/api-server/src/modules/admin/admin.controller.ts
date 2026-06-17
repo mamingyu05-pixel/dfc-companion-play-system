@@ -1280,6 +1280,49 @@ export class AdminController {
     };
   }
 
+  @Patch("companions/:id/games")
+  async updateCompanionGames(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { game?: GameCode | string; games?: Array<GameCode | string>; note?: string }
+  ) {
+    const primaryGame = normalizeGameCode(body.game) ?? normalizeGameCode(body.games?.[0]);
+    if (!primaryGame) throw new BadRequestException("game is required");
+    const games = normalizeGameList(body.games, primaryGame);
+
+    const updated = await this.prisma.companionProfile.update({
+      where: { userId: id },
+      data: {
+        game: games[0],
+        games
+      },
+      include: { user: { select: { id: true, email: true, displayName: true } } }
+    });
+
+    await this.prisma.adminLog.create({
+      data: {
+        actorId: user.id,
+        targetUserId: id,
+        action: "UPDATE_COMPANION_GAMES",
+        entityType: "COMPANION_PROFILE",
+        entityId: updated.id,
+        detail: {
+          game: updated.game,
+          games: updated.games,
+          note: body.note
+        }
+      }
+    });
+
+    return {
+      userId: updated.userId,
+      email: updated.user.email,
+      nickname: updated.nickname,
+      game: updated.game,
+      games: updated.games
+    };
+  }
+
   @Patch("recharges/:id/review")
   reviewRecharge(
     @CurrentUser() user: AuthenticatedUser,
@@ -1420,7 +1463,7 @@ function normalizeGameCode(value?: string | null) {
   return Object.values(GameCode).includes(value as GameCode) ? (value as GameCode) : undefined;
 }
 
-function normalizeGameList(values: GameCode[] | undefined, primaryGame: GameCode) {
+function normalizeGameList(values: Array<GameCode | string> | undefined, primaryGame: GameCode) {
   const normalized = [primaryGame, ...(values ?? [])]
     .map((value) => normalizeGameCode(value))
     .filter((value): value is GameCode => Boolean(value));

@@ -326,7 +326,7 @@ export default function NewCompanionPage() {
             </label>
           </div>
 
-          <GameMultiSelect selectedGames={selectedGames} primaryGame={game} onChange={setSelectedGames} />
+          <GameMultiSelect selectedGames={selectedGames} primaryGame={game} onChange={setSelectedGames} onPrimaryGameChange={setGame} />
 
           <div className="mt-5 grid gap-4 md:grid-cols-3">
             <UploadBox label="头像" hint="建议方图，展示在列表和详情页" accept="image/*" uploading={uploading === "avatar"} onChange={handleAvatarChange}>
@@ -397,28 +397,48 @@ function Field({ label, value, onChange, type = "text", required }: { label: str
   );
 }
 
-function GameMultiSelect({ selectedGames, primaryGame, onChange }: { selectedGames: string[]; primaryGame: string; onChange: (games: string[]) => void }) {
+function GameMultiSelect({
+  selectedGames,
+  primaryGame,
+  onChange,
+  onPrimaryGameChange
+}: {
+  selectedGames: string[];
+  primaryGame: string;
+  onChange: (games: string[]) => void;
+  onPrimaryGameChange: (game: string) => void;
+}) {
   return (
     <section className="mt-5 rounded-dfc border border-cyan-300/15 bg-[#050711]/50 p-3">
       <div className="text-xs font-black text-dfc-muted">可接游戏，多选</div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {gameOptions.map(([code, name]) => {
           const checked = selectedGames.includes(code);
-          const locked = code === primaryGame;
+          const isPrimary = code === primaryGame;
           return (
             <label key={code} className={`rounded-dfc-control border px-3 py-2 text-sm transition ${checked ? "border-cyan-300/60 bg-cyan-300/10 text-white" : "border-cyan-300/15 bg-[#07111f] text-dfc-subtext"}`}>
               <input
                 type="checkbox"
                 checked={checked}
-                disabled={locked}
                 onChange={(event) => {
-                  const next = event.target.checked ? [...selectedGames, code] : selectedGames.filter((item) => item !== code);
+                  if (event.target.checked) {
+                    onChange(normalizeSelectedGames([...selectedGames, code], primaryGame));
+                    return;
+                  }
+                  const next = selectedGames.filter((item) => item !== code);
+                  if (!next.length) return;
+                  if (isPrimary) {
+                    const nextPrimary = next[0];
+                    onPrimaryGameChange(nextPrimary);
+                    onChange(normalizeSelectedGames(next, nextPrimary));
+                    return;
+                  }
                   onChange(normalizeSelectedGames(next, primaryGame));
                 }}
                 className="mr-2 accent-cyan-300"
               />
               {name}
-              {locked ? <span className="ml-2 text-xs text-dfc-gold">主游戏</span> : null}
+              {isPrimary ? <span className="ml-2 text-xs text-dfc-gold">主显示</span> : null}
             </label>
           );
         })}

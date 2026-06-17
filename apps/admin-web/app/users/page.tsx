@@ -410,7 +410,7 @@ export default function UsersPage() {
             <input value={companionKookPricePerHour} onChange={(event) => setCompanionKookPricePerHour(event.target.value)} className="input" placeholder="KOOK 单价，可不填" inputMode="decimal" />
             <input value={companionDiscordPricePerHour} onChange={(event) => setCompanionDiscordPricePerHour(event.target.value)} className="input" placeholder="Discord 单价，可不填" inputMode="decimal" />
           </div>
-          <GameMultiSelect selectedGames={companionGames} primaryGame={companionGame} onChange={setCompanionGames} />
+          <GameMultiSelect selectedGames={companionGames} primaryGame={companionGame} onChange={setCompanionGames} onPrimaryGameChange={setCompanionGame} />
           <input value={companionNote} onChange={(event) => setCompanionNote(event.target.value)} className="input mt-3" placeholder="备注，例如老客户申请入驻，已完成试音考核" />
           <ActionButton onClick={() => void convertCustomerToCompanion()}>开通待审核陪玩身份</ActionButton>
         </AdminPanel>
@@ -499,28 +499,48 @@ function AdminPanel({ title, hint, children }: { title: string; hint: string; ch
   );
 }
 
-function GameMultiSelect({ selectedGames, primaryGame, onChange }: { selectedGames: string[]; primaryGame: string; onChange: (games: string[]) => void }) {
+function GameMultiSelect({
+  selectedGames,
+  primaryGame,
+  onChange,
+  onPrimaryGameChange
+}: {
+  selectedGames: string[];
+  primaryGame: string;
+  onChange: (games: string[]) => void;
+  onPrimaryGameChange: (game: string) => void;
+}) {
   return (
     <div className="mt-3 rounded-dfc border border-cyan-300/15 bg-[#050711]/50 p-3">
       <div className="text-xs font-black text-dfc-muted">可接游戏，多选</div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {gameOptions.map(([code, name]) => {
           const checked = selectedGames.includes(code);
-          const locked = code === primaryGame;
+          const isPrimary = code === primaryGame;
           return (
             <label key={code} className={`rounded-dfc-control border px-3 py-2 text-xs transition ${checked ? "border-cyan-300/60 bg-cyan-300/10 text-white" : "border-cyan-300/15 bg-[#07111f] text-dfc-subtext"}`}>
               <input
                 type="checkbox"
                 checked={checked}
-                disabled={locked}
                 onChange={(event) => {
-                  const next = event.target.checked ? [...selectedGames, code] : selectedGames.filter((item) => item !== code);
+                  if (event.target.checked) {
+                    onChange(normalizeSelectedGames([...selectedGames, code], primaryGame));
+                    return;
+                  }
+                  const next = selectedGames.filter((item) => item !== code);
+                  if (!next.length) return;
+                  if (isPrimary) {
+                    const nextPrimary = next[0];
+                    onPrimaryGameChange(nextPrimary);
+                    onChange(normalizeSelectedGames(next, nextPrimary));
+                    return;
+                  }
                   onChange(normalizeSelectedGames(next, primaryGame));
                 }}
                 className="mr-2 accent-cyan-300"
               />
               {name}
-              {locked ? <span className="ml-2 text-dfc-gold">主</span> : null}
+              {isPrimary ? <span className="ml-2 text-dfc-gold">主显示</span> : null}
             </label>
           );
         })}

@@ -26,6 +26,31 @@ type Companion = {
   }>;
 };
 
+const gameCodes = [
+  "DELTA_FORCE",
+  "LEAGUE_OF_LEGENDS",
+  "VALORANT",
+  "COUNTER_STRIKE_2",
+  "PUBG",
+  "PUBG_MOBILE",
+  "APEX_LEGENDS",
+  "NARAKA_BLADEPOINT",
+  "HONOR_OF_KINGS",
+  "PEACEKEEPER_ELITE",
+  "DOTA_2",
+  "OVERWATCH_2",
+  "RAINBOW_SIX_SIEGE",
+  "ROCKET_LEAGUE",
+  "EA_SPORTS_FC",
+  "STREET_FIGHTER_6",
+  "CALL_OF_DUTY",
+  "WILD_RIFT",
+  "MOBILE_LEGENDS",
+  "MINECRAFT",
+  "GENSHIN_IMPACT",
+  "STEAM"
+] as const;
+
 export default function CompanionsPage() {
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [error, setError] = useState("");
@@ -118,6 +143,29 @@ export default function CompanionsPage() {
     await loadCompanions();
   }
 
+  async function updateGames(userId: string, game: string, games: string[]) {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) return;
+    setError("");
+    setStatus("");
+    const response = await fetch(`/api/admin/companions/${userId}/games`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ game, games, note: "后台陪玩管理页更新可接游戏" })
+    });
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    if (!response.ok) {
+      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      setError(toFriendlyError(message));
+      return;
+    }
+    setStatus("陪玩可接游戏已更新");
+    await loadCompanions();
+  }
+
   const stats = useMemo(() => {
     const listed = companions.filter((item) => item.status === "LISTED").length;
     const online = companions.filter((item) => item.onlineStatus === "ONLINE").length;
@@ -149,7 +197,12 @@ export default function CompanionsPage() {
               <div className="mt-1 max-w-56 truncate text-xs text-dfc-muted">{platformSummary(item.externalAccounts)}</div>
             </div>
           </div>,
-          gameNames(item.games?.length ? item.games : [item.game]),
+          <CompanionGamesEditor
+            key={`${item.userId}-games`}
+            game={item.game}
+            games={item.games?.length ? item.games : [item.game]}
+            onSave={(nextGame, nextGames) => void updateGames(item.userId, nextGame, nextGames)}
+          />,
           formatAccountEmail(item.email),
           item.deltaForceRank,
           <div key={`${item.userId}-pricing`} className="space-y-3">
@@ -175,6 +228,86 @@ export default function CompanionsPage() {
         ])}
       />
     </AdminShell>
+  );
+}
+
+function CompanionGamesEditor({ game, games, onSave }: { game: string; games: string[]; onSave: (game: string, games: string[]) => Promise<void> | void }) {
+  const initialGames = normalizeSelectedGames(games, normalizeKnownGame(game) ?? normalizeKnownGame(games[0]) ?? "DELTA_FORCE");
+  const [primaryGame, setPrimaryGame] = useState(initialGames[0] ?? "DELTA_FORCE");
+  const [selectedGames, setSelectedGames] = useState<string[]>(initialGames);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const nextGames = normalizeSelectedGames(games, normalizeKnownGame(game) ?? normalizeKnownGame(games[0]) ?? "DELTA_FORCE");
+    setPrimaryGame(nextGames[0] ?? "DELTA_FORCE");
+    setSelectedGames(nextGames);
+  }, [game, games]);
+
+  function selectPrimary(nextGame: string) {
+    const normalized = normalizeKnownGame(nextGame);
+    if (!normalized) return;
+    setPrimaryGame(normalized);
+    setSelectedGames((current) => normalizeSelectedGames(current, normalized));
+  }
+
+  function toggleGame(code: string) {
+    if (selectedGames.includes(code)) {
+      const remaining = selectedGames.filter((item) => item !== code);
+      if (!remaining.length) return;
+      const nextPrimary = code === primaryGame ? (remaining[0] ?? "DELTA_FORCE") : primaryGame;
+      setPrimaryGame(nextPrimary);
+      setSelectedGames(normalizeSelectedGames(remaining, nextPrimary));
+      return;
+    }
+    setSelectedGames((current) => normalizeSelectedGames([...current, code], primaryGame));
+  }
+
+  async function save() {
+    setIsSaving(true);
+    try {
+      const normalized = normalizeSelectedGames(selectedGames, primaryGame);
+      const nextPrimary = normalized[0] ?? "DELTA_FORCE";
+      await onSave(nextPrimary, normalized);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="min-w-64 text-xs">
+      <div className="font-semibold leading-5 text-white">{gameNames(selectedGames)}</div>
+      <details className="mt-2">
+        <summary className="cursor-pointer text-cyan-200 hover:text-cyan-100">编辑可接游戏</summary>
+        <div className="mt-2 rounded-dfc-control border border-cyan-300/15 bg-[#050711]/70 p-2">
+          <label className="block">
+            <span className="mb-1 block text-dfc-muted">主显示游戏</span>
+            <select value={primaryGame} onChange={(event) => selectPrimary(event.target.value)} className="w-full rounded-dfc-control border border-cyan-300/20 bg-[#070d19] px-2 py-2 text-white outline-none focus:shadow-dfc-focus">
+              {gameCodes.map((code) => <option key={code} value={code}>{gameName(code)}</option>)}
+            </select>
+          </label>
+          <div className="mt-2 grid max-h-56 gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
+            {gameCodes.map((code) => {
+              const checked = selectedGames.includes(code);
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => toggleGame(code)}
+                  className={`rounded-dfc-control border px-2 py-1 text-left transition ${checked ? "border-cyan-300/60 bg-cyan-300/10 text-white" : "border-cyan-300/15 bg-[#07111f] text-dfc-subtext"}`}
+                >
+                  {checked ? "✓ " : ""}
+                  {gameName(code)}
+                  {code === primaryGame ? <span className="ml-1 text-dfc-gold">主</span> : null}
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" disabled={isSaving} onClick={() => void save()} className="mt-2 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-2 py-1 font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
+            {isSaving ? "保存中" : "保存游戏"}
+          </button>
+        </div>
+      </details>
+    </div>
   );
 }
 
@@ -349,4 +482,13 @@ function gameName(code: string) {
 
 function gameNames(codes: string[]) {
   return codes.map(gameName).join(" / ");
+}
+
+function normalizeKnownGame(value?: string | null): string | undefined {
+  return typeof value === "string" && gameCodes.includes(value as (typeof gameCodes)[number]) ? value : undefined;
+}
+
+function normalizeSelectedGames(values: string[], primaryGame: string) {
+  const primary = normalizeKnownGame(primaryGame) ?? "DELTA_FORCE";
+  return Array.from(new Set([primary, ...values].filter((value) => normalizeKnownGame(value)))).slice(0, 24);
 }
