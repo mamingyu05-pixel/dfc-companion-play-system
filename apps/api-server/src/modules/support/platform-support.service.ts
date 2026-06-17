@@ -242,7 +242,7 @@ export class PlatformSupportService {
       handoffRequired = false;
     } else if (dispatchIntent) {
       const facts = this.withExplicitPublishDefaults(message, this.buildDemandFacts(message, history));
-      const dispatchResult = await this.maybeCreateDispatchDraft(input, customerId, message, facts);
+      const dispatchResult = await this.maybeCreateDispatchDraft(input, customerId, message, facts, history);
       draft = dispatchResult.draft;
       finalAnswer = dispatchResult.reply;
       matchedTopic = "找陪玩";
@@ -287,19 +287,27 @@ export class PlatformSupportService {
     return this.refreshPlatformAccountDisplayName(account, input);
   }
 
-  private async maybeCreateDispatchDraft(input: PlatformSupportMessage, customerId: string | undefined, message: string, facts: DemandFacts) {
+  private async maybeCreateDispatchDraft(
+    input: PlatformSupportMessage,
+    customerId: string | undefined,
+    message: string,
+    facts: DemandFacts,
+    history: SupportHistoryTurn[] = []
+  ) {
     const shouldPublish = process.env.AI_AUTO_DISPATCH_ENABLED === "true" || this.shouldPublishDispatchDraft(message, facts);
     if (!shouldPublish) {
+      const fallbackReply = this.buildDispatchCollectionReply(facts);
       return {
         draft: null,
-        reply: this.buildDispatchCollectionReply(facts)
+        reply: (await this.tryAiDispatchReply(message, history, facts, "collecting", fallbackReply)) ?? fallbackReply
       };
     }
 
     if (!facts.game || !facts.duration) {
+      const fallbackReply = this.buildDispatchCollectionReply(facts);
       return {
         draft: null,
-        reply: this.buildDispatchCollectionReply(facts)
+        reply: (await this.tryAiDispatchReply(message, history, facts, "collecting", fallbackReply)) ?? fallbackReply
       };
     }
 
@@ -323,9 +331,11 @@ export class PlatformSupportService {
       demandText: facts.summary || message
     });
 
+    const fallbackReply = this.buildDispatchPublishedReply(result.draft.draftNo, facts, result.notifications);
+
     return {
       draft: { id: result.draft.id, draftNo: result.draft.draftNo },
-      reply: this.buildDispatchPublishedReply(result.draft.draftNo, facts, result.notifications)
+      reply: (await this.tryAiDispatchReply(message, history, facts, "published", fallbackReply, result.draft.draftNo)) ?? fallbackReply
     };
   }
 
@@ -749,7 +759,7 @@ export class PlatformSupportService {
     return `${baseName}-${randomBytes(2).toString("hex").toUpperCase()}`;
   }
 
-  private async tryOpenAiSupportAnswer(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string) {
+  private async tryOpenAiSupportAnswer(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string, contextHint?: string) {
     const enabled = process.env.AI_SUPPORT_ENABLED === "true";
     const apiKey = process.env.AI_SUPPORT_API_KEY || process.env.OPENAI_API_KEY;
     if (!enabled || !apiKey) return null;
@@ -758,7 +768,7 @@ export class PlatformSupportService {
       const model = process.env.AI_SUPPORT_MODEL || "gpt-4o-mini";
       const baseUrl = (process.env.AI_SUPPORT_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
       const apiStyle = process.env.AI_SUPPORT_API_STYLE || "responses";
-      const messages = this.buildAiSupportMessages(message, history, fallbackHint);
+      const messages = this.buildAiSupportMessages(message, history, fallbackHint, contextHint);
       const response =
         apiStyle === "chat_completions"
           ? await this.callChatCompletions(baseUrl, apiKey, model, messages)
@@ -816,7 +826,7 @@ export class PlatformSupportService {
       body: JSON.stringify({
         model,
         max_tokens: 160,
-        temperature: 0.35,
+        temperature: 0.55,
         messages: messages.map((item) => ({
           role: item.role === "developer" ? "system" : item.role,
           content: item.content
@@ -825,7 +835,7 @@ export class PlatformSupportService {
     });
   }
 
-  private buildAiSupportMessages(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string) {
+  private buildAiSupportMessages(message: string, history: SupportHistoryTurn[] = [], fallbackHint?: string, contextHint?: string) {
     return [
       {
         role: "developer",
@@ -836,6 +846,14 @@ export class PlatformSupportService {
         { role: "user", content: turn.message },
         { role: "assistant", content: turn.answer }
       ]),
+      ...(contextHint
+        ? [
+            {
+              role: "developer",
+              content: contextHint
+            }
+          ]
+        : []),
       ...(fallbackHint
         ? [
             {
@@ -849,6 +867,36 @@ export class PlatformSupportService {
         content: message
       }
     ];
+  }
+
+  private async tryAiDispatchReply(
+    message: string,
+    history: SupportHistoryTurn[],
+    facts: DemandFacts,
+    stage: "collecting" | "published",
+    fallbackReply: string,
+    draftNo?: string
+  ) {
+    const contextHint =
+      stage === "published"
+        ? [
+            "当前是陪玩派单流程：系统已经创建派单草稿并尝试发到 KOOK/Discord 派单频道。",
+            draftNo ? `派单号：${draftNo}` : undefined,
+            `已识别需求：${facts.summary || "暂无"}`,
+            "回复要像真人客服：告诉客户已经发出/记录，接下来等陪玩报名，客服会把候选和报价给客户确认。",
+            "不要承诺一定有人接，不要承诺价格，不要再追问多个问题。"
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : [
+            "当前是陪玩下单信息收集流程。客户在 KOOK/Discord 里随口说需求，你要像真人客服一样顺着聊。",
+            `已识别需求：${facts.summary || "暂无"}`,
+            `还缺字段：${facts.missing.length ? facts.missing.join("、") : "无"}`,
+            "如果还缺信息，只追问一个最关键的问题；如果客户没说预算，不要卡预算，说明可以按陪玩报价确认。",
+            "不要机械复述“游戏/模式/时长/预算/试音/还差”，不要像表单。"
+          ].join("\n");
+
+    return this.tryOpenAiSupportAnswer(message, history, fallbackReply, contextHint);
   }
 
   private cleanAiSupportAnswer(answer: string) {
