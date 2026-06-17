@@ -1028,7 +1028,8 @@ export class PlatformSupportService {
       [/(cs2|counter-strike|反恐精英)/i, "CS2"],
       [/(dota2|dota)/i, "DOTA 2"],
       [/(我的世界|minecraft)/i, "Minecraft"],
-      [/(原神|genshin)/i, "原神"]
+      [/(原神|genshin)/i, "原神"],
+      [/(steam|双人成行|it takes two|森林|the forest|求生之路|left 4 dead|单机|联机游戏)/i, "Steam 综合游戏"]
     ];
 
     return games.find(([pattern]) => pattern.test(lower))?.[1];

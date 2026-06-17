@@ -76,7 +76,17 @@ export class OrderDraftsService {
                 id: true,
                 email: true,
                 displayName: true,
-                companionProfile: { select: { nickname: true, avatarUrl: true, pricePerHour: true, onlineStatus: true, status: true } }
+                companionProfile: {
+                  select: {
+                    nickname: true,
+                    avatarUrl: true,
+                    pricePerHour: true,
+                    kookPricePerHour: true,
+                    discordPricePerHour: true,
+                    onlineStatus: true,
+                    status: true
+                  }
+                }
               }
             },
             recommendedBy: { select: { id: true, email: true, displayName: true } }
@@ -428,7 +438,7 @@ export class OrderDraftsService {
           externalUserId: platformUserId,
           user: {
             status: UserStatus.ACTIVE,
-            companionProfile: { is: { game: draft.game, status: CompanionProfileStatus.LISTED } }
+            companionProfile: { is: { OR: [{ game: draft.game }, { games: { has: draft.game } }], status: CompanionProfileStatus.LISTED } }
           }
         },
         include: { user: { include: { companionProfile: true } } }
@@ -510,7 +520,7 @@ export class OrderDraftsService {
     const ranked = draft.candidates
       .map((candidate) => {
         const profile = candidate.companion.companionProfile;
-        const price = profile?.pricePerHour ?? new Prisma.Decimal(0);
+        const price = this.pickCompanionPriceForPlatform(profile, draft.sourcePlatform);
         const budgetScore = draft.budgetAmount && price.gt(0) ? (price.mul(draft.hours ?? 1).lte(draft.budgetAmount) ? 25 : -10) : 0;
         const onlineScore = profile?.onlineStatus === "ONLINE" ? 30 : profile?.onlineStatus === "BUSY" ? 10 : 0;
         const statusScore = candidate.status === OrderDraftCandidateStatus.TRIALING ? 15 : 5;
@@ -747,7 +757,7 @@ export class OrderDraftsService {
       where: {
         id: companionId,
         status: UserStatus.ACTIVE,
-        companionProfile: { is: { game, status: CompanionProfileStatus.LISTED } }
+        companionProfile: { is: { OR: [{ game }, { games: { has: game } }], status: CompanionProfileStatus.LISTED } }
       },
       select: { id: true }
     });
@@ -833,7 +843,15 @@ export class OrderDraftsService {
         id: string;
         email: string;
         displayName: string;
-        companionProfile: { nickname: string; avatarUrl: string | null; pricePerHour: Prisma.Decimal; onlineStatus: string; status: string } | null;
+        companionProfile: {
+          nickname: string;
+          avatarUrl: string | null;
+          pricePerHour: Prisma.Decimal;
+          kookPricePerHour?: Prisma.Decimal | null;
+          discordPricePerHour?: Prisma.Decimal | null;
+          onlineStatus: string;
+          status: string;
+        } | null;
       };
       recommendedBy?: { id: string; email: string; displayName: string } | null;
     }>;
@@ -869,7 +887,7 @@ export class OrderDraftsService {
           companionProfile: candidate.companion.companionProfile
             ? {
                 ...candidate.companion.companionProfile,
-                pricePerHour: candidate.companion.companionProfile.pricePerHour.toString()
+                pricePerHour: this.pickCompanionPriceForPlatform(candidate.companion.companionProfile, draft.sourcePlatform).toString()
               }
             : null
         }
@@ -921,6 +939,16 @@ export class OrderDraftsService {
     return decimal;
   }
 
+  private pickCompanionPriceForPlatform(
+    profile: { pricePerHour: Prisma.Decimal; kookPricePerHour?: Prisma.Decimal | null; discordPricePerHour?: Prisma.Decimal | null } | null | undefined,
+    sourcePlatform: OrderSourcePlatform
+  ) {
+    if (!profile) return new Prisma.Decimal(0);
+    if (sourcePlatform === OrderSourcePlatform.DISCORD) return profile.discordPricePerHour ?? profile.pricePerHour;
+    if (sourcePlatform === OrderSourcePlatform.KOOK) return profile.kookPricePerHour ?? profile.pricePerHour;
+    return profile.pricePerHour;
+  }
+
   private parseDemandText(demandText: string): ParsedDispatchDemand {
     const text = demandText.trim();
     if (!text) throw new BadRequestException("demandText is required");
@@ -957,6 +985,7 @@ export class OrderDraftsService {
     if (lower.includes("apex")) return GameCode.APEX_LEGENDS;
     if (lower.includes("王者")) return GameCode.HONOR_OF_KINGS;
     if (lower.includes("和平")) return GameCode.PEACEKEEPER_ELITE;
+    if (lower.includes("steam") || lower.includes("单机") || lower.includes("双人成行") || lower.includes("森林") || lower.includes("求生之路")) return GameCode.STEAM;
     return GameCode.DELTA_FORCE;
   }
 

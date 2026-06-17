@@ -17,6 +17,7 @@ type Companion = {
   nickname: string;
   email: string;
   game: string;
+  games?: string[];
   status: string;
   onlineStatus: string;
   pricePerHour: string;
@@ -85,9 +86,23 @@ const gameOptions = [
   ["VALORANT", "无畏契约"],
   ["COUNTER_STRIKE_2", "CS2"],
   ["PUBG", "PUBG"],
+  ["PUBG_MOBILE", "PUBG Mobile"],
   ["APEX_LEGENDS", "Apex 英雄"],
+  ["NARAKA_BLADEPOINT", "永劫无间"],
   ["HONOR_OF_KINGS", "王者荣耀"],
-  ["PEACEKEEPER_ELITE", "和平精英"]
+  ["PEACEKEEPER_ELITE", "和平精英"],
+  ["DOTA_2", "Dota 2"],
+  ["OVERWATCH_2", "守望先锋 2"],
+  ["RAINBOW_SIX_SIEGE", "彩虹六号：围攻"],
+  ["ROCKET_LEAGUE", "火箭联盟"],
+  ["EA_SPORTS_FC", "EA Sports FC"],
+  ["STREET_FIGHTER_6", "街头霸王 6"],
+  ["CALL_OF_DUTY", "使命召唤"],
+  ["WILD_RIFT", "英雄联盟手游"],
+  ["MOBILE_LEGENDS", "Mobile Legends"],
+  ["MINECRAFT", "我的世界"],
+  ["GENSHIN_IMPACT", "原神"],
+  ["STEAM", "Steam 综合游戏"]
 ] as const;
 
 export default function OrderDraftsPage() {
@@ -143,7 +158,8 @@ export default function OrderDraftsPage() {
     () => {
       const keyword = companionQuery.trim().toLowerCase();
       return companions.filter((companion) => {
-        const matchesGame = !selectedDraft || companion.game === selectedDraft.game;
+        const companionGames = companion.games?.length ? companion.games : [companion.game];
+        const matchesGame = !selectedDraft || companionGames.includes(selectedDraft.game);
         const matchesKeyword = !keyword || [companion.nickname, companion.email].some((value) => value.toLowerCase().includes(keyword));
         return companion.status === "LISTED" && matchesGame && matchesKeyword;
       });

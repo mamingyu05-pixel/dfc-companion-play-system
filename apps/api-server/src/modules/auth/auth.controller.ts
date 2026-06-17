@@ -87,4 +87,13 @@ export class AuthController {
   ) {
     return this.auth.updateMyCompanionOnlineStatus(user.id, body);
   }
+
+  @Patch("me/companion-games")
+  @UseGuards(JwtAuthGuard)
+  updateMyCompanionGames(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { games?: string[] }
+  ) {
+    return this.auth.updateMyCompanionGames(user.id, body);
+  }
 }

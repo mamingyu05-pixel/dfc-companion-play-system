@@ -40,25 +40,28 @@ export function CustomerShell({ children }: { children: ReactNode }) {
           <Link href="/home" className="flex items-center gap-3">
             <MaycatLogo compact />
             <span className="hidden sm:block">
-              <span className="maycat-text-glow block text-sm font-black text-white">May猫饼电竞</span>
-              <span className="block text-xs text-cyan-300">多游戏陪玩俱乐部</span>
+              <span className="block text-sm font-black text-white">May猫饼电竞</span>
+              <span className="block text-xs text-dfc-muted">多游戏陪玩俱乐部</span>
             </span>
           </Link>
           <nav className="hidden items-center gap-1 md:flex">
-            <NavLink href="/home">客户中心</NavLink>
-            <NavLink href="/home">大厅</NavLink>
+            <NavLink href="/home">首页</NavLink>
             <NavLink href="/companions">陪玩</NavLink>
             <NavLink href="/order">下单</NavLink>
             <NavLink href="/recharge">充值</NavLink>
-            <NavLink href="/complaints">投诉</NavLink>
             <NavLink href="/support">客服</NavLink>
             <NavLink href="/settings">设置</NavLink>
             <ExternalNavLink href={kookUrl}>KOOK</ExternalNavLink>
             <ExternalNavLink href={discordUrl}>Discord</ExternalNavLink>
           </nav>
-          <Link href="/recharge" className="maycat-button-secondary px-3 py-2 text-xs font-semibold">
-            钱包
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/companion/" className="rounded-dfc-control border border-dfc-gold/45 bg-dfc-gold/10 px-3 py-2 text-xs font-black text-dfc-gold transition hover:bg-dfc-gold/20">
+              陪玩入口
+            </Link>
+            <Link href="/recharge" className="maycat-button-secondary px-3 py-2 text-xs font-semibold">
+              钱包
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -66,15 +69,13 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <CustomerAuthGate>{children}</CustomerAuthGate>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-8 border-t border-cyan-300/15 bg-[#050711]/90 backdrop-blur-xl md:hidden">
-        <MobileNavLink href="/recharge">充值</MobileNavLink>
-        <MobileNavLink href="/home">大厅</MobileNavLink>
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-cyan-300/15 bg-[#050711]/95 md:hidden">
+        <MobileNavLink href="/home">首页</MobileNavLink>
         <MobileNavLink href="/companions">陪玩</MobileNavLink>
         <MobileNavLink href="/order">下单</MobileNavLink>
+        <MobileNavLink href="/recharge">充值</MobileNavLink>
         <MobileNavLink href="/support">客服</MobileNavLink>
         <MobileNavLink href="/settings">设置</MobileNavLink>
-        <MobileExternalNavLink href={kookUrl}>KOOK</MobileExternalNavLink>
-        <MobileExternalNavLink href={discordUrl}>DC</MobileExternalNavLink>
       </nav>
     </main>
   );
@@ -259,14 +260,6 @@ function MobileNavLink({ href, children }: { href: string; children: ReactNode }
     <Link href={href} className="py-3 text-center text-xs font-semibold text-dfc-subtext transition hover:text-cyan-200">
       {children}
     </Link>
-  );
-}
-
-function MobileExternalNavLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <a href={href} target="_blank" rel="noreferrer" className="py-3 text-center text-xs font-black text-cyan-200 transition hover:text-white">
-      {children}
-    </a>
   );
 }
 

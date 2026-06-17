@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { BotPlatform, CompanionProfileStatus, OnlineStatus, OrderStatus, Prisma, ReviewStatus, UserRole } from "@prisma/client";
+import { BotPlatform, CompanionProfileStatus, GameCode, OnlineStatus, OrderStatus, Prisma, ReviewStatus, UserRole } from "@prisma/client";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import nodemailer from "nodemailer";
 import { getCustomerMembershipLevel } from "../customer-membership";
@@ -758,9 +758,12 @@ export class AuthService {
             photoUrls: true,
             voiceIntroUrl: true,
             game: true,
+            games: true,
             onlineStatus: true,
             status: true,
             pricePerHour: true,
+            kookPricePerHour: true,
+            discordPricePerHour: true,
             payoutMethod: true,
             payoutAccountName: true,
             payoutAccountNo: true,
@@ -868,9 +871,12 @@ export class AuthService {
           photoUrls: user.companionProfile.photoUrls,
           voiceIntroUrl: user.companionProfile.voiceIntroUrl,
           game: user.companionProfile.game,
+          games: user.companionProfile.games.length ? user.companionProfile.games : [user.companionProfile.game],
           onlineStatus: user.companionProfile.onlineStatus,
           status: user.companionProfile.status,
           pricePerHour: user.companionProfile.pricePerHour.toString(),
+          kookPricePerHour: user.companionProfile.kookPricePerHour?.toString() ?? null,
+          discordPricePerHour: user.companionProfile.discordPricePerHour?.toString() ?? null,
           payoutMethod: user.companionProfile.payoutMethod,
           payoutAccountName: user.companionProfile.payoutAccountName,
           payoutAccountNo: user.companionProfile.payoutAccountNo,
@@ -966,6 +972,35 @@ export class AuthService {
     });
 
     return { companionProfile: { onlineStatus: profile.onlineStatus, updatedAt: profile.updatedAt } };
+  }
+
+  async updateMyCompanionGames(userId: string, body: { games?: string[] }) {
+    const games = normalizeGameList(body.games);
+    if (!games.length) {
+      throw new BadRequestException("At least one valid game is required");
+    }
+
+    const existing = await this.prisma.companionProfile.findUnique({
+      where: { userId },
+      select: { id: true }
+    });
+    if (!existing) {
+      throw new BadRequestException("Companion profile does not exist");
+    }
+
+    const profile = await this.prisma.companionProfile.update({
+      where: { userId },
+      data: {
+        game: games[0],
+        games
+      },
+      select: {
+        game: true,
+        games: true
+      }
+    });
+
+    return { companionProfile: { game: profile.game, games: profile.games.length ? profile.games : [profile.game] } };
   }
 
   private issueToken(payload: JwtPayload) {
@@ -1170,6 +1205,13 @@ function normalizeMediaUrls(urls?: string[]) {
     .map((url) => url.trim())
     .filter(Boolean)
     .slice(0, 9);
+}
+
+function normalizeGameList(values?: string[]) {
+  const normalized = (values ?? [])
+    .map((value) => (Object.values(GameCode).includes(value as GameCode) ? (value as GameCode) : undefined))
+    .filter((value): value is GameCode => Boolean(value));
+  return Array.from(new Set(normalized)).slice(0, 24);
 }
 
 function sanitizeOAuthDisplayName(displayName: string) {

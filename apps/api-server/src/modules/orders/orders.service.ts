@@ -26,7 +26,7 @@ export class OrdersService {
   async listOrderableCompanions(game?: GameCode) {
     const companions = await this.prisma.companionProfile.findMany({
       where: {
-        game,
+        ...(game ? { OR: [{ game }, { games: { has: game } }] } : {}),
         status: CompanionProfileStatus.LISTED,
         user: { is: { status: UserStatus.ACTIVE } }
       },
@@ -45,11 +45,14 @@ export class OrdersService {
       photoUrls: profile.photoUrls,
       voiceIntroUrl: profile.voiceIntroUrl,
       game: profile.game,
+      games: profile.games.length ? profile.games : [profile.game],
       status: profile.status,
       onlineStatus: profile.onlineStatus,
       deltaForceRank: profile.deltaForceRank,
       skillModes: profile.skillModes,
       pricePerHour: profile.pricePerHour.toString(),
+      kookPricePerHour: profile.kookPricePerHour?.toString() ?? null,
+      discordPricePerHour: profile.discordPricePerHour?.toString() ?? null,
       voicePreference: profile.voicePreference,
       bio: profile.bio
     }));
@@ -171,7 +174,8 @@ export class OrdersService {
 
     const assignmentType = body.companionId ? OrderAssignmentType.DIRECT_COMPANION : OrderAssignmentType.PLATFORM_MATCH;
 
-    const pricing = await this.resolvePricing(body.companionId, game);
+    const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
+    const pricing = await this.resolvePricing(body.companionId, game, sourcePlatform);
     const totalAmount = pricing.unitPrice.mul(hours);
 
     return this.prisma.$transaction(async (tx) => {
@@ -212,7 +216,7 @@ export class OrdersService {
           status: OrderStatus.PAID,
           notes: body.notes,
           voiceTrialRequested: body.voiceTrialRequested ?? false,
-          sourcePlatform: body.sourcePlatform ?? OrderSourcePlatform.WEB,
+          sourcePlatform,
           sourceDraftId: body.sourceDraftId,
           sourceChannelId: body.sourceChannelId,
           sourceMessageId: body.sourceMessageId
@@ -879,9 +883,14 @@ export class OrdersService {
     }
   }
 
-  private async resolvePricing(companionId: string | undefined, game: GameCode) {
+  private async resolvePricing(companionId: string | undefined, game: GameCode, sourcePlatform: OrderSourcePlatform) {
     if (!companionId) {
-      const configuredPrice = process.env.PLATFORM_MATCH_UNIT_PRICE;
+      const configuredPrice =
+        sourcePlatform === OrderSourcePlatform.DISCORD
+          ? process.env.DISCORD_PLATFORM_MATCH_UNIT_PRICE ?? process.env.PLATFORM_MATCH_UNIT_PRICE
+          : sourcePlatform === OrderSourcePlatform.KOOK
+            ? process.env.KOOK_PLATFORM_MATCH_UNIT_PRICE ?? process.env.PLATFORM_MATCH_UNIT_PRICE
+            : process.env.PLATFORM_MATCH_UNIT_PRICE;
       if (!configuredPrice) {
         throw new BadRequestException("PLATFORM_MATCH_UNIT_PRICE is not configured");
       }
@@ -891,7 +900,7 @@ export class OrdersService {
     const companion = await this.prisma.companionProfile.findFirst({
       where: {
         userId: companionId,
-        game,
+        OR: [{ game }, { games: { has: game } }],
         status: CompanionProfileStatus.LISTED,
         user: {
           is: {
@@ -899,11 +908,23 @@ export class OrdersService {
           }
         }
       },
-      select: { pricePerHour: true, commissionRate: true }
+      select: { pricePerHour: true, kookPricePerHour: true, discordPricePerHour: true, commissionRate: true }
     });
 
     if (!companion) throw new BadRequestException("Companion is not listed for selected game or does not exist");
-    return { unitPrice: companion.pricePerHour, commissionRate: companion.commissionRate };
+    return {
+      unitPrice: this.pickCompanionPriceForPlatform(companion, sourcePlatform),
+      commissionRate: companion.commissionRate
+    };
+  }
+
+  private pickCompanionPriceForPlatform(
+    companion: { pricePerHour: Prisma.Decimal; kookPricePerHour: Prisma.Decimal | null; discordPricePerHour: Prisma.Decimal | null },
+    sourcePlatform: OrderSourcePlatform
+  ) {
+    if (sourcePlatform === OrderSourcePlatform.DISCORD) return companion.discordPricePerHour ?? companion.pricePerHour;
+    if (sourcePlatform === OrderSourcePlatform.KOOK) return companion.kookPricePerHour ?? companion.pricePerHour;
+    return companion.pricePerHour;
   }
 
   private defaultPlatformCommissionRate() {

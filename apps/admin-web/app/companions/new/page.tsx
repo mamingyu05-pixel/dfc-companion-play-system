@@ -25,7 +25,8 @@ const gameOptions = [
   ["WILD_RIFT", "英雄联盟手游"],
   ["MOBILE_LEGENDS", "Mobile Legends"],
   ["MINECRAFT", "我的世界"],
-  ["GENSHIN_IMPACT", "原神"]
+  ["GENSHIN_IMPACT", "原神"],
+  ["STEAM", "Steam 综合游戏"]
 ] as const;
 
 type UploadPurpose = "avatar" | "photo" | "voice";
@@ -57,7 +58,10 @@ export default function NewCompanionPage() {
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [voiceIntroUrl, setVoiceIntroUrl] = useState("");
   const [game, setGame] = useState("DELTA_FORCE");
+  const [selectedGames, setSelectedGames] = useState<string[]>(["DELTA_FORCE"]);
   const [pricePerHour, setPricePerHour] = useState("");
+  const [kookPricePerHour, setKookPricePerHour] = useState("");
+  const [discordPricePerHour, setDiscordPricePerHour] = useState("");
   const [gender, setGender] = useState("MOON");
   const [deltaForceRank, setDeltaForceRank] = useState("UNRANKED");
   const [skillModes, setSkillModes] = useState("Hot Zone, Warfare");
@@ -179,6 +183,7 @@ export default function NewCompanionPage() {
 
     const endpoint = mode === "existing" ? `/api/admin/users/${selectedUserId}/become-companion` : "/api/admin/companions";
     const method = mode === "existing" ? "PATCH" : "POST";
+    const games = normalizeSelectedGames(selectedGames, game);
     const response = await fetch(endpoint, {
       method,
       headers: {
@@ -192,8 +197,11 @@ export default function NewCompanionPage() {
         photoUrls,
         voiceIntroUrl: voiceIntroUrl || undefined,
         gender: gender === "UNSET" ? undefined : gender,
-        game,
+        game: games[0],
+        games,
         pricePerHour,
+        kookPricePerHour: kookPricePerHour || undefined,
+        discordPricePerHour: discordPricePerHour || undefined,
         deltaForceRank,
         skillModes: skillModes.split(",").map((item) => item.trim()).filter(Boolean),
         bio,
@@ -217,6 +225,10 @@ export default function NewCompanionPage() {
     setPhotoUrls([]);
     setVoiceIntroUrl("");
     setGender("MOON");
+    setGame("DELTA_FORCE");
+    setSelectedGames(["DELTA_FORCE"]);
+    setKookPricePerHour("");
+    setDiscordPricePerHour("");
     setBio("");
     setStatus(mode === "existing" ? "陪玩身份已开通，默认待审核。请到陪玩管理页审核上架。" : "陪玩账号已创建，默认待审核。请到陪玩管理页审核上架。");
     await loadUsers().catch(() => undefined);
@@ -266,12 +278,23 @@ export default function NewCompanionPage() {
               </>
             )}
             <Field label="昵称" value={nickname} onChange={setNickname} required />
-            <Field label="每小时价格" value={pricePerHour} onChange={setPricePerHour} required />
+            <Field label="默认单价" value={pricePerHour} onChange={setPricePerHour} required />
+            <Field label="KOOK 单价" value={kookPricePerHour} onChange={setKookPricePerHour} />
+            <Field label="Discord 单价" value={discordPricePerHour} onChange={setDiscordPricePerHour} />
             <label className="block">
               <span className="mb-2 block text-xs font-black text-dfc-muted">游戏</span>
-              <select value={game} onChange={(event) => setGame(event.target.value)} className="input">
+              <select
+                value={game}
+                onChange={(event) => {
+                  const nextGame = event.target.value;
+                  setGame(nextGame);
+                  setSelectedGames((current) => normalizeSelectedGames(current, nextGame));
+                }}
+                className="input"
+              >
                 {gameOptions.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
               </select>
+              <span className="mt-2 block text-xs leading-5 text-dfc-subtext">主游戏用于列表优先展示；下方可勾选更多能接的游戏。</span>
             </label>
             <label className="block">
               <span className="mb-2 block text-xs font-black text-dfc-muted">段位/水平</span>
@@ -302,6 +325,8 @@ export default function NewCompanionPage() {
               </select>
             </label>
           </div>
+
+          <GameMultiSelect selectedGames={selectedGames} primaryGame={game} onChange={setSelectedGames} />
 
           <div className="mt-5 grid gap-4 md:grid-cols-3">
             <UploadBox label="头像" hint="建议方图，展示在列表和详情页" accept="image/*" uploading={uploading === "avatar"} onChange={handleAvatarChange}>
@@ -372,6 +397,36 @@ function Field({ label, value, onChange, type = "text", required }: { label: str
   );
 }
 
+function GameMultiSelect({ selectedGames, primaryGame, onChange }: { selectedGames: string[]; primaryGame: string; onChange: (games: string[]) => void }) {
+  return (
+    <section className="mt-5 rounded-dfc border border-cyan-300/15 bg-[#050711]/50 p-3">
+      <div className="text-xs font-black text-dfc-muted">可接游戏，多选</div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {gameOptions.map(([code, name]) => {
+          const checked = selectedGames.includes(code);
+          const locked = code === primaryGame;
+          return (
+            <label key={code} className={`rounded-dfc-control border px-3 py-2 text-sm transition ${checked ? "border-cyan-300/60 bg-cyan-300/10 text-white" : "border-cyan-300/15 bg-[#07111f] text-dfc-subtext"}`}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={locked}
+                onChange={(event) => {
+                  const next = event.target.checked ? [...selectedGames, code] : selectedGames.filter((item) => item !== code);
+                  onChange(normalizeSelectedGames(next, primaryGame));
+                }}
+                className="mr-2 accent-cyan-300"
+              />
+              {name}
+              {locked ? <span className="ml-2 text-xs text-dfc-gold">主游戏</span> : null}
+            </label>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function SafeMediaImage({ src, alt, className, fallbackText }: { src: string; alt: string; className: string; fallbackText: string }) {
   const [failed, setFailed] = useState(false);
 
@@ -400,6 +455,11 @@ function formatAccountEmail(email: string) {
   if (email.endsWith("@platform.maycatplay.local")) return "平台频道用户";
   if (email.endsWith("@oauth.maycatplay.local")) return "第三方登录用户";
   return email;
+}
+
+function normalizeSelectedGames(values: string[], primaryGame: string) {
+  const validGames = new Set(gameOptions.map(([code]) => code));
+  return Array.from(new Set([primaryGame, ...values].filter((value) => validGames.has(value as (typeof gameOptions)[number][0]))));
 }
 
 function UploadBox({ label, hint, accept, multiple, uploading, onChange, children }: { label: string; hint: string; accept: string; multiple?: boolean; uploading: boolean; onChange: (event: ChangeEvent<HTMLInputElement>) => void; children?: ReactNode }) {

@@ -61,13 +61,13 @@ export function CompanionLoginForm() {
 
   return (
     <main className="companion-console-bg min-h-screen px-4 py-8 text-dfc-text">
-      <section className="mx-auto grid min-h-[calc(100vh-64px)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_420px]">
+      <section className="mx-auto grid min-h-[calc(100vh-64px)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_500px]">
         <div className="max-w-3xl">
-          <div className="inline-flex rounded-dfc-control border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-fuchsia-100">
-            Maycat Companion
+          <div className="inline-flex rounded-dfc-control border border-dfc-gold/35 bg-dfc-gold/10 px-4 py-2 text-sm font-black text-dfc-gold">
+            陪玩专用入口
           </div>
-          <h1 className="mt-5 text-4xl font-black leading-none text-white md:text-6xl">陪玩接单工作台</h1>
-          <p className="mt-5 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
+          <h1 className="mt-5 text-4xl font-black leading-tight text-white md:text-6xl">陪玩接单工作台</h1>
+          <p className="mt-5 max-w-2xl text-base leading-8 text-dfc-subtext">
             登录后查看派给你的订单、服务进度、收益流水和提现记录。入驻前请先联系平台客服完成资料与语音审核。
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -77,11 +77,11 @@ export function CompanionLoginForm() {
           </div>
         </div>
 
-        <section className="companion-card p-5">
+        <section className="companion-card p-5 md:p-7">
           <div className="mb-5">
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Secure Access</div>
-            <h2 className="mt-2 text-2xl font-black text-white">陪玩登录</h2>
-            <p className="mt-1 text-sm text-dfc-subtext">通过考核后，由管理员开通账号或绑定 KOOK / Discord。</p>
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Companion Portal</div>
+            <h2 className="mt-2 text-3xl font-black text-white">进入陪玩端</h2>
+            <p className="mt-2 text-sm leading-6 text-dfc-subtext">通过考核后，由管理员开通账号或绑定 KOOK / Discord。</p>
           </div>
 
           <div className="mb-4 rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-3 py-3 text-sm text-dfc-subtext">
@@ -120,7 +120,7 @@ export function CompanionLoginForm() {
               </div>
             </label>
             {error ? <div className="rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
-            <button disabled={isSubmitting} className="w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60">
+            <button disabled={isSubmitting} className="w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-5 py-4 text-base font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60">
               {isSubmitting ? "登录中..." : "进入陪玩工作台"}
             </button>
           </form>

@@ -9,10 +9,13 @@ type Companion = {
   nickname: string;
   avatarUrl?: string | null;
   game: string;
+  games?: string[];
   status: string;
   onlineStatus: string;
   deltaForceRank: string;
   pricePerHour: string;
+  kookPricePerHour?: string | null;
+  discordPricePerHour?: string | null;
   commissionRate: string;
   availableIncome: string;
   pendingIncome: string;
@@ -88,6 +91,33 @@ export default function CompanionsPage() {
     await loadCompanions();
   }
 
+  async function updatePricing(userId: string, pricePerHour: string, kookPricePerHour: string, discordPricePerHour: string) {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) return;
+    setError("");
+    setStatus("");
+    const response = await fetch(`/api/admin/companions/${userId}/pricing`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        pricePerHour,
+        kookPricePerHour: kookPricePerHour || null,
+        discordPricePerHour: discordPricePerHour || null
+      })
+    });
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    if (!response.ok) {
+      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      setError(toFriendlyError(message));
+      return;
+    }
+    setStatus("陪玩平台价格已更新");
+    await loadCompanions();
+  }
+
   const stats = useMemo(() => {
     const listed = companions.filter((item) => item.status === "LISTED").length;
     const online = companions.filter((item) => item.onlineStatus === "ONLINE").length;
@@ -119,10 +149,18 @@ export default function CompanionsPage() {
               <div className="mt-1 max-w-56 truncate text-xs text-dfc-muted">{platformSummary(item.externalAccounts)}</div>
             </div>
           </div>,
-          gameName(item.game),
+          gameNames(item.games?.length ? item.games : [item.game]),
           formatAccountEmail(item.email),
           item.deltaForceRank,
-          <CompanionCommissionEditor key={`${item.userId}-commission`} pricePerHour={item.pricePerHour} commissionRate={item.commissionRate} onSave={(value) => void updateCommission(item.userId, value)} />,
+          <div key={`${item.userId}-pricing`} className="space-y-3">
+            <CompanionPricingEditor
+              pricePerHour={item.pricePerHour}
+              kookPricePerHour={item.kookPricePerHour}
+              discordPricePerHour={item.discordPricePerHour}
+              onSave={(base, kook, discord) => void updatePricing(item.userId, base, kook, discord)}
+            />
+            <CompanionCommissionEditor pricePerHour={item.pricePerHour} commissionRate={item.commissionRate} onSave={(value) => void updateCommission(item.userId, value)} />
+          </div>,
           <StatusBadge key={`${item.userId}-s`} tone={item.status === "LISTED" ? "success" : item.status === "BANNED" ? "danger" : "warning"}>{toCompanionStatus(item.status)}</StatusBadge>,
           <StatusBadge key={`${item.userId}-online`} tone={item.onlineStatus === "ONLINE" ? "success" : "default"}>{toOnlineStatus(item.onlineStatus)}</StatusBadge>,
           <div key={`${item.userId}-income`} className="text-xs leading-5">
@@ -155,6 +193,50 @@ function SafeAvatar({ nickname, avatarUrl }: { nickname: string; avatarUrl?: str
         nickname.slice(0, 1)
       )}
     </div>
+  );
+}
+
+function CompanionPricingEditor({
+  pricePerHour,
+  kookPricePerHour,
+  discordPricePerHour,
+  onSave
+}: {
+  pricePerHour: string;
+  kookPricePerHour?: string | null;
+  discordPricePerHour?: string | null;
+  onSave: (pricePerHour: string, kookPricePerHour: string, discordPricePerHour: string) => void;
+}) {
+  const [base, setBase] = useState(pricePerHour);
+  const [kook, setKook] = useState(kookPricePerHour ?? "");
+  const [discord, setDiscord] = useState(discordPricePerHour ?? "");
+
+  useEffect(() => {
+    setBase(pricePerHour);
+    setKook(kookPricePerHour ?? "");
+    setDiscord(discordPricePerHour ?? "");
+  }, [pricePerHour, kookPricePerHour, discordPricePerHour]);
+
+  return (
+    <div className="min-w-52 text-xs">
+      <div className="grid gap-2">
+        <PriceInput label="默认" value={base} onChange={setBase} />
+        <PriceInput label="KOOK" value={kook} onChange={setKook} placeholder="沿用默认" />
+        <PriceInput label="DC" value={discord} onChange={setDiscord} placeholder="沿用默认" />
+      </div>
+      <button type="button" onClick={() => onSave(base, kook, discord)} className="mt-2 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-2 py-1 font-black text-slate-950">
+        保存价格
+      </button>
+    </div>
+  );
+}
+
+function PriceInput({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="w-10 text-dfc-muted">{label}</span>
+      <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="w-28 rounded-dfc-control border border-cyan-300/20 bg-[#070d19] px-2 py-1 outline-none focus:shadow-dfc-focus" inputMode="decimal" />
+    </label>
   );
 }
 
@@ -259,7 +341,12 @@ function gameName(code: string) {
     WILD_RIFT: "英雄联盟手游",
     MOBILE_LEGENDS: "Mobile Legends",
     MINECRAFT: "我的世界",
-    GENSHIN_IMPACT: "原神"
+    GENSHIN_IMPACT: "原神",
+    STEAM: "Steam 综合游戏"
   };
   return names[code] ?? code;
+}
+
+function gameNames(codes: string[]) {
+  return codes.map(gameName).join(" / ");
 }

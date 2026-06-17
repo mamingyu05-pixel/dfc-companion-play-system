@@ -21,6 +21,8 @@ type AdminUser = {
     status: string;
     onlineStatus: string;
     pricePerHour: string;
+    kookPricePerHour?: string | null;
+    discordPricePerHour?: string | null;
   } | null;
   externalAccounts: Array<{
     platform: string;
@@ -35,9 +37,23 @@ const gameOptions = [
   ["VALORANT", "无畏契约"],
   ["COUNTER_STRIKE_2", "CS2"],
   ["PUBG", "PUBG 绝地求生"],
+  ["PUBG_MOBILE", "PUBG Mobile"],
   ["APEX_LEGENDS", "Apex 英雄"],
+  ["NARAKA_BLADEPOINT", "永劫无间"],
   ["HONOR_OF_KINGS", "王者荣耀"],
-  ["PEACEKEEPER_ELITE", "和平精英"]
+  ["PEACEKEEPER_ELITE", "和平精英"],
+  ["DOTA_2", "Dota 2"],
+  ["OVERWATCH_2", "守望先锋 2"],
+  ["RAINBOW_SIX_SIEGE", "彩虹六号：围攻"],
+  ["ROCKET_LEAGUE", "火箭联盟"],
+  ["EA_SPORTS_FC", "EA Sports FC"],
+  ["STREET_FIGHTER_6", "街头霸王 6"],
+  ["CALL_OF_DUTY", "使命召唤"],
+  ["WILD_RIFT", "英雄联盟手游"],
+  ["MOBILE_LEGENDS", "Mobile Legends"],
+  ["MINECRAFT", "我的世界"],
+  ["GENSHIN_IMPACT", "原神"],
+  ["STEAM", "Steam 综合游戏"]
 ] as const;
 
 export default function UsersPage() {
@@ -60,7 +76,10 @@ export default function UsersPage() {
   const [companionCustomerId, setCompanionCustomerId] = useState("");
   const [companionNickname, setCompanionNickname] = useState("");
   const [companionGame, setCompanionGame] = useState("DELTA_FORCE");
+  const [companionGames, setCompanionGames] = useState<string[]>(["DELTA_FORCE"]);
   const [companionPricePerHour, setCompanionPricePerHour] = useState("");
+  const [companionKookPricePerHour, setCompanionKookPricePerHour] = useState("");
+  const [companionDiscordPricePerHour, setCompanionDiscordPricePerHour] = useState("");
   const [companionNote, setCompanionNote] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -247,6 +266,7 @@ export default function UsersPage() {
 
     setError("");
     setStatus("");
+    const selectedGames = normalizeSelectedGames(companionGames, companionGame);
     const response = await fetch(`/api/admin/users/${companionCustomerId}/become-companion`, {
       method: "PATCH",
       headers: {
@@ -255,8 +275,11 @@ export default function UsersPage() {
       },
       body: JSON.stringify({
         nickname: companionNickname,
-        game: companionGame,
+        game: selectedGames[0],
+        games: selectedGames,
         pricePerHour: companionPricePerHour,
+        kookPricePerHour: companionKookPricePerHour || undefined,
+        discordPricePerHour: companionDiscordPricePerHour || undefined,
         note: companionNote
       })
     });
@@ -271,7 +294,10 @@ export default function UsersPage() {
     setCompanionCustomerId("");
     setCompanionNickname("");
     setCompanionGame("DELTA_FORCE");
+    setCompanionGames(["DELTA_FORCE"]);
     setCompanionPricePerHour("");
+    setCompanionKookPricePerHour("");
+    setCompanionDiscordPricePerHour("");
     setCompanionNote("");
     await loadUsers();
   }
@@ -308,9 +334,15 @@ export default function UsersPage() {
         </div>
       ) : null}
       <div className="mt-1 text-xs text-dfc-muted">{formatDateTime(user.createdAt)}</div>
+      {user.companionProfile?.kookPricePerHour || user.companionProfile?.discordPricePerHour ? (
+        <div className="mt-1 text-xs text-dfc-gold">
+          {user.companionProfile.kookPricePerHour ? `KOOK ¥${formatMoney(user.companionProfile.kookPricePerHour)}/h ` : ""}
+          {user.companionProfile.discordPricePerHour ? `DC ¥${formatMoney(user.companionProfile.discordPricePerHour)}/h` : ""}
+        </div>
+      ) : null}
       {user.companionProfile ? <div className="mt-1 text-xs text-cyan-200">{user.companionProfile.nickname} / ¥{formatMoney(user.companionProfile.pricePerHour)}/h</div> : null}
     </div>,
-    <StatusBadge key={`${user.id}-role`} tone={user.role === "SUPER_ADMIN" ? "danger" : user.role === "ADMIN" ? "warning" : "default"}>{toUserRole(user.role)}</StatusBadge>,
+    <IdentityBadges key={`${user.id}-roles`} user={user} />,
     <StatusBadge key={`${user.id}-status`} tone={hasInvalidExternalAccount(user) ? "warning" : user.status === "ACTIVE" ? "success" : "danger"}>
       {hasInvalidExternalAccount(user) ? "异常占位" : toUserStatus(user.status)}
     </StatusBadge>,
@@ -363,11 +395,22 @@ export default function UsersPage() {
               ))}
             </select>
             <input value={companionNickname} onChange={(event) => setCompanionNickname(event.target.value)} className="input" placeholder="陪玩昵称" />
-            <select value={companionGame} onChange={(event) => setCompanionGame(event.target.value)} className="input">
+            <select
+              value={companionGame}
+              onChange={(event) => {
+                const nextGame = event.target.value;
+                setCompanionGame(nextGame);
+                setCompanionGames((current) => normalizeSelectedGames(current, nextGame));
+              }}
+              className="input"
+            >
               {gameOptions.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
             </select>
             <input value={companionPricePerHour} onChange={(event) => setCompanionPricePerHour(event.target.value)} className="input" placeholder="每小时价格，例如 100" inputMode="decimal" />
+            <input value={companionKookPricePerHour} onChange={(event) => setCompanionKookPricePerHour(event.target.value)} className="input" placeholder="KOOK 单价，可不填" inputMode="decimal" />
+            <input value={companionDiscordPricePerHour} onChange={(event) => setCompanionDiscordPricePerHour(event.target.value)} className="input" placeholder="Discord 单价，可不填" inputMode="decimal" />
           </div>
+          <GameMultiSelect selectedGames={companionGames} primaryGame={companionGame} onChange={setCompanionGames} />
           <input value={companionNote} onChange={(event) => setCompanionNote(event.target.value)} className="input mt-3" placeholder="备注，例如老客户申请入驻，已完成试音考核" />
           <ActionButton onClick={() => void convertCustomerToCompanion()}>开通待审核陪玩身份</ActionButton>
         </AdminPanel>
@@ -456,6 +499,41 @@ function AdminPanel({ title, hint, children }: { title: string; hint: string; ch
   );
 }
 
+function GameMultiSelect({ selectedGames, primaryGame, onChange }: { selectedGames: string[]; primaryGame: string; onChange: (games: string[]) => void }) {
+  return (
+    <div className="mt-3 rounded-dfc border border-cyan-300/15 bg-[#050711]/50 p-3">
+      <div className="text-xs font-black text-dfc-muted">可接游戏，多选</div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {gameOptions.map(([code, name]) => {
+          const checked = selectedGames.includes(code);
+          const locked = code === primaryGame;
+          return (
+            <label key={code} className={`rounded-dfc-control border px-3 py-2 text-xs transition ${checked ? "border-cyan-300/60 bg-cyan-300/10 text-white" : "border-cyan-300/15 bg-[#07111f] text-dfc-subtext"}`}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={locked}
+                onChange={(event) => {
+                  const next = event.target.checked ? [...selectedGames, code] : selectedGames.filter((item) => item !== code);
+                  onChange(normalizeSelectedGames(next, primaryGame));
+                }}
+                className="mr-2 accent-cyan-300"
+              />
+              {name}
+              {locked ? <span className="ml-2 text-dfc-gold">主</span> : null}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function normalizeSelectedGames(values: string[], primaryGame: string) {
+  const validGames = new Set(gameOptions.map(([code]) => code));
+  return Array.from(new Set([primaryGame, ...values].filter((value) => validGames.has(value as (typeof gameOptions)[number][0]))));
+}
+
 function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" | "danger" }) {
   const styles = {
     cyan: "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
@@ -475,6 +553,23 @@ function Signal({ label, value, hint, tone }: { label: string; value: string; hi
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
   const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
   return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+}
+
+function IdentityBadges({ user }: { user: AdminUser }) {
+  const badges = [
+    { label: toUserRole(user.role), tone: user.role === "SUPER_ADMIN" ? "danger" : user.role === "ADMIN" ? "warning" : "default" },
+    user.companionProfile ? { label: "陪玩", tone: user.companionProfile.status === "LISTED" ? "success" : "warning" } : null,
+    user.externalAccounts.some((account) => account.platform === "DISCORD") ? { label: "Discord", tone: "default" } : null,
+    user.externalAccounts.some((account) => account.platform === "KOOK") ? { label: "KOOK", tone: "default" } : null
+  ].filter(Boolean) as Array<{ label: string; tone: "default" | "warning" | "danger" | "success" }>;
+
+  return (
+    <div className="flex max-w-44 flex-wrap gap-2">
+      {badges.map((badge, index) => (
+        <StatusBadge key={`${badge.label}-${index}`} tone={badge.tone}>{badge.label}</StatusBadge>
+      ))}
+    </div>
+  );
 }
 
 function shortId(id: string) {

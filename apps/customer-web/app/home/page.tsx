@@ -3,7 +3,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { MaycatSignalArtwork } from "../brand";
 import { CompanionCard, CustomerShell, SectionHeader, StatCard } from "../components";
 import { games } from "../data";
 
@@ -67,6 +66,7 @@ type ApiCompanion = {
   photoUrls?: string[];
   voiceIntroUrl?: string | null;
   game: string;
+  games?: string[];
   onlineStatus: string;
   deltaForceRank: string;
   skillModes: string[];
@@ -150,8 +150,8 @@ export default function CustomerHomePage() {
 
   return (
     <CustomerShell>
-      <section className="maycat-home-hero overflow-hidden rounded-dfc border border-cyan-300/20">
-        <div className="grid min-h-[520px] gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:p-8">
+      <section className="maycat-home-hero rounded-dfc border border-cyan-300/20">
+        <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:p-7">
           <div className="flex flex-col justify-between gap-8">
             <div>
               <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">KOOK / Discord Ready</div>
@@ -181,63 +181,45 @@ export default function CustomerHomePage() {
             </div>
           </div>
 
-          <aside className="maycat-brand-frame self-end">
-            <MaycatSignalArtwork />
-            <div className="maycat-signal-actions absolute inset-x-4 bottom-4 rounded-dfc border border-cyan-300/20 bg-[#050711]/80 p-4 backdrop-blur-xl">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-200">Signal Dispatch</div>
-                  <div className="mt-1 text-lg font-black text-white">KOOK / DC 试音后再派单</div>
-                </div>
-                <Link href="/settings" className="rounded-dfc-control border border-dfc-success/50 bg-dfc-success/10 px-3 py-2 text-xs font-black text-dfc-success hover:border-dfc-success hover:bg-dfc-success/20">
-                  管理绑定
-                </Link>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                <ActionLink href="/support" className="rounded-dfc-control bg-cyan-300/10 px-2 py-2 text-cyan-100 hover:bg-cyan-300/20">
-                  客服
-                </ActionLink>
-                <ActionLink
-                  href={platformRouting.primaryHref ?? "/support"}
-                  external={platformRouting.isExternal}
-                  className="rounded-dfc-control bg-fuchsia-400/10 px-2 py-2 text-fuchsia-100 hover:bg-fuchsia-400/20"
-                  ariaLabel={boundPlatformLabel ? `前往 ${boundPlatformLabel} 试音` : "选择平台后试音"}
-                >
-                  {boundPlatformLabel ? `试音 ${boundPlatformLabel}` : "试音"}
-                </ActionLink>
-                <ActionLink
-                  href={platformRouting.primaryHref ?? "/support"}
-                  external={platformRouting.isExternal}
-                  className="rounded-dfc-control bg-dfc-gold/10 px-2 py-2 text-dfc-gold hover:bg-dfc-gold/20"
-                  ariaLabel={boundPlatformLabel ? `前往 ${boundPlatformLabel} 派单` : "选择平台后派单"}
-                >
-                  {boundPlatformLabel ? `派单 ${boundPlatformLabel}` : "派单"}
-                </ActionLink>
-              </div>
-              {platformRouting.showChoice ? (
-                <div className="mt-3">
-                  <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-cyan-100/60">选择平台</div>
-                  <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                    <ActionLink
-                      href={platformRouting.kookHref ?? "/support"}
-                      external={Boolean(platformRouting.kookHref)}
-                      className="rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-2 py-2 font-black text-cyan-100 hover:bg-cyan-300/20 focus:outline-none focus:ring-2 focus:ring-cyan-300/60"
-                      ariaLabel="前往 KOOK 平台"
-                    >
-                      去 KOOK
-                    </ActionLink>
-                    <ActionLink
-                      href={platformRouting.discordHref ?? "/support"}
-                      external={Boolean(platformRouting.discordHref)}
-                      className="rounded-dfc-control border border-fuchsia-300/25 bg-fuchsia-400/10 px-2 py-2 font-black text-fuchsia-100 hover:bg-fuchsia-400/20 focus:outline-none focus:ring-2 focus:ring-fuchsia-300/60"
-                      ariaLabel="前往 Discord 平台"
-                    >
-                      去 Discord
-                    </ActionLink>
-                  </div>
-                </div>
-              ) : null}
+          <aside className="maycat-card self-start p-4 lg:p-5">
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">快速入口</div>
+            <h2 className="mt-2 text-2xl font-black text-white">你现在可以做什么</h2>
+            <div className="mt-4 grid gap-3">
+              <Link href="/companions" className="maycat-button px-4 py-3 text-center text-sm font-black">
+                选陪玩
+              </Link>
+              <Link href="/order" className="maycat-button-secondary px-4 py-3 text-center text-sm font-black">
+                提交下单需求
+              </Link>
+              <Link href="/recharge" className="maycat-button-secondary px-4 py-3 text-center text-sm font-black">
+                余额充值
+              </Link>
+              <Link href="/support" className="maycat-button-secondary px-4 py-3 text-center text-sm font-black">
+                联系人工客服
+              </Link>
+              <Link href="/companion/" className="rounded-dfc-control border border-dfc-gold/45 bg-dfc-gold/10 px-4 py-3 text-center text-sm font-black text-dfc-gold transition hover:bg-dfc-gold/20">
+                我是陪玩，进入陪玩端
+              </Link>
             </div>
+
+            <div className="mt-5 rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 p-3 text-sm leading-6 text-dfc-subtext">
+              客户：先选陪玩或找客服派单。陪玩：点上面的“陪玩端”进入工作台。
+            </div>
+
+            {platformRouting.showChoice ? (
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <ActionLink href={platformRouting.kookHref ?? "/support"} external={Boolean(platformRouting.kookHref)} className="maycat-button-secondary px-3 py-2 text-center text-xs font-black">
+                  KOOK 社群
+                </ActionLink>
+                <ActionLink href={platformRouting.discordHref ?? "/support"} external={Boolean(platformRouting.discordHref)} className="maycat-button-secondary px-3 py-2 text-center text-xs font-black">
+                  Discord 社群
+                </ActionLink>
+              </div>
+            ) : (
+              <ActionLink href={platformRouting.primaryHref ?? "/support"} external={platformRouting.isExternal} className="maycat-button-secondary mt-4 px-3 py-2 text-center text-xs font-black">
+                前往 {boundPlatformLabel || "社群"}
+              </ActionLink>
+            )}
           </aside>
         </div>
       </section>
@@ -428,7 +410,7 @@ function toCardCompanion(companion: ApiCompanion) {
     avatarUrl: companion.avatarUrl,
     photoUrls: companion.photoUrls ?? [],
     voiceIntroUrl: companion.voiceIntroUrl ?? null,
-    game: games.find((game) => game.code === companion.game)?.name ?? companion.game,
+    game: gameNames(companion.games?.length ? companion.games : [companion.game]),
     rank: companion.deltaForceRank,
     modes: companion.skillModes.length ? companion.skillModes : ["平台派单"],
     price: Number(companion.pricePerHour),
@@ -442,4 +424,8 @@ function toCardCompanion(companion: ApiCompanion) {
     orders: 0,
     accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue"
   };
+}
+
+function gameNames(codes: string[]) {
+  return codes.map((code) => games.find((game) => game.code === code)?.name ?? code).join(" / ");
 }

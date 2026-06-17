@@ -10,6 +10,7 @@ type CompanionOption = {
   id: string;
   nickname: string;
   game: string;
+  games?: string[];
   onlineStatus: string;
   deltaForceRank: string;
   skillModes: string[];
@@ -198,7 +199,7 @@ export default function OrderPage() {
                 <select value={companionId} onChange={(event) => setCompanionId(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm">
                   {companions.map((companion) => (
                     <option key={companion.id} value={companion.id}>
-                      {companion.nickname} / {companion.deltaForceRank} / ¥{formatMoney(companion.pricePerHour)}/小时
+                      {companion.nickname} / {gameCountLabel(companion)} / {companion.deltaForceRank} / ¥{formatMoney(companion.pricePerHour)}/小时
                     </option>
                   ))}
                 </select>
@@ -322,6 +323,11 @@ function OrderStep({ index, title, desc, active }: { index: string; title: strin
 
 function formatMoney(value: string) {
   return Number(value || 0).toFixed(2);
+}
+
+function gameCountLabel(companion: CompanionOption) {
+  const count = companion.games?.length ?? 1;
+  return count > 1 ? `${count} 个游戏` : "单游戏";
 }
 
 function toFriendlyError(message?: string) {

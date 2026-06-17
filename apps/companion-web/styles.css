@@ -84,6 +84,24 @@ body {
   padding: 12px;
 }
 
+/* Keep the companion portal focused: less decoration, larger controls. */
+.companion-console-bg {
+  background: linear-gradient(180deg, #050711 0%, #0b1220 100%);
+}
+
+.companion-console-bg::before {
+  display: none;
+}
+
+.companion-card,
+.companion-hero,
+.companion-queue-item {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(8, 13, 24, 0.96)),
+    #0b1220;
+  box-shadow: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

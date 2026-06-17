@@ -205,6 +205,20 @@ export function CustomerAuthForm() {
               Discord 邀请链接：<span className="font-mono text-cyan-200">discord.gg/dX5prAZMPu</span>
             </div>
 
+            <div className="mt-4 rounded-dfc border border-dfc-gold/35 bg-dfc-gold/10 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-base font-black text-white">我是陪玩 / 想申请陪玩</div>
+                  <div className="mt-1 text-sm leading-6 text-dfc-subtext">
+                    陪玩不用在客户入口注册，先联系平台考核，通过后进入陪玩工作台。
+                  </div>
+                </div>
+                <a href="/companion/" className="rounded-dfc-control border border-dfc-gold/50 bg-dfc-gold px-4 py-3 text-center text-sm font-black text-slate-950 transition hover:bg-yellow-300">
+                  进入陪玩端
+                </a>
+              </div>
+            </div>
+
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
               <Feature label="人工充值" value="截图审核，到账留痕" />
               <Feature label="试音选人" value="先确认声音和沟通风格" />

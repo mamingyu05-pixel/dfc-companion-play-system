@@ -13,6 +13,7 @@ type ApiCompanion = {
   photoUrls?: string[];
   voiceIntroUrl?: string | null;
   game: string;
+  games?: string[];
   onlineStatus: string;
   deltaForceRank: string;
   skillModes: string[];
@@ -61,6 +62,8 @@ export default function CompanionDetailPage() {
 
   const isOnline = companion.onlineStatus === "ONLINE";
   const canVoice = companion.voicePreference !== "TEXT_ONLY";
+  const companionGames = getCompanionGames(companion);
+  const primaryGame = companionGames[0] ?? companion.game;
 
   return (
     <CustomerShell>
@@ -85,7 +88,9 @@ export default function CompanionDetailPage() {
             ) : null}
             <div className="mt-5 flex flex-wrap gap-2">
               <Badge tone={isOnline ? "gold" : "default"}>{toOnlineStatus(companion.onlineStatus)}</Badge>
-              <Badge>{gameName(companion.game)}</Badge>
+              {companionGames.slice(0, 4).map((code) => (
+                <Badge key={code}>{gameName(code)}</Badge>
+              ))}
               <Badge>{companion.deltaForceRank}</Badge>
               <Badge>{toVoice(companion.voicePreference)}</Badge>
               {companion.skillModes.map((mode) => (
@@ -104,15 +109,15 @@ export default function CompanionDetailPage() {
               </div>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">
-              <DetailMetric label="游戏" value={gameName(companion.game)} />
+              <DetailMetric label="可接游戏" value={gameNames(companionGames)} />
               <DetailMetric label="段位" value={companion.deltaForceRank} />
               <DetailMetric label="语音" value={canVoice ? "支持" : "文字"} />
               <DetailMetric label="状态" value={toOnlineStatus(companion.onlineStatus)} />
             </div>
-            <Link href={`/order?companion=${companion.id}&game=${companion.game}`} className="maycat-button mt-5 block px-4 py-3 text-center text-sm font-black">
+            <Link href={`/order?companion=${companion.id}&game=${primaryGame}`} className="maycat-button mt-5 block px-4 py-3 text-center text-sm font-black">
               立即下单
             </Link>
-            <Link href={`/order?companion=${companion.id}&game=${companion.game}&trial=1`} className="maycat-button-secondary mt-3 block px-4 py-3 text-center text-sm font-black">
+            <Link href={`/order?companion=${companion.id}&game=${primaryGame}&trial=1`} className="maycat-button-secondary mt-3 block px-4 py-3 text-center text-sm font-black">
               申请试音
             </Link>
           </aside>
@@ -220,6 +225,14 @@ function CompanionDetailSkeleton() {
 
 function gameName(code: string) {
   return games.find((game) => game.code === code)?.name ?? code;
+}
+
+function gameNames(codes: string[]) {
+  return codes.map(gameName).join(" / ");
+}
+
+function getCompanionGames(companion: ApiCompanion) {
+  return companion.games?.length ? companion.games : [companion.game];
 }
 
 function toOnlineStatus(value: string) {

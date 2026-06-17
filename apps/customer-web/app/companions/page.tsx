@@ -23,6 +23,7 @@ type ApiCompanion = {
   photoUrls?: string[];
   voiceIntroUrl?: string | null;
   game: string;
+  games?: string[];
   onlineStatus: string;
   deltaForceRank: string;
   skillModes: string[];
@@ -58,7 +59,7 @@ export default function CompanionsPage() {
 
   const onlineCount = companions.filter((companion) => companion.onlineStatus === "ONLINE").length;
   const voiceCount = companions.filter((companion) => companion.voicePreference !== "TEXT_ONLY").length;
-  const deltaForceCount = companions.filter((companion) => companion.game === "DELTA_FORCE").length;
+  const deltaForceCount = companions.filter((companion) => getCompanionGames(companion).includes("DELTA_FORCE")).length;
   const filteredCompanions = useMemo(() => {
     return companions.filter((companion) => {
       if (activeFilter === "online") return companion.onlineStatus === "ONLINE";
@@ -180,7 +181,7 @@ function toCardCompanion(companion: ApiCompanion) {
     avatarUrl: companion.avatarUrl,
     photoUrls: companion.photoUrls ?? [],
     voiceIntroUrl: companion.voiceIntroUrl ?? null,
-    game: gameName(companion.game),
+    game: gameNames(getCompanionGames(companion)),
     rank: companion.deltaForceRank,
     modes: companion.skillModes.length ? companion.skillModes : ["平台派单"],
     price: Number(companion.pricePerHour),
@@ -198,6 +199,14 @@ function toCardCompanion(companion: ApiCompanion) {
 
 function gameName(code: string) {
   return games.find((game) => game.code === code)?.name ?? code;
+}
+
+function gameNames(codes: string[]) {
+  return codes.map(gameName).join(" / ");
+}
+
+function getCompanionGames(companion: ApiCompanion) {
+  return companion.games?.length ? companion.games : [companion.game];
 }
 
 function toVoice(value: string) {

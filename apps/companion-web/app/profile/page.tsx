@@ -17,9 +17,12 @@ type CompanionMe = {
     photoUrls?: string[];
     voiceIntroUrl?: string | null;
     game: string;
+    games?: string[];
     onlineStatus: string;
     status: string;
     pricePerHour: string;
+    kookPricePerHour?: string | null;
+    discordPricePerHour?: string | null;
     payoutMethod?: string | null;
     payoutAccountName?: string | null;
     payoutAccountNo?: string | null;
@@ -30,6 +33,31 @@ type CompanionMe = {
 type UploadPurpose = "avatar" | "photo" | "voice";
 type OnlineStatusValue = "ONLINE" | "BUSY" | "OFFLINE";
 
+const gameOptions = [
+  ["DELTA_FORCE", "三角洲行动"],
+  ["LEAGUE_OF_LEGENDS", "英雄联盟"],
+  ["VALORANT", "无畏契约"],
+  ["COUNTER_STRIKE_2", "CS2"],
+  ["PUBG", "PUBG 绝地求生"],
+  ["PUBG_MOBILE", "PUBG Mobile"],
+  ["APEX_LEGENDS", "Apex 英雄"],
+  ["NARAKA_BLADEPOINT", "永劫无间"],
+  ["HONOR_OF_KINGS", "王者荣耀"],
+  ["PEACEKEEPER_ELITE", "和平精英"],
+  ["DOTA_2", "Dota 2"],
+  ["OVERWATCH_2", "守望先锋 2"],
+  ["RAINBOW_SIX_SIEGE", "彩虹六号：围攻"],
+  ["ROCKET_LEAGUE", "火箭联盟"],
+  ["EA_SPORTS_FC", "EA Sports FC"],
+  ["STREET_FIGHTER_6", "街头霸王 6"],
+  ["CALL_OF_DUTY", "使命召唤"],
+  ["WILD_RIFT", "英雄联盟手游"],
+  ["MOBILE_LEGENDS", "Mobile Legends"],
+  ["MINECRAFT", "我的世界"],
+  ["GENSHIN_IMPACT", "原神"],
+  ["STEAM", "Steam 综合游戏"]
+] as const;
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<CompanionMe | null>(null);
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -39,6 +67,7 @@ export default function ProfilePage() {
   const [payoutAccountNo, setPayoutAccountNo] = useState("");
   const [payoutQrCodeUrl, setPayoutQrCodeUrl] = useState("");
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatusValue>("OFFLINE");
+  const [selectedGames, setSelectedGames] = useState<string[]>(["DELTA_FORCE"]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -60,6 +89,7 @@ export default function ProfilePage() {
     setPayoutAccountNo(data.companionProfile?.payoutAccountNo ?? "");
     setPayoutQrCodeUrl(data.companionProfile?.payoutQrCodeUrl ?? "");
     setOnlineStatus(toOnlineStatusValue(data.companionProfile?.onlineStatus));
+    setSelectedGames(data.companionProfile ? getProfileGames(data.companionProfile) : ["DELTA_FORCE"]);
   }
 
   useEffect(() => {
@@ -237,6 +267,46 @@ export default function ProfilePage() {
     }
   }
 
+  async function saveGames() {
+    setError("");
+    setStatus("");
+
+    const token = localStorage.getItem("dfc_companion_token");
+    if (!token) {
+      window.location.href = "/companion/";
+      return;
+    }
+
+    const games = normalizeSelectedGames(selectedGames);
+    if (!games.length) {
+      setError("至少选择一个可接游戏");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch("/api/auth/me/companion-games", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ games })
+      });
+      const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+      if (!response.ok) {
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        throw new Error(toChineseError(message));
+      }
+      setStatus("可接游戏已保存，客户前台和派单筛选会按最新游戏能力匹配。");
+      await loadProfile();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存可接游戏失败，请稍后重试");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   if (error && !profile) {
     return (
       <CompanionShell>
@@ -272,13 +342,24 @@ export default function ProfilePage() {
             </StatusBadge>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <Field label="KOOK 单价" value={profile.companionProfile?.kookPricePerHour ? `¥${Number(profile.companionProfile.kookPricePerHour).toFixed(2)}/h` : "沿用默认价"} />
+            <Field label="Discord 单价" value={profile.companionProfile?.discordPricePerHour ? `¥${Number(profile.companionProfile.discordPricePerHour).toFixed(2)}/h` : "沿用默认价"} />
             <Field label="账号" value={formatAccountEmail(profile.user.email)} />
             <Field label="我的邀请码" value={profile.user.referralCode ?? "未生成"} />
-            <Field label="游戏" value={gameName(profile.companionProfile?.game ?? "")} />
+            <Field label="可接游戏" value={gameNames(selectedGames)} />
             <OnlineStatusControl value={onlineStatus} onChange={(value) => void updateOnlineStatus(value)} />
             <Field label="每小时价格" value={`¥${Number(profile.companionProfile?.pricePerHour ?? "0").toFixed(2)}`} />
           </div>
         </div>
+      </section>
+
+      <section className="companion-card mt-6 p-4">
+        <h2 className="text-base font-black text-white">可接游戏</h2>
+        <p className="mt-1 text-sm leading-6 text-dfc-subtext">可以选择多个游戏。第一个会作为主展示游戏，客户下单和 KOOK / Discord 派单都会按这里匹配。</p>
+        <GameMultiSelect selectedGames={selectedGames} onChange={setSelectedGames} />
+        <button type="button" disabled={isSaving} onClick={() => void saveGames()} className="mt-5 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
+          {isSaving ? "保存中..." : "保存可接游戏"}
+        </button>
       </section>
 
       <section className="companion-card mt-6 p-4">
@@ -371,6 +452,30 @@ function OnlineStatusControl({ value, onChange }: { value: OnlineStatusValue; on
   );
 }
 
+function GameMultiSelect({ selectedGames, onChange }: { selectedGames: string[]; onChange: (games: string[]) => void }) {
+  return (
+    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {gameOptions.map(([code, name]) => {
+        const checked = selectedGames.includes(code);
+        return (
+          <label key={code} className={`rounded-dfc-control border px-3 py-2 text-sm transition ${checked ? "border-cyan-300/60 bg-cyan-300/10 text-white" : "border-cyan-300/15 bg-[#07111f] text-dfc-subtext"}`}>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(event) => {
+                const next = event.target.checked ? [...selectedGames, code] : selectedGames.filter((item) => item !== code);
+                onChange(normalizeSelectedGames(next));
+              }}
+              className="mr-2 accent-cyan-300"
+            />
+            {name}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 function UploadBox({ label, hint, accept, multiple, uploading, onChange, children }: { label: string; hint: string; accept: string; multiple?: boolean; uploading: boolean; onChange: (event: ChangeEvent<HTMLInputElement>) => void; children?: ReactNode }) {
   return (
     <label className="block rounded-dfc border border-cyan-300/15 bg-[#050711]/50 p-3">
@@ -404,8 +509,21 @@ function toOnlineStatusValue(status?: string): OnlineStatusValue {
 }
 
 function gameName(code: string) {
-  if (code === "DELTA_FORCE") return "三角洲行动";
-  return code || "未设置";
+  return gameOptions.find(([value]) => value === code)?.[1] ?? (code || "未设置");
+}
+
+function gameNames(codes: string[]) {
+  return codes.length ? codes.map(gameName).join(" / ") : "未设置";
+}
+
+function normalizeSelectedGames(values: string[]) {
+  const validGames = new Set(gameOptions.map(([code]) => code));
+  return Array.from(new Set(values.filter((value) => validGames.has(value as (typeof gameOptions)[number][0]))));
+}
+
+function getProfileGames(profile: NonNullable<CompanionMe["companionProfile"]>) {
+  const games = profile.games?.length ? profile.games : [profile.game];
+  return normalizeSelectedGames(games);
 }
 
 function formatAccountEmail(email: string) {

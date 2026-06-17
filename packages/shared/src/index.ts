@@ -19,7 +19,8 @@ export const SUPPORTED_GAMES = [
   { code: "WILD_RIFT", name: "英雄联盟手游", category: "手游 MOBA" },
   { code: "MOBILE_LEGENDS", name: "Mobile Legends", category: "手游 MOBA" },
   { code: "MINECRAFT", name: "我的世界", category: "沙盒" },
-  { code: "GENSHIN_IMPACT", name: "原神", category: "开放世界" }
+  { code: "GENSHIN_IMPACT", name: "原神", category: "开放世界" },
+  { code: "STEAM", name: "Steam 综合游戏", category: "综合平台" }
 ] as const;
 
 export const SUPPORTED_GAME = "DELTA_FORCE" as const;

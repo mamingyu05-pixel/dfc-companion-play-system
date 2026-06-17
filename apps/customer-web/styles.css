@@ -702,3 +702,73 @@ body {
 .maycat-signal-actions a:hover {
   transform: translateY(-1px);
 }
+
+/* Simpler customer UI: keep the esports tone, remove visual noise. */
+.maycat-neon-bg::before {
+  background-image:
+    linear-gradient(180deg, rgba(5, 7, 17, 0.98), rgba(8, 13, 24, 0.98)),
+    linear-gradient(135deg, #050711, #0b1220);
+  opacity: 1;
+}
+
+.maycat-neon-bg::after,
+.maycat-grid,
+.maycat-light-streaks,
+.maycat-home-hero::before,
+.maycat-lobby-hero::after,
+.maycat-order-hero::after,
+.maycat-recharge-hero::after,
+.maycat-profile-hero::after,
+.maycat-support-hero::after,
+.maycat-complaint-hero::after,
+.maycat-settings-hero::after {
+  display: none;
+}
+
+.maycat-home-hero,
+.maycat-lobby-hero,
+.maycat-order-hero,
+.maycat-recharge-hero,
+.maycat-profile-hero,
+.maycat-support-hero,
+.maycat-complaint-hero,
+.maycat-settings-hero,
+.maycat-card,
+.maycat-panel,
+.maycat-price-console,
+.maycat-profile-card,
+.maycat-support-panel {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(8, 13, 24, 0.96)),
+    #0b1220;
+  box-shadow: none;
+}
+
+.maycat-card:hover {
+  border-color: rgba(125, 211, 252, 0.26);
+  box-shadow: none;
+}
+
+.maycat-text-glow {
+  text-shadow: none;
+}
+
+.maycat-button {
+  background: #5ee7f0;
+  color: #03101b;
+  box-shadow: none;
+}
+
+.maycat-button:hover {
+  background: #8af3f7;
+  filter: none;
+}
+
+.maycat-button-secondary {
+  background: rgba(15, 23, 42, 0.76);
+  box-shadow: none;
+}
+
+.maycat-chip {
+  box-shadow: none;
+}

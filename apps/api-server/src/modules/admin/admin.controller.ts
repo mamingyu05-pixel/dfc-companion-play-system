@@ -184,7 +184,9 @@ export class AdminController {
             game: true,
             status: true,
             onlineStatus: true,
-            pricePerHour: true
+            pricePerHour: true,
+            kookPricePerHour: true,
+            discordPricePerHour: true
           }
         },
         externalAccounts: {
@@ -217,7 +219,9 @@ export class AdminController {
               game: item.companionProfile.game,
               status: item.companionProfile.status,
               onlineStatus: item.companionProfile.onlineStatus,
-              pricePerHour: item.companionProfile.pricePerHour.toString()
+              pricePerHour: item.companionProfile.pricePerHour.toString(),
+              kookPricePerHour: item.companionProfile.kookPricePerHour?.toString() ?? null,
+              discordPricePerHour: item.companionProfile.discordPricePerHour?.toString() ?? null
             }
           : null,
         externalAccounts: item.externalAccounts
@@ -748,11 +752,14 @@ export class AdminController {
         photoUrls: profile.photoUrls,
         voiceIntroUrl: profile.voiceIntroUrl,
         game: profile.game,
+        games: profile.games.length ? profile.games : [profile.game],
         status: profile.status,
         onlineStatus: profile.onlineStatus,
         deltaForceRank: profile.deltaForceRank,
         skillModes: profile.skillModes,
         pricePerHour: profile.pricePerHour.toString(),
+        kookPricePerHour: profile.kookPricePerHour?.toString() ?? null,
+        discordPricePerHour: profile.discordPricePerHour?.toString() ?? null,
         commissionRate: profile.commissionRate.toString(),
         externalAccounts: profile.user.externalAccounts,
         availableIncome: profile.user.wallet?.availableIncome.toString() ?? "0",
@@ -940,12 +947,15 @@ export class AdminController {
       password: string;
       nickname: string;
       pricePerHour: string;
+      kookPricePerHour?: string;
+      discordPricePerHour?: string;
       commissionRate?: string;
       avatarUrl?: string;
       photoUrls?: string[];
       voiceIntroUrl?: string;
       gender?: string;
       game?: GameCode;
+      games?: GameCode[];
       deltaForceRank?: DeltaForceRank;
       skillModes?: string[];
       bio?: string;
@@ -973,6 +983,10 @@ export class AdminController {
       throw new BadRequestException("pricePerHour must be a valid amount");
     }
     if (pricePerHour.lte(0)) throw new BadRequestException("pricePerHour must be greater than 0");
+    const kookPricePerHour = parseOptionalPositiveDecimal(body.kookPricePerHour, "kookPricePerHour");
+    const discordPricePerHour = parseOptionalPositiveDecimal(body.discordPricePerHour, "discordPricePerHour");
+    const primaryGame = normalizeGameCode(body.game) ?? normalizeGameCode(body.games?.[0]) ?? GameCode.DELTA_FORCE;
+    const games = normalizeGameList(body.games, primaryGame);
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -992,10 +1006,13 @@ export class AdminController {
                 photoUrls: normalizeMediaUrls(body.photoUrls),
                 voiceIntroUrl: normalizeOptionalString(body.voiceIntroUrl),
                 gender: body.gender,
-                game: body.game ?? GameCode.DELTA_FORCE,
+                game: primaryGame,
+                games,
                 deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
                 skillModes: body.skillModes ?? [],
                 pricePerHour,
+                kookPricePerHour,
+                discordPricePerHour,
                 commissionRate: parseCommissionRate((body as { commissionRate?: string }).commissionRate ?? "0.2"),
                 onlineStatus: OnlineStatus.OFFLINE,
                 bio: body.bio,
@@ -1042,12 +1059,15 @@ export class AdminController {
     body: {
       nickname: string;
       pricePerHour: string;
+      kookPricePerHour?: string;
+      discordPricePerHour?: string;
       commissionRate?: string;
       avatarUrl?: string;
       photoUrls?: string[];
       voiceIntroUrl?: string;
       gender?: string;
       game?: GameCode;
+      games?: GameCode[];
       deltaForceRank?: DeltaForceRank;
       skillModes?: string[];
       bio?: string;
@@ -1071,6 +1091,10 @@ export class AdminController {
       throw new BadRequestException("pricePerHour must be a valid amount");
     }
     if (pricePerHour.lte(0)) throw new BadRequestException("pricePerHour must be greater than 0");
+    const kookPricePerHour = parseOptionalPositiveDecimal(body.kookPricePerHour, "kookPricePerHour");
+    const discordPricePerHour = parseOptionalPositiveDecimal(body.discordPricePerHour, "discordPricePerHour");
+    const primaryGame = normalizeGameCode(body.game) ?? normalizeGameCode(body.games?.[0]) ?? GameCode.DELTA_FORCE;
+    const games = normalizeGameList(body.games, primaryGame);
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -1094,10 +1118,13 @@ export class AdminController {
                 photoUrls: normalizeMediaUrls(body.photoUrls),
                 voiceIntroUrl: normalizeOptionalString(body.voiceIntroUrl),
                 gender: body.gender,
-                game: body.game ?? GameCode.DELTA_FORCE,
+                game: primaryGame,
+                games,
                 deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
                 skillModes: body.skillModes ?? [],
                 pricePerHour,
+                kookPricePerHour,
+                discordPricePerHour,
                 commissionRate: parseCommissionRate(body.commissionRate ?? "0.2"),
                 onlineStatus: OnlineStatus.OFFLINE,
                 bio: body.bio,
@@ -1208,6 +1235,51 @@ export class AdminController {
     };
   }
 
+  @Patch("companions/:id/pricing")
+  async updateCompanionPricing(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { pricePerHour: string; kookPricePerHour?: string | null; discordPricePerHour?: string | null; note?: string }
+  ) {
+    const pricePerHour = parsePositiveDecimal(body.pricePerHour, "pricePerHour");
+    const kookPricePerHour = parseOptionalPositiveDecimal(body.kookPricePerHour, "kookPricePerHour");
+    const discordPricePerHour = parseOptionalPositiveDecimal(body.discordPricePerHour, "discordPricePerHour");
+    const updated = await this.prisma.companionProfile.update({
+      where: { userId: id },
+      data: {
+        pricePerHour,
+        kookPricePerHour,
+        discordPricePerHour
+      },
+      include: { user: { select: { id: true, email: true, displayName: true } } }
+    });
+
+    await this.prisma.adminLog.create({
+      data: {
+        actorId: user.id,
+        targetUserId: id,
+        action: "UPDATE_COMPANION_PRICING",
+        entityType: "COMPANION_PROFILE",
+        entityId: updated.id,
+        detail: {
+          pricePerHour: updated.pricePerHour.toString(),
+          kookPricePerHour: updated.kookPricePerHour?.toString() ?? null,
+          discordPricePerHour: updated.discordPricePerHour?.toString() ?? null,
+          note: body.note
+        }
+      }
+    });
+
+    return {
+      userId: updated.userId,
+      email: updated.user.email,
+      nickname: updated.nickname,
+      pricePerHour: updated.pricePerHour.toString(),
+      kookPricePerHour: updated.kookPricePerHour?.toString() ?? null,
+      discordPricePerHour: updated.discordPricePerHour?.toString() ?? null
+    };
+  }
+
   @Patch("recharges/:id/review")
   reviewRecharge(
     @CurrentUser() user: AuthenticatedUser,
@@ -1311,6 +1383,17 @@ function parseNonNegativeDecimal(value: string, fieldName: string) {
   return decimal;
 }
 
+function parsePositiveDecimal(value: string, fieldName: string) {
+  const decimal = parseNonNegativeDecimal(value, fieldName);
+  if (decimal.lte(0)) throw new BadRequestException(`${fieldName} must be greater than 0`);
+  return decimal;
+}
+
+function parseOptionalPositiveDecimal(value: string | null | undefined, fieldName: string) {
+  if (!value?.trim()) return null;
+  return parsePositiveDecimal(value, fieldName);
+}
+
 function parseCommissionRate(value: string) {
   const commissionRate = parseNonNegativeDecimal(value, "commissionRate");
   if (commissionRate.gt(1)) throw new BadRequestException("commissionRate cannot be greater than 1");
@@ -1331,6 +1414,17 @@ function normalizeMediaUrls(urls?: string[]) {
     .map((url) => url.trim())
     .filter(Boolean)
     .slice(0, 9);
+}
+
+function normalizeGameCode(value?: string | null) {
+  return Object.values(GameCode).includes(value as GameCode) ? (value as GameCode) : undefined;
+}
+
+function normalizeGameList(values: GameCode[] | undefined, primaryGame: GameCode) {
+  const normalized = [primaryGame, ...(values ?? [])]
+    .map((value) => normalizeGameCode(value))
+    .filter((value): value is GameCode => Boolean(value));
+  return Array.from(new Set(normalized)).slice(0, 24);
 }
 
 function parseOptionalDate(value: string | undefined, fieldName: string) {
