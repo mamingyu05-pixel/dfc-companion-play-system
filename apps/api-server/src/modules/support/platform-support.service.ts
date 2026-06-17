@@ -916,16 +916,41 @@ export class PlatformSupportService {
   }
 
   private buildDemandFacts(message: string, history: SupportHistoryTurn[] = []): DemandFacts {
-    const messages = [...history.map((turn) => turn.message), message].map((item) => this.normalizeMessage(item));
-    const combined = messages.join("，");
+    const currentMessage = this.normalizeMessage(message);
+    const historyMessages = history.map((turn) => this.normalizeMessage(turn.message));
+    const messages = [...historyMessages, currentMessage];
+    const historyCombined = historyMessages.join("，");
+    const current = {
+      game: this.extractGame(currentMessage),
+      mode: this.extractMode(currentMessage),
+      duration: this.extractDuration(currentMessage),
+      budget: this.extractBudget(currentMessage),
+      startTime: this.extractStartTime(currentMessage),
+      trial: this.extractTrialPreference(currentMessage)
+    };
+    const historical = {
+      game: this.extractGame(historyCombined),
+      mode: this.extractMode(historyCombined),
+      duration: this.extractDuration(historyCombined),
+      budget: this.extractBudget(historyCombined),
+      startTime: this.extractStartTime(historyCombined),
+      trial: this.extractTrialPreference(historyCombined)
+    };
+    const startsFreshDemand =
+      Boolean(current.game && historical.game && current.game !== historical.game) ||
+      Boolean(current.duration && historical.duration && current.duration !== historical.duration) ||
+      (this.isDispatchIntent(currentMessage) && Boolean(current.game || current.duration));
+    const fallback: typeof historical = startsFreshDemand
+      ? { game: undefined, mode: undefined, duration: undefined, budget: undefined, startTime: undefined, trial: undefined }
+      : historical;
     const facts = {
       hasOrderContext: messages.some((item) => this.isDispatchIntent(item)),
-      game: this.extractGame(combined),
-      mode: this.extractMode(combined),
-      duration: this.extractDuration(combined),
-      budget: this.extractBudget(combined),
-      startTime: this.extractStartTime(combined),
-      trial: this.extractTrialPreference(combined)
+      game: current.game ?? fallback.game,
+      mode: current.mode ?? fallback.mode,
+      duration: current.duration ?? fallback.duration,
+      budget: current.budget ?? fallback.budget,
+      startTime: current.startTime ?? fallback.startTime,
+      trial: current.trial ?? fallback.trial
     };
 
     const missing: string[] = [];
