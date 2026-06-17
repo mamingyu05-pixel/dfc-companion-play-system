@@ -30,19 +30,19 @@ interface NotificationResult {
 }
 
 const dispatchRoleTags = [
-  { game: "DELTA_FORCE", label: "三角洲行动组", discordEnv: "DISCORD_GAME_DELTA_FORCE_ROLE_ID", kookEnv: "KOOK_GAME_DELTA_FORCE_ROLE_ID" },
-  { game: "LEAGUE_OF_LEGENDS", label: "英雄联盟组", discordEnv: "DISCORD_GAME_LEAGUE_OF_LEGENDS_ROLE_ID", kookEnv: "KOOK_GAME_LEAGUE_OF_LEGENDS_ROLE_ID" },
-  { game: "VALORANT", label: "无畏契约组", discordEnv: "DISCORD_GAME_VALORANT_ROLE_ID", kookEnv: "KOOK_GAME_VALORANT_ROLE_ID" },
-  { game: "COUNTER_STRIKE_2", label: "CS2组", discordEnv: "DISCORD_GAME_COUNTER_STRIKE_2_ROLE_ID", kookEnv: "KOOK_GAME_COUNTER_STRIKE_2_ROLE_ID" },
-  { game: "PUBG", label: "PUBG组", discordEnv: "DISCORD_GAME_PUBG_ROLE_ID", kookEnv: "KOOK_GAME_PUBG_ROLE_ID" },
-  { game: "APEX_LEGENDS", label: "Apex组", discordEnv: "DISCORD_GAME_APEX_LEGENDS_ROLE_ID", kookEnv: "KOOK_GAME_APEX_LEGENDS_ROLE_ID" },
-  { game: "HONOR_OF_KINGS", label: "王者荣耀组", discordEnv: "DISCORD_GAME_HONOR_OF_KINGS_ROLE_ID", kookEnv: "KOOK_GAME_HONOR_OF_KINGS_ROLE_ID" },
-  { game: "PEACEKEEPER_ELITE", label: "和平精英组", discordEnv: "DISCORD_GAME_PEACEKEEPER_ELITE_ROLE_ID", kookEnv: "KOOK_GAME_PEACEKEEPER_ELITE_ROLE_ID" }
+  { game: "DELTA_FORCE", label: "三角洲行动组", discordEnv: "DISCORD_GAME_DELTA_FORCE_ROLE_ID", kookEnv: "KOOK_GAME_DELTA_FORCE_ROLE_ID" }, // gitleaks:allow env var names only
+  { game: "LEAGUE_OF_LEGENDS", label: "英雄联盟组", discordEnv: "DISCORD_GAME_LEAGUE_OF_LEGENDS_ROLE_ID", kookEnv: "KOOK_GAME_LEAGUE_OF_LEGENDS_ROLE_ID" }, // gitleaks:allow env var names only
+  { game: "VALORANT", label: "无畏契约组", discordEnv: "DISCORD_GAME_VALORANT_ROLE_ID", kookEnv: "KOOK_GAME_VALORANT_ROLE_ID" }, // gitleaks:allow env var names only
+  { game: "COUNTER_STRIKE_2", label: "CS2组", discordEnv: "DISCORD_GAME_COUNTER_STRIKE_2_ROLE_ID", kookEnv: "KOOK_GAME_COUNTER_STRIKE_2_ROLE_ID" }, // gitleaks:allow env var names only
+  { game: "PUBG", label: "PUBG组", discordEnv: "DISCORD_GAME_PUBG_ROLE_ID", kookEnv: "KOOK_GAME_PUBG_ROLE_ID" }, // gitleaks:allow env var names only
+  { game: "APEX_LEGENDS", label: "Apex组", discordEnv: "DISCORD_GAME_APEX_LEGENDS_ROLE_ID", kookEnv: "KOOK_GAME_APEX_LEGENDS_ROLE_ID" }, // gitleaks:allow env var names only
+  { game: "HONOR_OF_KINGS", label: "王者荣耀组", discordEnv: "DISCORD_GAME_HONOR_OF_KINGS_ROLE_ID", kookEnv: "KOOK_GAME_HONOR_OF_KINGS_ROLE_ID" }, // gitleaks:allow env var names only
+  { game: "PEACEKEEPER_ELITE", label: "和平精英组", discordEnv: "DISCORD_GAME_PEACEKEEPER_ELITE_ROLE_ID", kookEnv: "KOOK_GAME_PEACEKEEPER_ELITE_ROLE_ID" } // gitleaks:allow env var names only
 ] as const;
 
 const voiceRoleTags = [
-  { label: "月影声线", discordEnv: "DISCORD_VOICE_MOON_ROLE_ID", kookEnv: "KOOK_VOICE_MOON_ROLE_ID", keywords: ["女", "女生", "女声", "柔和", "甜", "月影"] },
-  { label: "曜刃声线", discordEnv: "DISCORD_VOICE_SOLAR_ROLE_ID", kookEnv: "KOOK_VOICE_SOLAR_ROLE_ID", keywords: ["男", "男生", "男声", "沉稳", "低音", "曜刃"] }
+  { label: "月影声线", discordEnv: "DISCORD_VOICE_MOON_ROLE_ID", kookEnv: "KOOK_VOICE_MOON_ROLE_ID", keywords: ["女", "女生", "女声", "柔和", "甜", "月影"] }, // gitleaks:allow env var names only
+  { label: "曜刃声线", discordEnv: "DISCORD_VOICE_SOLAR_ROLE_ID", kookEnv: "KOOK_VOICE_SOLAR_ROLE_ID", keywords: ["男", "男生", "男声", "沉稳", "低音", "曜刃"] } // gitleaks:allow env var names only
 ] as const;
 
 interface KookMessageResponse {

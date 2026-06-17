@@ -20,7 +20,7 @@
 4. `/opt/companion-play-system/.env` 已填写：
 
 ```env
-KOOK_TOKEN=
+KOOK_TOKEN= # gitleaks:allow placeholder only, fill real token on server
 KOOK_GUILD_ID=3189962583916682
 KOOK_SUPPORT_CHANNEL_ID=3837107038599119
 KOOK_DISPATCH_CHANNEL_ID=5136741567563919
