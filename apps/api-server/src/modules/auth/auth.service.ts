@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { BotPlatform, CompanionProfileStatus, GameCode, OnlineStatus, OrderStatus, Prisma, ReviewStatus, UserRole } from "@prisma/client";
+import { BotPlatform, CompanionProfileStatus, DeltaForceRank, GameCode, OnlineStatus, OrderStatus, Prisma, ReviewStatus, UserRole, VoicePreference } from "@prisma/client";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import nodemailer from "nodemailer";
 import { getCustomerMembershipLevel } from "../customer-membership";
@@ -659,7 +659,23 @@ export class AuthService {
         throw new UnauthorizedException("User is not active");
       }
       if (portal === "companion" && !existingAccount.user.companionProfile) {
-        throw new UnauthorizedException("Companion access is not enabled for this account");
+        await this.prisma.$transaction(async (tx) => {
+          await tx.wallet.upsert({
+            where: { userId: existingAccount.user.id },
+            update: {},
+            create: { userId: existingAccount.user.id }
+          });
+          await tx.companionProfile.create({
+            data: {
+              userId: existingAccount.user.id,
+              ...buildPendingOAuthCompanionProfile(profile)
+            }
+          });
+          await tx.userExternalAccount.update({
+            where: { id: existingAccount.id },
+            data: { displayName: profile.displayName }
+          });
+        });
       }
       if (portal === "customer" && existingAccount.user.role !== UserRole.CUSTOMER) {
         throw new UnauthorizedException("This third-party account is already bound to another portal");
@@ -678,10 +694,6 @@ export class AuthService {
       };
     }
 
-    if (portal === "companion") {
-      throw new UnauthorizedException("陪玩注册需要先联系客服考核，通过后由管理员开通登录方式");
-    }
-
     const displayName = await this.getAvailableDisplayName(role, profile.displayName);
     const displayNameKey = normalizeDisplayNameKey(displayName);
     const email = buildOAuthEmail(platform, role, profile.externalUserId);
@@ -696,7 +708,12 @@ export class AuthService {
             role,
             displayName,
             displayNameKey,
-            referralCode: await generateUniqueReferralCode(tx, "C")
+            referralCode: await generateUniqueReferralCode(tx, portal === "companion" ? "P" : "C"),
+            companionProfile: portal === "companion"
+              ? {
+                  create: buildPendingOAuthCompanionProfile({ ...profile, displayName })
+                }
+              : undefined
           },
           select: { id: true, email: true, role: true, displayName: true, referralCode: true }
         });
@@ -1193,6 +1210,42 @@ function oauthPlatformToBotPlatform(platform: OAuthPlatform) {
 
 function buildOAuthEmail(platform: OAuthPlatform, role: UserRole, externalUserId: string) {
   return `${role.toLowerCase()}-${platform}-${externalUserId}@oauth.maycatplay.local`.toLowerCase();
+}
+
+function buildPendingOAuthCompanionProfile(profile: OAuthProfile) {
+  return {
+    nickname: profile.displayName,
+    avatarUrl: profile.avatarUrl,
+    game: GameCode.DELTA_FORCE,
+    games: [GameCode.DELTA_FORCE],
+    deltaForceRank: DeltaForceRank.UNRANKED,
+    skillModes: [],
+    pricePerHour: defaultCompanionPricePerHour(),
+    commissionRate: defaultCompanionCommissionRate(),
+    onlineStatus: OnlineStatus.OFFLINE,
+    voicePreference: VoicePreference.OPTIONAL,
+    status: CompanionProfileStatus.PENDING_REVIEW
+  };
+}
+
+function defaultCompanionPricePerHour() {
+  const configured = process.env.DEFAULT_COMPANION_PRICE_PER_HOUR || process.env.PLATFORM_MATCH_UNIT_PRICE || "100";
+  try {
+    const price = new Prisma.Decimal(configured);
+    return price.gt(0) ? price : new Prisma.Decimal("100");
+  } catch {
+    return new Prisma.Decimal("100");
+  }
+}
+
+function defaultCompanionCommissionRate() {
+  const configured = process.env.PLATFORM_COMMISSION_RATE || "0.2";
+  try {
+    const rate = new Prisma.Decimal(configured);
+    return rate.gte(0) && rate.lte(1) ? rate : new Prisma.Decimal("0.2");
+  } catch {
+    return new Prisma.Decimal("0.2");
+  }
 }
 
 function normalizeOptionalMediaUrl(value?: string | null) {

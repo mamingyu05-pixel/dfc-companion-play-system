@@ -169,9 +169,10 @@ export default function CompanionsPage() {
 
   const stats = useMemo(() => {
     const listed = companions.filter((item) => item.status === "LISTED").length;
+    const pendingReview = companions.filter((item) => item.status === "PENDING_REVIEW").length;
     const online = companions.filter((item) => item.onlineStatus === "ONLINE").length;
     const pendingIncome = companions.reduce((sum, item) => sum + Number(item.pendingIncome || 0), 0);
-    return { listed, online, pendingIncome };
+    return { listed, pendingReview, online, pendingIncome };
   }, [companions]);
 
   const normalizedSearch = search.trim().toLowerCase();
@@ -183,7 +184,8 @@ export default function CompanionsPage() {
     <AdminShell>
       <SectionHeader eyebrow="Companion Roster" title="陪玩管理" desc="管理真实陪玩资料、上架状态、价格、平台抽成比例和 KOOK / Discord 绑定。上架后客户才可下单。" />
 
-      <section className="mb-5 grid gap-4 md:grid-cols-3">
+      <section className="mb-5 grid gap-4 md:grid-cols-4">
+        <Signal label="待审核申请" value={String(stats.pendingReview)} hint="Discord 提交后进入这里" tone="gold" />
         <Signal label="已上架" value={String(stats.listed)} hint="可被客户选择" tone="green" />
         <Signal label="当前在线" value={String(stats.online)} hint="派单优先队列" tone="cyan" />
         <Signal label="待结算收益" value={`¥${formatMoney(String(stats.pendingIncome))}`} hint="完成后进入钱包流水" tone="gold" />
@@ -199,6 +201,11 @@ export default function CompanionsPage() {
             <p className="mt-1 text-xs text-dfc-muted">
               当前显示 {filteredCompanions.length} / {companions.length} 个陪玩。支持搜索昵称、账号、平台 ID、游戏、状态和段位。
             </p>
+            {stats.pendingReview > 0 ? (
+              <p className="mt-2 text-xs font-semibold text-dfc-gold">
+                有 {stats.pendingReview} 个入驻申请待审核。确认资料和试音通过后点击“上架”，未通过可下架或封禁。
+              </p>
+            ) : null}
           </div>
           <input
             value={search}
@@ -523,6 +530,7 @@ function toFriendlyError(message?: string) {
 }
 
 function toCompanionStatus(status: string) {
+  if (status === "PENDING_REVIEW") return "待审核申请";
   if (status === "LISTED") return "已上架";
   if (status === "UNLISTED") return "已下架";
   if (status === "BANNED") return "已封禁";

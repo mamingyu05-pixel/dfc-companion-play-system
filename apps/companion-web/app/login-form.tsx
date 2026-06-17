@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 type PublicConfig = {
   support?: {
     wechatId?: string | null;
+    discordUrl?: string | null;
     kookUrl?: string | null;
   };
 };
@@ -86,17 +87,29 @@ export function CompanionLoginForm() {
 
           <div className="mb-4 rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-3 py-3 text-sm text-dfc-subtext">
             <div className="font-black text-white">陪玩申请流程</div>
-            <div className="mt-1">添加 VX 客服：<span className="font-black text-cyan-200">{publicConfig.support?.wechatId || "暂未配置"}</span></div>
-            <div className="mt-1 text-xs text-dfc-muted">客服会核验游戏资料、语音、服务时间，通过后开通账号。</div>
+            <div className="mt-1">Discord 可直接注册申请，提交后后台会出现“待审核申请”。</div>
+            <div className="mt-1">KOOK 暂不支持一键登录，请进申请频道或添加 VX 客服：<span className="font-black text-cyan-200">{publicConfig.support?.wechatId || "暂未配置"}</span></div>
+            <div className="mt-1 text-xs text-dfc-muted">客服会核验游戏资料、段位、语音和可接时间，通过后由后台上架。</div>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2">
-            <OAuthButton href="/api/auth/oauth/discord/start?portal=companion" label="Discord 登录" />
+            <OAuthButton href="/api/auth/oauth/discord/start?portal=companion" label="Discord 注册/登录" />
             <CommunityAuthLink
               href={publicConfig.support?.kookUrl || DEFAULT_SUPPORT_KOOK_URL}
-              label="加入 KOOK"
+              label="KOOK 申请频道"
               helper={`邀请码 ${KOOK_INVITE_CODE}`}
             />
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <CommunityAuthLink
+              href={publicConfig.support?.discordUrl || "https://discord.gg/dX5prAZMPu"}
+              label="加入 Discord"
+              helper="不会登录时走人工审核"
+            />
+            <div className="rounded-dfc-control border border-dfc-gold/25 bg-dfc-gold/10 px-3 py-3 text-center text-[11px] font-semibold leading-5 text-dfc-gold">
+              后台路径：陪玩管理 → 待审核申请
+            </div>
           </div>
 
           <div className="my-5 flex items-center gap-3 text-xs text-dfc-muted">
