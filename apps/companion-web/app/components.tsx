@@ -6,7 +6,7 @@ const navItems = [
   ["工作台", "/dashboard"],
   ["可接订单", "/available-orders"],
   ["我的订单", "/orders"],
-  ["????", "/customer-drafts"],
+  ["代客派单", "/customer-drafts"],
   ["收益", "/earnings"],
   ["提现", "/withdrawals"],
   ["资料", "/profile"]
