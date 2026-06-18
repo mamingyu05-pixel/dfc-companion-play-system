@@ -4,6 +4,22 @@ import { ChangeEvent, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { CompanionShell, SectionHeader, StatusBadge } from "../components";
 
+type Platform = "DISCORD" | "KOOK";
+
+type ExternalAccount = {
+  platform: Platform;
+  externalUserId: string;
+  displayName?: string | null;
+  createdAt: string;
+};
+
+type BindingCode = {
+  platform: Platform;
+  code: string;
+  expiresAt: string;
+  instruction: string;
+};
+
 type CompanionMe = {
   user: {
     id: string;
@@ -28,6 +44,7 @@ type CompanionMe = {
     payoutAccountNo?: string | null;
     payoutQrCodeUrl?: string | null;
   } | null;
+  externalAccounts?: ExternalAccount[];
 };
 
 type UploadPurpose = "avatar" | "photo" | "voice";
@@ -58,6 +75,11 @@ const gameOptions = [
   ["STEAM", "Steam 综合游戏"]
 ] as const;
 
+const platformLabels: Record<Platform, string> = {
+  DISCORD: "Discord",
+  KOOK: "KOOK"
+};
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<CompanionMe | null>(null);
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -72,6 +94,8 @@ export default function ProfilePage() {
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [uploading, setUploading] = useState("");
+  const [bindingCode, setBindingCode] = useState<BindingCode | null>(null);
+  const [bindingLoading, setBindingLoading] = useState<Platform | null>(null);
 
   async function loadProfile() {
     const token = localStorage.getItem("dfc_companion_token");
@@ -95,6 +119,39 @@ export default function ProfilePage() {
   useEffect(() => {
     void loadProfile().catch(() => setError("无法加载真实陪玩资料，请重新登录"));
   }, []);
+
+  async function requestBindingCode(platform: Platform) {
+    setError("");
+    setStatus("");
+    const token = localStorage.getItem("dfc_companion_token");
+    if (!token) {
+      window.location.href = "/companion/";
+      return;
+    }
+
+    setBindingLoading(platform);
+    try {
+      const response = await fetch("/api/auth/platform-binding-code", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ platform })
+      });
+      const data = (await response.json().catch(() => ({}))) as BindingCode & { message?: string | string[] };
+      if (!response.ok || !data.code) {
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        throw new Error(toChineseError(message));
+      }
+      setBindingCode(data);
+      setStatus(`${platformLabels[platform]} 绑定码已生成，10 分钟内有效。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "生成绑定码失败，请稍后再试");
+    } finally {
+      setBindingLoading(null);
+    }
+  }
 
   async function uploadMedia(file: File, purpose: UploadPurpose) {
     const token = localStorage.getItem("dfc_companion_token");
@@ -354,6 +411,38 @@ export default function ProfilePage() {
       </section>
 
       <section className="companion-card mt-6 p-4">
+        <h2 className="text-base font-black text-white">平台绑定</h2>
+        <p className="mt-1 text-sm leading-6 text-dfc-subtext">
+          绑定 Discord / KOOK 后，频道里的接单、报名、客服记录和后台账号会关联到同一个陪玩身份。
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <PlatformBindingCard
+            platform="DISCORD"
+            account={profile.externalAccounts?.find((account) => account.platform === "DISCORD")}
+            loading={bindingLoading === "DISCORD"}
+            onRequest={() => void requestBindingCode("DISCORD")}
+          />
+          <PlatformBindingCard
+            platform="KOOK"
+            account={profile.externalAccounts?.find((account) => account.platform === "KOOK")}
+            loading={bindingLoading === "KOOK"}
+            onRequest={() => void requestBindingCode("KOOK")}
+          />
+        </div>
+        {bindingCode ? (
+          <div className="mt-4 rounded-dfc border border-cyan-300/30 bg-cyan-300/10 p-4">
+            <div className="text-xs text-dfc-muted">{platformLabels[bindingCode.platform]} 绑定码</div>
+            <div className="mt-2 select-all break-all font-mono text-3xl font-black tracking-[0.18em] text-cyan-100">{bindingCode.code}</div>
+            <div className="mt-3 rounded-dfc-control border border-dfc-border bg-[#050711]/80 px-3 py-2 text-sm text-dfc-text">
+              在 {platformLabels[bindingCode.platform]} 私聊客服机器人，或在客服接待频道发送：
+              <span className="ml-1 font-mono text-cyan-200">绑定 {bindingCode.code}</span>
+            </div>
+            <div className="mt-2 text-xs text-dfc-subtext">10 分钟内有效。过期后重新生成即可。</div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="companion-card mt-6 p-4">
         <h2 className="text-base font-black text-white">可接游戏</h2>
         <p className="mt-1 text-sm leading-6 text-dfc-subtext">可以选择多个游戏。第一个会作为主展示游戏，客户下单和 KOOK / Discord 派单都会按这里匹配。</p>
         <GameMultiSelect selectedGames={selectedGames} onChange={setSelectedGames} />
@@ -409,6 +498,42 @@ export default function ProfilePage() {
         </button>
       </form>
     </CompanionShell>
+  );
+}
+
+function PlatformBindingCard({
+  platform,
+  account,
+  loading,
+  onRequest
+}: {
+  platform: Platform;
+  account?: ExternalAccount;
+  loading: boolean;
+  onRequest: () => void;
+}) {
+  return (
+    <div className="rounded-dfc border border-cyan-300/15 bg-[#050711]/50 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-base font-black text-white">{platformLabels[platform]}</div>
+          <div className="mt-1 text-xs text-dfc-subtext">
+            {account ? account.displayName || account.externalUserId : "未绑定"}
+          </div>
+        </div>
+        <span className={`rounded-dfc-control px-2 py-1 text-xs font-black ${account ? "bg-dfc-success/10 text-dfc-success" : "bg-dfc-warning/10 text-dfc-warning"}`}>
+          {account ? "已绑定" : "未绑定"}
+        </span>
+      </div>
+      <button
+        type="button"
+        disabled={loading}
+        onClick={onRequest}
+        className="mt-4 w-full rounded-dfc-control border border-cyan-300/50 px-3 py-2 text-sm font-black text-cyan-200 transition hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loading ? "生成中..." : `生成 ${platformLabels[platform]} 绑定码`}
+      </button>
+    </div>
   );
 }
 

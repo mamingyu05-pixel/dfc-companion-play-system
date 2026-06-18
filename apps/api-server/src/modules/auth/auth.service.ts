@@ -257,6 +257,111 @@ export class AuthService {
     }
   }
 
+  async registerCompanion(body: { email: string; password: string; displayName: string; emailCode: string }) {
+    try {
+      if (!body.email || !body.password || !body.displayName || !body.emailCode) {
+        throw new BadRequestException("email, password, displayName and emailCode are required");
+      }
+
+      const email = normalizeEmail(body.email);
+      const displayName = body.displayName.trim();
+      const displayNameKey = normalizeDisplayNameKey(displayName);
+      const emailCode = body.emailCode.trim();
+
+      if (!email || !displayName || !displayNameKey || !emailCode) {
+        throw new BadRequestException("email, password, displayName and emailCode are required");
+      }
+      if (!isValidEmail(email)) {
+        throw new BadRequestException("Invalid email format");
+      }
+      if (body.password.length < 8) {
+        throw new BadRequestException("Password must be at least 8 characters");
+      }
+
+      const existing = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true }
+      });
+      if (existing) {
+        throw new BadRequestException("Email is already registered");
+      }
+      const displayNameTaken = await this.prisma.user.findFirst({
+        where: { role: UserRole.COMPANION, displayNameKey },
+        select: { id: true }
+      });
+      if (displayNameTaken) {
+        throw new BadRequestException("Display name is already taken");
+      }
+
+      const verificationId = await this.assertCustomerEmailVerification(email, emailCode);
+      const passwordHash = await createPasswordHash(body.password);
+      const user = await this.createCompanionUser({
+        email,
+        passwordHash,
+        displayName,
+        displayNameKey,
+        verificationId
+      });
+
+      return {
+        user,
+        accessToken: await this.issueToken({ sub: user.id, email: user.email, role: user.role })
+      };
+    } catch (error) {
+      throw mapRegistrationError(error);
+    }
+  }
+
+  private async createCompanionUser(body: { email: string; passwordHash: string; displayName: string; displayNameKey: string; verificationId: string }) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const verification = await tx.emailVerificationCode.findUnique({
+          where: { id: body.verificationId }
+        });
+
+        if (
+          !verification ||
+          verification.email !== body.email ||
+          verification.purpose !== CUSTOMER_REGISTER_EMAIL_PURPOSE ||
+          verification.consumedAt ||
+          verification.expiresAt <= new Date()
+        ) {
+          throw new BadRequestException("Verification code is invalid or expired");
+        }
+
+        const created = await tx.user.create({
+          data: {
+            email: body.email,
+            passwordHash: body.passwordHash,
+            role: UserRole.COMPANION,
+            displayName: body.displayName,
+            displayNameKey: body.displayNameKey,
+            referralCode: await generateUniqueReferralCode(tx, "P"),
+            companionProfile: {
+              create: buildPendingOAuthCompanionProfile({
+                externalUserId: body.email,
+                displayName: body.displayName
+              })
+            }
+          },
+          select: { id: true, email: true, role: true, displayName: true, referralCode: true }
+        });
+
+        await tx.wallet.create({ data: { userId: created.id } });
+        await tx.emailVerificationCode.update({
+          where: { id: verification.id },
+          data: { consumedAt: new Date() }
+        });
+        return created;
+      });
+    } catch (error) {
+      if (isPrismaErrorCode(error, "P2002")) {
+        throw new BadRequestException(isDisplayNameUniqueError(error) ? "Display name is already taken" : "Email is already registered");
+      }
+      throw error;
+    }
+  }
+
   private async createCustomerUser(body: { email: string; passwordHash: string; displayName: string; displayNameKey: string; verificationId: string; referralCode?: string }) {
     try {
       return await this.prisma.$transaction(async (tx) => {

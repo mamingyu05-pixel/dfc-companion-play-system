@@ -28,6 +28,11 @@ export class AuthController {
     return this.auth.registerCustomer(body);
   }
 
+  @Post("register/companion")
+  registerCompanion(@Body() body: { email: string; password: string; displayName: string; emailCode: string }) {
+    return this.auth.registerCompanion(body);
+  }
+
   @Post("login")
   login(@Body() body: { email: string; password: string; portal: "customer" | "companion" | "admin" }) {
     return this.auth.login(body);
