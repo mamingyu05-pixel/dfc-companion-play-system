@@ -16,6 +16,9 @@ type Companion = {
   pricePerHour: string;
   kookPricePerHour?: string | null;
   discordPricePerHour?: string | null;
+  entertainmentPricePerHour?: string | null;
+  rankedPricePerHour?: string | null;
+  highRankedPricePerHour?: string | null;
   commissionRate: string;
   availableIncome: string;
   pendingIncome: string;
@@ -117,7 +120,15 @@ export default function CompanionsPage() {
     await loadCompanions();
   }
 
-  async function updatePricing(userId: string, pricePerHour: string, kookPricePerHour: string, discordPricePerHour: string) {
+  async function updatePricing(
+    userId: string,
+    pricePerHour: string,
+    kookPricePerHour: string,
+    discordPricePerHour: string,
+    entertainmentPricePerHour: string,
+    rankedPricePerHour: string,
+    highRankedPricePerHour: string
+  ) {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
     setError("");
@@ -131,7 +142,10 @@ export default function CompanionsPage() {
       body: JSON.stringify({
         pricePerHour,
         kookPricePerHour: kookPricePerHour || null,
-        discordPricePerHour: discordPricePerHour || null
+        discordPricePerHour: discordPricePerHour || null,
+        entertainmentPricePerHour: entertainmentPricePerHour || null,
+        rankedPricePerHour: rankedPricePerHour || null,
+        highRankedPricePerHour: highRankedPricePerHour || null
       })
     });
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
@@ -242,8 +256,13 @@ export default function CompanionsPage() {
             pricePerHour={item.pricePerHour}
             kookPricePerHour={item.kookPricePerHour}
             discordPricePerHour={item.discordPricePerHour}
+            entertainmentPricePerHour={item.entertainmentPricePerHour}
+            rankedPricePerHour={item.rankedPricePerHour}
+            highRankedPricePerHour={item.highRankedPricePerHour}
             commissionRate={item.commissionRate}
-            onSavePricing={(base, kook, discord) => void updatePricing(item.userId, base, kook, discord)}
+            onSavePricing={(base, kook, discord, entertainment, ranked, highRanked) =>
+              void updatePricing(item.userId, base, kook, discord, entertainment, ranked, highRanked)
+            }
             onSaveCommission={(value) => void updateCommission(item.userId, value)}
           />,
           <StatusBadge key={`${item.userId}-s`} tone={item.status === "LISTED" ? "success" : item.status === "BANNED" ? "danger" : "warning"}>{toCompanionStatus(item.status)}</StatusBadge>,
@@ -365,6 +384,9 @@ function CompanionCommercialEditor({
   pricePerHour,
   kookPricePerHour,
   discordPricePerHour,
+  entertainmentPricePerHour,
+  rankedPricePerHour,
+  highRankedPricePerHour,
   commissionRate,
   onSavePricing,
   onSaveCommission
@@ -372,8 +394,18 @@ function CompanionCommercialEditor({
   pricePerHour: string;
   kookPricePerHour?: string | null;
   discordPricePerHour?: string | null;
+  entertainmentPricePerHour?: string | null;
+  rankedPricePerHour?: string | null;
+  highRankedPricePerHour?: string | null;
   commissionRate: string;
-  onSavePricing: (pricePerHour: string, kookPricePerHour: string, discordPricePerHour: string) => void;
+  onSavePricing: (
+    pricePerHour: string,
+    kookPricePerHour: string,
+    discordPricePerHour: string,
+    entertainmentPricePerHour: string,
+    rankedPricePerHour: string,
+    highRankedPricePerHour: string
+  ) => void;
   onSaveCommission: (value: string) => void;
 }) {
   return (
@@ -381,6 +413,9 @@ function CompanionCommercialEditor({
       <div className="font-black text-dfc-gold">¥{formatMoney(pricePerHour)}/h</div>
       <div className="mt-1 text-dfc-muted">
         KOOK {kookPricePerHour ? `¥${formatMoney(kookPricePerHour)}` : "沿用默认"} / DC {discordPricePerHour ? `¥${formatMoney(discordPricePerHour)}` : "沿用默认"}
+      </div>
+      <div className="mt-1 text-dfc-muted">
+        娱乐 {formatOptionalPrice(entertainmentPricePerHour)} / 排位 {formatOptionalPrice(rankedPricePerHour)} / 高排 {formatOptionalPrice(highRankedPricePerHour)}
       </div>
       <div className="mt-1 text-dfc-muted">平台抽成 {formatPercent(commissionRate)}</div>
       <details className="mt-2">
@@ -390,6 +425,9 @@ function CompanionCommercialEditor({
             pricePerHour={pricePerHour}
             kookPricePerHour={kookPricePerHour}
             discordPricePerHour={discordPricePerHour}
+            entertainmentPricePerHour={entertainmentPricePerHour}
+            rankedPricePerHour={rankedPricePerHour}
+            highRankedPricePerHour={highRankedPricePerHour}
             onSave={onSavePricing}
           />
           <CompanionCommissionEditor pricePerHour={pricePerHour} commissionRate={commissionRate} onSave={onSaveCommission} />
@@ -403,22 +441,41 @@ function CompanionPricingEditor({
   pricePerHour,
   kookPricePerHour,
   discordPricePerHour,
+  entertainmentPricePerHour,
+  rankedPricePerHour,
+  highRankedPricePerHour,
   onSave
 }: {
   pricePerHour: string;
   kookPricePerHour?: string | null;
   discordPricePerHour?: string | null;
-  onSave: (pricePerHour: string, kookPricePerHour: string, discordPricePerHour: string) => void;
+  entertainmentPricePerHour?: string | null;
+  rankedPricePerHour?: string | null;
+  highRankedPricePerHour?: string | null;
+  onSave: (
+    pricePerHour: string,
+    kookPricePerHour: string,
+    discordPricePerHour: string,
+    entertainmentPricePerHour: string,
+    rankedPricePerHour: string,
+    highRankedPricePerHour: string
+  ) => void;
 }) {
   const [base, setBase] = useState(pricePerHour);
   const [kook, setKook] = useState(kookPricePerHour ?? "");
   const [discord, setDiscord] = useState(discordPricePerHour ?? "");
+  const [entertainment, setEntertainment] = useState(entertainmentPricePerHour ?? "");
+  const [ranked, setRanked] = useState(rankedPricePerHour ?? "");
+  const [highRanked, setHighRanked] = useState(highRankedPricePerHour ?? "");
 
   useEffect(() => {
     setBase(pricePerHour);
     setKook(kookPricePerHour ?? "");
     setDiscord(discordPricePerHour ?? "");
-  }, [pricePerHour, kookPricePerHour, discordPricePerHour]);
+    setEntertainment(entertainmentPricePerHour ?? "");
+    setRanked(rankedPricePerHour ?? "");
+    setHighRanked(highRankedPricePerHour ?? "");
+  }, [pricePerHour, kookPricePerHour, discordPricePerHour, entertainmentPricePerHour, rankedPricePerHour, highRankedPricePerHour]);
 
   return (
     <div className="min-w-52 text-xs">
@@ -426,8 +483,11 @@ function CompanionPricingEditor({
         <PriceInput label="默认" value={base} onChange={setBase} />
         <PriceInput label="KOOK" value={kook} onChange={setKook} placeholder="沿用默认" />
         <PriceInput label="DC" value={discord} onChange={setDiscord} placeholder="沿用默认" />
+        <PriceInput label="娱乐" value={entertainment} onChange={setEntertainment} placeholder="可不填" />
+        <PriceInput label="排位" value={ranked} onChange={setRanked} placeholder="例如 120" />
+        <PriceInput label="高排" value={highRanked} onChange={setHighRanked} placeholder="例如 140" />
       </div>
-      <button type="button" onClick={() => onSave(base, kook, discord)} className="mt-2 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-2 py-1 font-black text-slate-950">
+      <button type="button" onClick={() => onSave(base, kook, discord, entertainment, ranked, highRanked)} className="mt-2 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-2 py-1 font-black text-slate-950">
         保存价格
       </button>
     </div>
@@ -483,6 +543,10 @@ function formatMoney(value: string) {
   return Number(value || 0).toFixed(2);
 }
 
+function formatOptionalPrice(value?: string | null) {
+  return value ? `¥${formatMoney(value)}` : "默认";
+}
+
 function formatPercent(value: string) {
   return `${Math.round(Number(value || 0) * 10000) / 100}%`;
 }
@@ -511,6 +575,9 @@ function getSearchableCompanionText(item: Companion) {
     item.pricePerHour,
     item.kookPricePerHour ?? "",
     item.discordPricePerHour ?? "",
+    item.entertainmentPricePerHour ?? "",
+    item.rankedPricePerHour ?? "",
+    item.highRankedPricePerHour ?? "",
     item.commissionRate,
     ...(item.games?.length ? item.games : [item.game]).flatMap((game) => [game, gameName(game)]),
     ...((item.externalAccounts ?? []).flatMap((account) => [

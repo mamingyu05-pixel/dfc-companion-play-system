@@ -15,9 +15,14 @@ type CompanionOption = {
   deltaForceRank: string;
   skillModes: string[];
   pricePerHour: string;
+  entertainmentPricePerHour?: string | null;
+  rankedPricePerHour?: string | null;
+  highRankedPricePerHour?: string | null;
   voicePreference: string;
   bio?: string | null;
 };
+
+type ServicePriceTier = "CUSTOM" | "ENTERTAINMENT" | "RANKED" | "HIGH_RANKED";
 
 type WalletSummary = {
   wallet: { availableBalance: string } | null;
@@ -86,7 +91,8 @@ export default function OrderPage() {
   const selectedGame = games.find((item) => item.code === game);
   const selectedCompanion = companions.find((item) => item.id === companionId);
   const platformMatchUnitPrice = Number(publicConfig.pricing?.platformMatchUnitPrice ?? 0);
-  const unitPrice = assignmentType === "MATCH" ? platformMatchUnitPrice : Number(selectedCompanion?.pricePerHour ?? 0);
+  const inferredPriceTier = inferPriceTierFromMode(mode);
+  const unitPrice = assignmentType === "MATCH" ? platformMatchUnitPrice : Number(selectedCompanion ? companionPriceForTier(selectedCompanion, inferredPriceTier) : 0);
   const totalAmount = useMemo(() => unitPrice * Number(hours || 0), [hours, unitPrice]);
   const availableBalance = Number(wallet?.wallet?.availableBalance ?? 0);
   const balanceAfter = availableBalance - totalAmount;
@@ -199,7 +205,7 @@ export default function OrderPage() {
                 <select value={companionId} onChange={(event) => setCompanionId(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm">
                   {companions.map((companion) => (
                     <option key={companion.id} value={companion.id}>
-                      {companion.nickname} / {gameCountLabel(companion)} / {companion.deltaForceRank} / ¥{formatMoney(companion.pricePerHour)}/小时
+                      {companion.nickname} / {gameCountLabel(companion)} / {companion.deltaForceRank} / {priceTierLabel(inferredPriceTier)} ¥{formatMoney(companionPriceForTier(companion, inferredPriceTier))}/小时
                     </option>
                   ))}
                 </select>
@@ -221,6 +227,10 @@ export default function OrderPage() {
             <span className="text-sm font-semibold text-cyan-50/80">服务模式</span>
             <input value={mode} onChange={(event) => setMode(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm" placeholder="例如：排位上分、娱乐陪玩、教学复盘、烽火地带" />
           </label>
+
+          <div className="mt-4 rounded-dfc-control border border-cyan-300/20 bg-cyan-300/10 px-3 py-3 text-sm leading-6 text-cyan-50/85">
+            当前模式会按 <span className="font-black text-white">{priceTierLabel(inferredPriceTier)}</span> 报价。客户不用选择价格档位，最终金额以后端和后台配置为准。
+          </div>
 
           <div className="mt-4">
             <span className="text-sm font-semibold text-cyan-50/80">服务时长</span>
@@ -277,7 +287,7 @@ export default function OrderPage() {
           ) : null}
           <div className="mt-4 space-y-3 text-sm">
             <Line label="游戏" value={selectedGame?.name ?? game} />
-            <Line label={assignmentType === "MATCH" ? "人工挑人参考价" : "陪玩单价"} value={priceConfigured ? `¥${formatMoney(String(unitPrice))} / 小时` : "客服报价后确认"} />
+            <Line label={assignmentType === "MATCH" ? "人工挑人参考价" : `${priceTierLabel(inferredPriceTier)}单价`} value={priceConfigured ? `¥${formatMoney(String(unitPrice))} / 小时` : "客服报价后确认"} />
             <Line label="选择时长" value={`${hours} 小时`} />
             <Line label="订单总价" value={priceConfigured ? `¥${formatMoney(String(totalAmount))}` : "待客服确认"} strong />
             <Line label="当前余额" value={`¥${formatMoney(String(availableBalance))}`} />
@@ -323,6 +333,28 @@ function OrderStep({ index, title, desc, active }: { index: string; title: strin
 
 function formatMoney(value: string) {
   return Number(value || 0).toFixed(2);
+}
+
+function priceTierLabel(priceTier: ServicePriceTier) {
+  if (priceTier === "ENTERTAINMENT") return "娱乐";
+  if (priceTier === "RANKED") return "排位";
+  if (priceTier === "HIGH_RANKED") return "高排";
+  return "默认";
+}
+
+function inferPriceTierFromMode(mode: string): ServicePriceTier {
+  const normalized = mode.toLowerCase();
+  if (/高排|高端|巅峰|大师|宗师|王者|超凡|神话|高分|high|premium/.test(normalized)) return "HIGH_RANKED";
+  if (/排位|上分|rank|ranked|competitive|天梯/.test(normalized)) return "RANKED";
+  if (/娱乐|休闲|陪聊|随便|casual|fun/.test(normalized)) return "ENTERTAINMENT";
+  return "CUSTOM";
+}
+
+function companionPriceForTier(companion: CompanionOption, priceTier: ServicePriceTier) {
+  if (priceTier === "ENTERTAINMENT") return companion.entertainmentPricePerHour || companion.pricePerHour;
+  if (priceTier === "RANKED") return companion.rankedPricePerHour || companion.pricePerHour;
+  if (priceTier === "HIGH_RANKED") return companion.highRankedPricePerHour || companion.rankedPricePerHour || companion.pricePerHour;
+  return companion.pricePerHour;
 }
 
 function gameCountLabel(companion: CompanionOption) {

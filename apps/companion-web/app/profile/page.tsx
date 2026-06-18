@@ -39,6 +39,9 @@ type CompanionMe = {
     pricePerHour: string;
     kookPricePerHour?: string | null;
     discordPricePerHour?: string | null;
+    entertainmentPricePerHour?: string | null;
+    rankedPricePerHour?: string | null;
+    highRankedPricePerHour?: string | null;
     payoutMethod?: string | null;
     payoutAccountName?: string | null;
     payoutAccountNo?: string | null;
@@ -406,6 +409,7 @@ export default function ProfilePage() {
             <Field label="可接游戏" value={gameNames(selectedGames)} />
             <OnlineStatusControl value={onlineStatus} onChange={(value) => void updateOnlineStatus(value)} />
             <Field label="每小时价格" value={`¥${Number(profile.companionProfile?.pricePerHour ?? "0").toFixed(2)}`} />
+            <Field label="三档报价" value={`娱乐 ${formatOptionalPrice(profile.companionProfile?.entertainmentPricePerHour)} / 排位 ${formatOptionalPrice(profile.companionProfile?.rankedPricePerHour)} / 高排 ${formatOptionalPrice(profile.companionProfile?.highRankedPricePerHour)}`} />
           </div>
         </div>
       </section>
@@ -657,9 +661,15 @@ function formatAccountEmail(email: string) {
   return email.endsWith("@oauth.maycatplay.local") ? "第三方账号注册" : email;
 }
 
+function formatOptionalPrice(value?: string | null) {
+  return value ? `¥${Number(value).toFixed(2)}/h` : "沿用默认";
+}
+
 function toChineseError(message?: string) {
   if (!message) return "保存失败，请检查填写内容";
   if (message.includes("payoutAccountName and payoutAccountNo are required")) return "请填写支付宝姓名和账号";
   if (message.includes("Companion profile does not exist")) return "陪玩资料不存在，请联系管理员";
+  if (message.includes("must be a valid amount")) return "请输入正确的金额";
+  if (message.includes("must be greater than 0")) return "金额必须大于 0";
   return message;
 }

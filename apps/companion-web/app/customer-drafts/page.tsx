@@ -195,9 +195,12 @@ export default function CompanionCustomerDraftsPage() {
               <input value={hours} onChange={(event) => setHours(event.target.value)} className="input" inputMode="decimal" placeholder="例如 2" />
             </label>
             <label>
-              <span className="mb-2 block text-xs font-black text-dfc-muted">预算或报价</span>
-              <input value={budgetAmount} onChange={(event) => setBudgetAmount(event.target.value)} className="input" inputMode="decimal" placeholder="可选，例如 200" />
+              <span className="mb-2 block text-xs font-black text-dfc-muted">老板预算</span>
+              <input value={budgetAmount} onChange={(event) => setBudgetAmount(event.target.value)} className="input" inputMode="decimal" placeholder="可选，例如 200，仅供客服参考" />
             </label>
+            <div className="rounded-dfc border border-cyan-300/15 bg-[#08111f] p-3 text-xs leading-5 text-dfc-subtext">
+              报价档位由后台根据模式自动判断。陪玩只记录老板需求，不手动选择或修改单价。
+            </div>
             <div className="rounded-dfc border border-cyan-300/15 bg-[#08111f] p-3 text-xs leading-5 text-dfc-subtext">
               当前老板：{selectedCustomer ? `${selectedCustomer.displayName} / ${selectedCustomer.email}` : "未选择"}
             </div>

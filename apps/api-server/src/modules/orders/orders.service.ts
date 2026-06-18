@@ -8,6 +8,7 @@ import {
   OrderSourcePlatform,
   OrderStatus,
   Prisma,
+  ServicePriceTier,
   TransactionDirection,
   UserRole,
   UserStatus,
@@ -53,6 +54,9 @@ export class OrdersService {
       pricePerHour: profile.pricePerHour.toString(),
       kookPricePerHour: profile.kookPricePerHour?.toString() ?? null,
       discordPricePerHour: profile.discordPricePerHour?.toString() ?? null,
+      entertainmentPricePerHour: profile.entertainmentPricePerHour?.toString() ?? null,
+      rankedPricePerHour: profile.rankedPricePerHour?.toString() ?? null,
+      highRankedPricePerHour: profile.highRankedPricePerHour?.toString() ?? null,
       voicePreference: profile.voicePreference,
       bio: profile.bio
     }));
@@ -160,6 +164,7 @@ export class OrdersService {
       companionId?: string;
       notes?: string;
       voiceTrialRequested?: boolean;
+      priceTier?: ServicePriceTier;
       sourcePlatform?: OrderSourcePlatform;
       sourceDraftId?: string;
       sourceChannelId?: string;
@@ -175,7 +180,8 @@ export class OrdersService {
     const assignmentType = body.companionId ? OrderAssignmentType.DIRECT_COMPANION : OrderAssignmentType.PLATFORM_MATCH;
 
     const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
-    const pricing = await this.resolvePricing(body.companionId, game, sourcePlatform);
+    const priceTier = this.normalizePriceTier(body.priceTier, body.mode);
+    const pricing = await this.resolvePricing(body.companionId, game, sourcePlatform, priceTier);
     const totalAmount = pricing.unitPrice.mul(hours);
 
     return this.prisma.$transaction(async (tx) => {
@@ -210,6 +216,7 @@ export class OrdersService {
           game,
           mode: body.mode,
           hours,
+          priceTier,
           unitPrice: pricing.unitPrice,
           totalAmount,
           commissionRateSnapshot: pricing.commissionRate,
@@ -883,7 +890,7 @@ export class OrdersService {
     }
   }
 
-  private async resolvePricing(companionId: string | undefined, game: GameCode, sourcePlatform: OrderSourcePlatform) {
+  private async resolvePricing(companionId: string | undefined, game: GameCode, sourcePlatform: OrderSourcePlatform, priceTier: ServicePriceTier) {
     if (!companionId) {
       const configuredPrice =
         sourcePlatform === OrderSourcePlatform.DISCORD
@@ -908,14 +915,40 @@ export class OrdersService {
           }
         }
       },
-      select: { pricePerHour: true, kookPricePerHour: true, discordPricePerHour: true, commissionRate: true }
+      select: {
+        pricePerHour: true,
+        kookPricePerHour: true,
+        discordPricePerHour: true,
+        entertainmentPricePerHour: true,
+        rankedPricePerHour: true,
+        highRankedPricePerHour: true,
+        commissionRate: true
+      }
     });
 
     if (!companion) throw new BadRequestException("Companion is not listed for selected game or does not exist");
     return {
-      unitPrice: this.pickCompanionPriceForPlatform(companion, sourcePlatform),
+      unitPrice: this.pickCompanionPriceForTier(companion, sourcePlatform, priceTier),
       commissionRate: companion.commissionRate
     };
+  }
+
+  private pickCompanionPriceForTier(
+    companion: {
+      pricePerHour: Prisma.Decimal;
+      kookPricePerHour: Prisma.Decimal | null;
+      discordPricePerHour: Prisma.Decimal | null;
+      entertainmentPricePerHour: Prisma.Decimal | null;
+      rankedPricePerHour: Prisma.Decimal | null;
+      highRankedPricePerHour: Prisma.Decimal | null;
+    },
+    sourcePlatform: OrderSourcePlatform,
+    priceTier: ServicePriceTier
+  ) {
+    if (priceTier === ServicePriceTier.ENTERTAINMENT) return companion.entertainmentPricePerHour ?? this.pickCompanionPriceForPlatform(companion, sourcePlatform);
+    if (priceTier === ServicePriceTier.RANKED) return companion.rankedPricePerHour ?? this.pickCompanionPriceForPlatform(companion, sourcePlatform);
+    if (priceTier === ServicePriceTier.HIGH_RANKED) return companion.highRankedPricePerHour ?? companion.rankedPricePerHour ?? this.pickCompanionPriceForPlatform(companion, sourcePlatform);
+    return this.pickCompanionPriceForPlatform(companion, sourcePlatform);
   }
 
   private pickCompanionPriceForPlatform(
@@ -925,6 +958,17 @@ export class OrdersService {
     if (sourcePlatform === OrderSourcePlatform.DISCORD) return companion.discordPricePerHour ?? companion.pricePerHour;
     if (sourcePlatform === OrderSourcePlatform.KOOK) return companion.kookPricePerHour ?? companion.pricePerHour;
     return companion.pricePerHour;
+  }
+
+  private normalizePriceTier(priceTier: ServicePriceTier | undefined, mode: string) {
+    if (priceTier && Object.values(ServicePriceTier).includes(priceTier)) return priceTier;
+    const normalizedMode = mode.toLowerCase();
+    if (/高端|高分|高段|高等级|大师|王者|巅峰|immortal|radiant|master|challenger|predator/.test(normalizedMode)) {
+      return ServicePriceTier.HIGH_RANKED;
+    }
+    if (/排位|上分|rank|ranked|competitive|天梯/.test(normalizedMode)) return ServicePriceTier.RANKED;
+    if (/娱乐|休闲|陪聊|随便|casual|fun/.test(normalizedMode)) return ServicePriceTier.ENTERTAINMENT;
+    return ServicePriceTier.CUSTOM;
   }
 
   private defaultPlatformCommissionRate() {
@@ -952,6 +996,7 @@ export class OrdersService {
     game: GameCode;
     mode: string;
     hours: Prisma.Decimal;
+    priceTier: ServicePriceTier;
     unitPrice: Prisma.Decimal;
     totalAmount: Prisma.Decimal;
     commissionRateSnapshot?: Prisma.Decimal;
@@ -983,6 +1028,7 @@ export class OrdersService {
       game: order.game,
       mode: order.mode,
       hours: order.hours.toString(),
+      priceTier: order.priceTier,
       unitPrice: order.unitPrice.toString(),
       totalAmount: order.totalAmount.toString(),
       commissionRateSnapshot: order.commissionRateSnapshot?.toString() ?? null,

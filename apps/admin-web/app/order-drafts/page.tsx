@@ -12,6 +12,8 @@ type AdminUser = {
   displayName: string;
 };
 
+type ServicePriceTier = "CUSTOM" | "ENTERTAINMENT" | "RANKED" | "HIGH_RANKED";
+
 type Companion = {
   userId: string;
   nickname: string;
@@ -21,6 +23,11 @@ type Companion = {
   status: string;
   onlineStatus: string;
   pricePerHour: string;
+  kookPricePerHour?: string | null;
+  discordPricePerHour?: string | null;
+  entertainmentPricePerHour?: string | null;
+  rankedPricePerHour?: string | null;
+  highRankedPricePerHour?: string | null;
 };
 
 type OrderDraft = {
@@ -34,6 +41,7 @@ type OrderDraft = {
   game: string;
   mode: string;
   hours?: string | null;
+  priceTier: ServicePriceTier;
   budgetAmount?: string | null;
   status: string;
   note?: string | null;
@@ -50,7 +58,18 @@ type OrderDraft = {
       id: string;
       email: string;
       displayName: string;
-      companionProfile: { nickname: string; avatarUrl?: string | null; pricePerHour: string; onlineStatus: string; status: string } | null;
+      companionProfile: {
+        nickname: string;
+        avatarUrl?: string | null;
+        pricePerHour: string;
+        kookPricePerHour?: string | null;
+        discordPricePerHour?: string | null;
+        entertainmentPricePerHour?: string | null;
+        rankedPricePerHour?: string | null;
+        highRankedPricePerHour?: string | null;
+        onlineStatus: string;
+        status: string;
+      } | null;
     };
   }>;
   events: Array<{
@@ -127,6 +146,7 @@ export default function OrderDraftsPage() {
     game: "DELTA_FORCE",
     mode: "",
     hours: "",
+    priceTier: "CUSTOM" as ServicePriceTier,
     budgetAmount: "",
     note: "",
     demandText: ""
@@ -404,6 +424,12 @@ export default function OrderDraftsPage() {
               {gameOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
             <input value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value })} className="input" placeholder="模式，例如 烽火/排位/娱乐" />
+            <select value={form.priceTier} onChange={(event) => setForm({ ...form, priceTier: event.target.value as ServicePriceTier })} className="input">
+              <option value="CUSTOM">按默认/平台单价</option>
+              <option value="ENTERTAINMENT">娱乐陪玩价</option>
+              <option value="RANKED">排位单价</option>
+              <option value="HIGH_RANKED">高等级排位价</option>
+            </select>
             <input value={form.hours} onChange={(event) => setForm({ ...form, hours: event.target.value })} className="input" placeholder="预计时长，例如 2" inputMode="decimal" />
             <input value={form.budgetAmount} onChange={(event) => setForm({ ...form, budgetAmount: event.target.value })} className="input" placeholder="预算金额，可选" inputMode="decimal" />
           </div>
@@ -425,7 +451,9 @@ export default function OrderDraftsPage() {
           <select value={candidateId} onChange={(event) => setCandidateId(event.target.value)} className="input">
             <option value="">选择候选陪玩</option>
             {listedCompanions.map((companion) => (
-              <option key={companion.userId} value={companion.userId}>{companion.nickname} / ¥{formatMoney(companion.pricePerHour)}/h / {toOnlineStatus(companion.onlineStatus)}</option>
+              <option key={companion.userId} value={companion.userId}>
+                {companion.nickname} / {priceTierLabel(selectedDraft?.priceTier ?? form.priceTier)} ¥{formatMoney(companionPriceForTier(companion, selectedDraft?.priceTier ?? form.priceTier, selectedDraft?.sourcePlatform ?? form.sourcePlatform))}/h / {toOnlineStatus(companion.onlineStatus)}
+              </option>
             ))}
           </select>
           <ActionButton onClick={() => void addCandidate()}>手动加入候选</ActionButton>
@@ -447,7 +475,7 @@ export default function OrderDraftsPage() {
                 {recommendations.map((item) => (
                   <button key={item.companionId} type="button" onClick={() => setSelectedCompanionId(item.companionId)} className="w-full rounded-dfc-control border border-cyan-300/15 bg-[#101827] p-3 text-left text-sm hover:border-cyan-300/45">
                     <div className="font-black text-white">{item.nickname} / 分数 {item.score}</div>
-                    <div className="mt-1 text-xs text-dfc-muted">¥{formatMoney(item.pricePerHour)}/h / {toOnlineStatus(item.onlineStatus)}</div>
+                    <div className="mt-1 text-xs text-dfc-muted">{priceTierLabel(selectedDraft?.priceTier ?? "CUSTOM")} ¥{formatMoney(item.pricePerHour)}/h / {toOnlineStatus(item.onlineStatus)}</div>
                     <div className="mt-1 text-xs text-dfc-subtext">{item.reasons.join(" / ")}</div>
                   </button>
                 ))}
@@ -477,7 +505,7 @@ export default function OrderDraftsPage() {
             <Person key={`${draft.id}-customer`} name={draft.customer?.displayName ?? draft.customerDisplayName ?? "未绑定"} sub={draft.customer?.email ?? draft.customerPlatformUserId ?? "-"} />,
             <span key={`note-${draft.id}`} className="line-clamp-2 text-xs text-dfc-subtext">{draft.note || "-"}</span>,
             <Person key={`${draft.id}-source`} name={draft.sourcePlatform} sub={`语音：${draft.voiceRoomId || "-"}`} />,
-            `${gameName(draft.game)} / ${draft.mode || "-"}`,
+            `${gameName(draft.game)} / ${draft.mode || "-"} / ${priceTierLabel(draft.priceTier)}`,
             `${draft.candidates.length} 人`,
             <Person key={`selected-${draft.id}`} name={draft.selectedCompanion?.displayName ?? "-"} sub={draft.selectedCompanion?.email ?? ""} />,
             <StatusBadge key={`${draft.id}-status`} tone={statusTone(draft.status)}>{toDraftStatus(draft.status, draft.note)}</StatusBadge>,
@@ -498,7 +526,9 @@ export default function OrderDraftsPage() {
                 {selectedDraft.candidates.length ? selectedDraft.candidates.map((candidate) => (
                   <div key={candidate.id} className="admin-queue-item mb-2">
                     <div className="font-semibold text-white">{candidate.companion.companionProfile?.nickname ?? candidate.companion.displayName}</div>
-                    <div className="text-xs text-dfc-muted">{candidate.status} / ¥{candidate.companion.companionProfile?.pricePerHour ?? "-"}/h</div>
+                    <div className="text-xs text-dfc-muted">
+                      {candidate.status} / {priceTierLabel(selectedDraft.priceTier)} ¥{candidate.companion.companionProfile ? formatMoney(candidate.companion.companionProfile.pricePerHour) : "-"}/h
+                    </div>
                     {candidate.note ? <div className="mt-1 text-xs">{candidate.note}</div> : null}
                   </div>
                 )) : <div className="text-dfc-muted">暂无候选</div>}
@@ -600,6 +630,27 @@ function platformLabel(platform: string) {
   if (platform === "DISCORD") return "Discord";
   if (platform === "KOOK") return "KOOK";
   return platform;
+}
+
+function priceTierLabel(priceTier?: ServicePriceTier | string | null) {
+  if (priceTier === "ENTERTAINMENT") return "娱乐";
+  if (priceTier === "RANKED") return "排位";
+  if (priceTier === "HIGH_RANKED") return "高排";
+  return "默认";
+}
+
+function companionPriceForTier(companion: Companion, priceTier: ServicePriceTier, platform: "WEB" | "DISCORD" | "KOOK") {
+  const platformPrice =
+    platform === "DISCORD"
+      ? companion.discordPricePerHour || companion.pricePerHour
+      : platform === "KOOK"
+        ? companion.kookPricePerHour || companion.pricePerHour
+        : companion.pricePerHour;
+
+  if (priceTier === "ENTERTAINMENT") return companion.entertainmentPricePerHour || platformPrice;
+  if (priceTier === "RANKED") return companion.rankedPricePerHour || platformPrice;
+  if (priceTier === "HIGH_RANKED") return companion.highRankedPricePerHour || companion.rankedPricePerHour || platformPrice;
+  return platformPrice;
 }
 
 function formatMoney(value: string) {

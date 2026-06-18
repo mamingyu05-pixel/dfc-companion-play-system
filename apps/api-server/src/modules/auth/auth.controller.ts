@@ -101,4 +101,5 @@ export class AuthController {
   ) {
     return this.auth.updateMyCompanionGames(user.id, body);
   }
+
 }

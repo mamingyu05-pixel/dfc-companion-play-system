@@ -62,6 +62,9 @@ export default function NewCompanionPage() {
   const [pricePerHour, setPricePerHour] = useState("");
   const [kookPricePerHour, setKookPricePerHour] = useState("");
   const [discordPricePerHour, setDiscordPricePerHour] = useState("");
+  const [entertainmentPricePerHour, setEntertainmentPricePerHour] = useState("");
+  const [rankedPricePerHour, setRankedPricePerHour] = useState("");
+  const [highRankedPricePerHour, setHighRankedPricePerHour] = useState("");
   const [gender, setGender] = useState("MOON");
   const [deltaForceRank, setDeltaForceRank] = useState("UNRANKED");
   const [skillModes, setSkillModes] = useState("Hot Zone, Warfare");
@@ -202,6 +205,9 @@ export default function NewCompanionPage() {
         pricePerHour,
         kookPricePerHour: kookPricePerHour || undefined,
         discordPricePerHour: discordPricePerHour || undefined,
+        entertainmentPricePerHour: entertainmentPricePerHour || undefined,
+        rankedPricePerHour: rankedPricePerHour || undefined,
+        highRankedPricePerHour: highRankedPricePerHour || undefined,
         deltaForceRank,
         skillModes: skillModes.split(",").map((item) => item.trim()).filter(Boolean),
         bio,
@@ -227,8 +233,12 @@ export default function NewCompanionPage() {
     setGender("MOON");
     setGame("DELTA_FORCE");
     setSelectedGames(["DELTA_FORCE"]);
+    setPricePerHour("");
     setKookPricePerHour("");
     setDiscordPricePerHour("");
+    setEntertainmentPricePerHour("");
+    setRankedPricePerHour("");
+    setHighRankedPricePerHour("");
     setBio("");
     setStatus(mode === "existing" ? "陪玩身份已开通，默认待审核。请到陪玩管理页审核上架。" : "陪玩账号已创建，默认待审核。请到陪玩管理页审核上架。");
     await loadUsers().catch(() => undefined);
@@ -281,6 +291,9 @@ export default function NewCompanionPage() {
             <Field label="默认单价" value={pricePerHour} onChange={setPricePerHour} required />
             <Field label="KOOK 单价" value={kookPricePerHour} onChange={setKookPricePerHour} />
             <Field label="Discord 单价" value={discordPricePerHour} onChange={setDiscordPricePerHour} />
+            <Field label="娱乐陪玩价" value={entertainmentPricePerHour} onChange={setEntertainmentPricePerHour} />
+            <Field label="排位单价" value={rankedPricePerHour} onChange={setRankedPricePerHour} />
+            <Field label="高等级排位价" value={highRankedPricePerHour} onChange={setHighRankedPricePerHour} />
             <label className="block">
               <span className="mb-2 block text-xs font-black text-dfc-muted">游戏</span>
               <select

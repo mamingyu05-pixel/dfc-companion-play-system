@@ -10,6 +10,7 @@ import {
   OrderSourcePlatform,
   Prisma,
   ReviewStatus,
+  ServicePriceTier,
   UserRole,
   UserStatus,
   VoicePreference,
@@ -186,7 +187,10 @@ export class AdminController {
             onlineStatus: true,
             pricePerHour: true,
             kookPricePerHour: true,
-            discordPricePerHour: true
+            discordPricePerHour: true,
+            entertainmentPricePerHour: true,
+            rankedPricePerHour: true,
+            highRankedPricePerHour: true
           }
         },
         externalAccounts: {
@@ -221,7 +225,10 @@ export class AdminController {
               onlineStatus: item.companionProfile.onlineStatus,
               pricePerHour: item.companionProfile.pricePerHour.toString(),
               kookPricePerHour: item.companionProfile.kookPricePerHour?.toString() ?? null,
-              discordPricePerHour: item.companionProfile.discordPricePerHour?.toString() ?? null
+              discordPricePerHour: item.companionProfile.discordPricePerHour?.toString() ?? null,
+              entertainmentPricePerHour: item.companionProfile.entertainmentPricePerHour?.toString() ?? null,
+              rankedPricePerHour: item.companionProfile.rankedPricePerHour?.toString() ?? null,
+              highRankedPricePerHour: item.companionProfile.highRankedPricePerHour?.toString() ?? null
             }
           : null,
         externalAccounts: item.externalAccounts
@@ -629,6 +636,7 @@ export class AdminController {
       game?: GameCode;
       mode: string;
       hours?: string;
+      priceTier?: ServicePriceTier;
       budgetAmount?: string;
       note?: string;
     }
@@ -760,6 +768,9 @@ export class AdminController {
         pricePerHour: profile.pricePerHour.toString(),
         kookPricePerHour: profile.kookPricePerHour?.toString() ?? null,
         discordPricePerHour: profile.discordPricePerHour?.toString() ?? null,
+        entertainmentPricePerHour: profile.entertainmentPricePerHour?.toString() ?? null,
+        rankedPricePerHour: profile.rankedPricePerHour?.toString() ?? null,
+        highRankedPricePerHour: profile.highRankedPricePerHour?.toString() ?? null,
         commissionRate: profile.commissionRate.toString(),
         externalAccounts: profile.user.externalAccounts,
         availableIncome: profile.user.wallet?.availableIncome.toString() ?? "0",
@@ -949,6 +960,9 @@ export class AdminController {
       pricePerHour: string;
       kookPricePerHour?: string;
       discordPricePerHour?: string;
+      entertainmentPricePerHour?: string;
+      rankedPricePerHour?: string;
+      highRankedPricePerHour?: string;
       commissionRate?: string;
       avatarUrl?: string;
       photoUrls?: string[];
@@ -985,6 +999,9 @@ export class AdminController {
     if (pricePerHour.lte(0)) throw new BadRequestException("pricePerHour must be greater than 0");
     const kookPricePerHour = parseOptionalPositiveDecimal(body.kookPricePerHour, "kookPricePerHour");
     const discordPricePerHour = parseOptionalPositiveDecimal(body.discordPricePerHour, "discordPricePerHour");
+    const entertainmentPricePerHour = parseOptionalPositiveDecimal(body.entertainmentPricePerHour, "entertainmentPricePerHour");
+    const rankedPricePerHour = parseOptionalPositiveDecimal(body.rankedPricePerHour, "rankedPricePerHour");
+    const highRankedPricePerHour = parseOptionalPositiveDecimal(body.highRankedPricePerHour, "highRankedPricePerHour");
     const primaryGame = normalizeGameCode(body.game) ?? normalizeGameCode(body.games?.[0]) ?? GameCode.DELTA_FORCE;
     const games = normalizeGameList(body.games, primaryGame);
 
@@ -1013,6 +1030,9 @@ export class AdminController {
                 pricePerHour,
                 kookPricePerHour,
                 discordPricePerHour,
+                entertainmentPricePerHour,
+                rankedPricePerHour,
+                highRankedPricePerHour,
                 commissionRate: parseCommissionRate((body as { commissionRate?: string }).commissionRate ?? "0.2"),
                 onlineStatus: OnlineStatus.OFFLINE,
                 bio: body.bio,
@@ -1037,7 +1057,13 @@ export class AdminController {
             action: "CREATE_COMPANION",
             entityType: "USER",
             entityId: companion.id,
-            detail: { nickname, pricePerHour: body.pricePerHour }
+            detail: {
+              nickname,
+              pricePerHour: body.pricePerHour,
+              entertainmentPricePerHour: body.entertainmentPricePerHour,
+              rankedPricePerHour: body.rankedPricePerHour,
+              highRankedPricePerHour: body.highRankedPricePerHour
+            }
           }
         });
 
@@ -1061,6 +1087,9 @@ export class AdminController {
       pricePerHour: string;
       kookPricePerHour?: string;
       discordPricePerHour?: string;
+      entertainmentPricePerHour?: string;
+      rankedPricePerHour?: string;
+      highRankedPricePerHour?: string;
       commissionRate?: string;
       avatarUrl?: string;
       photoUrls?: string[];
@@ -1093,6 +1122,9 @@ export class AdminController {
     if (pricePerHour.lte(0)) throw new BadRequestException("pricePerHour must be greater than 0");
     const kookPricePerHour = parseOptionalPositiveDecimal(body.kookPricePerHour, "kookPricePerHour");
     const discordPricePerHour = parseOptionalPositiveDecimal(body.discordPricePerHour, "discordPricePerHour");
+    const entertainmentPricePerHour = parseOptionalPositiveDecimal(body.entertainmentPricePerHour, "entertainmentPricePerHour");
+    const rankedPricePerHour = parseOptionalPositiveDecimal(body.rankedPricePerHour, "rankedPricePerHour");
+    const highRankedPricePerHour = parseOptionalPositiveDecimal(body.highRankedPricePerHour, "highRankedPricePerHour");
     const primaryGame = normalizeGameCode(body.game) ?? normalizeGameCode(body.games?.[0]) ?? GameCode.DELTA_FORCE;
     const games = normalizeGameList(body.games, primaryGame);
 
@@ -1125,6 +1157,9 @@ export class AdminController {
                 pricePerHour,
                 kookPricePerHour,
                 discordPricePerHour,
+                entertainmentPricePerHour,
+                rankedPricePerHour,
+                highRankedPricePerHour,
                 commissionRate: parseCommissionRate(body.commissionRate ?? "0.2"),
                 onlineStatus: OnlineStatus.OFFLINE,
                 bio: body.bio,
@@ -1153,6 +1188,9 @@ export class AdminController {
             detail: {
               nickname,
               pricePerHour: body.pricePerHour,
+              entertainmentPricePerHour: body.entertainmentPricePerHour,
+              rankedPricePerHour: body.rankedPricePerHour,
+              highRankedPricePerHour: body.highRankedPricePerHour,
               note: body.note
             }
           }
@@ -1239,17 +1277,32 @@ export class AdminController {
   async updateCompanionPricing(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
-    @Body() body: { pricePerHour: string; kookPricePerHour?: string | null; discordPricePerHour?: string | null; note?: string }
+    @Body()
+    body: {
+      pricePerHour: string;
+      kookPricePerHour?: string | null;
+      discordPricePerHour?: string | null;
+      entertainmentPricePerHour?: string | null;
+      rankedPricePerHour?: string | null;
+      highRankedPricePerHour?: string | null;
+      note?: string;
+    }
   ) {
     const pricePerHour = parsePositiveDecimal(body.pricePerHour, "pricePerHour");
     const kookPricePerHour = parseOptionalPositiveDecimal(body.kookPricePerHour, "kookPricePerHour");
     const discordPricePerHour = parseOptionalPositiveDecimal(body.discordPricePerHour, "discordPricePerHour");
+    const entertainmentPricePerHour = parseOptionalPositiveDecimal(body.entertainmentPricePerHour, "entertainmentPricePerHour");
+    const rankedPricePerHour = parseOptionalPositiveDecimal(body.rankedPricePerHour, "rankedPricePerHour");
+    const highRankedPricePerHour = parseOptionalPositiveDecimal(body.highRankedPricePerHour, "highRankedPricePerHour");
     const updated = await this.prisma.companionProfile.update({
       where: { userId: id },
       data: {
         pricePerHour,
         kookPricePerHour,
-        discordPricePerHour
+        discordPricePerHour,
+        entertainmentPricePerHour,
+        rankedPricePerHour,
+        highRankedPricePerHour
       },
       include: { user: { select: { id: true, email: true, displayName: true } } }
     });
@@ -1265,6 +1318,9 @@ export class AdminController {
           pricePerHour: updated.pricePerHour.toString(),
           kookPricePerHour: updated.kookPricePerHour?.toString() ?? null,
           discordPricePerHour: updated.discordPricePerHour?.toString() ?? null,
+          entertainmentPricePerHour: updated.entertainmentPricePerHour?.toString() ?? null,
+          rankedPricePerHour: updated.rankedPricePerHour?.toString() ?? null,
+          highRankedPricePerHour: updated.highRankedPricePerHour?.toString() ?? null,
           note: body.note
         }
       }
@@ -1276,7 +1332,10 @@ export class AdminController {
       nickname: updated.nickname,
       pricePerHour: updated.pricePerHour.toString(),
       kookPricePerHour: updated.kookPricePerHour?.toString() ?? null,
-      discordPricePerHour: updated.discordPricePerHour?.toString() ?? null
+      discordPricePerHour: updated.discordPricePerHour?.toString() ?? null,
+      entertainmentPricePerHour: updated.entertainmentPricePerHour?.toString() ?? null,
+      rankedPricePerHour: updated.rankedPricePerHour?.toString() ?? null,
+      highRankedPricePerHour: updated.highRankedPricePerHour?.toString() ?? null
     };
   }
 

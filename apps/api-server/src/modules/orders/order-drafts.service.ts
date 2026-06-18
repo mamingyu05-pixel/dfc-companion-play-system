@@ -10,6 +10,7 @@ import {
   OrderDraftStatus,
   OrderSourcePlatform,
   Prisma,
+  ServicePriceTier,
   UserRole,
   UserStatus
 } from "@prisma/client";
@@ -29,6 +30,7 @@ type CreateDraftBody = {
   game?: GameCode;
   mode: string;
   hours?: string;
+  priceTier?: ServicePriceTier;
   budgetAmount?: string;
   note?: string;
 };
@@ -37,6 +39,7 @@ type ParsedDispatchDemand = {
   game: GameCode;
   mode: string;
   hours?: string;
+  priceTier?: ServicePriceTier;
   budgetAmount?: string;
   note: string;
   preferences: string[];
@@ -83,6 +86,9 @@ export class OrderDraftsService {
                     pricePerHour: true,
                     kookPricePerHour: true,
                     discordPricePerHour: true,
+                    entertainmentPricePerHour: true,
+                    rankedPricePerHour: true,
+                    highRankedPricePerHour: true,
                     onlineStatus: true,
                     status: true
                   }
@@ -131,6 +137,7 @@ export class OrderDraftsService {
     if (!body.mode?.trim()) throw new BadRequestException("mode is required");
 
     const hours = body.hours ? this.positiveDecimal(body.hours, "hours") : undefined;
+    const priceTier = this.normalizePriceTier(body.priceTier, body.mode);
     const budgetAmount = body.budgetAmount ? this.positiveDecimal(body.budgetAmount, "budgetAmount") : undefined;
     const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
 
@@ -154,6 +161,7 @@ export class OrderDraftsService {
           game: body.game ?? GameCode.DELTA_FORCE,
           mode: body.mode.trim(),
           hours,
+          priceTier,
           budgetAmount,
           note: body.note
         }
@@ -167,7 +175,7 @@ export class OrderDraftsService {
         platformUserId: body.customerPlatformUserId,
         eventType: OrderDraftEventType.DRAFT_CREATED,
         content: body.note,
-        metadata: { customerId: body.customerId, mode: body.mode, hours: body.hours, budgetAmount: body.budgetAmount }
+        metadata: { customerId: body.customerId, mode: body.mode, hours: body.hours, priceTier, budgetAmount: body.budgetAmount }
       });
 
       await this.writeAdminLog(tx, adminId, body.customerId, "CREATE_ORDER_DRAFT", draft.id, {
@@ -204,6 +212,7 @@ export class OrderDraftsService {
       game: parsed.game,
       mode: parsed.mode,
       hours: parsed.hours,
+      priceTier: parsed.priceTier,
       budgetAmount: parsed.budgetAmount,
       note: parsed.note
     });
@@ -241,6 +250,7 @@ export class OrderDraftsService {
 
     const game = body.game ?? companion.companionProfile.game;
     const hours = body.hours ? this.positiveDecimal(body.hours, "hours") : undefined;
+    const priceTier = this.normalizePriceTier(undefined, body.mode);
     const budgetAmount = body.budgetAmount ? this.positiveDecimal(body.budgetAmount, "budgetAmount") : undefined;
 
     return this.prisma.$transaction(async (tx) => {
@@ -257,6 +267,7 @@ export class OrderDraftsService {
           game,
           mode: body.mode.trim(),
           hours,
+          priceTier,
           budgetAmount,
           status: OrderDraftStatus.SELECTED,
           note: body.note?.trim() || "Companion created this draft after private customer request."
@@ -280,7 +291,7 @@ export class OrderDraftsService {
         platform: OrderSourcePlatform.WEB,
         eventType: OrderDraftEventType.DRAFT_CREATED,
         content: body.note,
-        metadata: { customerId: body.customerId, mode: body.mode, hours: body.hours, budgetAmount: body.budgetAmount }
+        metadata: { customerId: body.customerId, mode: body.mode, hours: body.hours, priceTier, budgetAmount: body.budgetAmount }
       });
 
       await this.writeDraftEvent(tx, {
@@ -520,7 +531,7 @@ export class OrderDraftsService {
     const ranked = draft.candidates
       .map((candidate) => {
         const profile = candidate.companion.companionProfile;
-        const price = this.pickCompanionPriceForPlatform(profile, draft.sourcePlatform);
+        const price = this.pickCompanionPriceForTier(profile, draft.sourcePlatform, draft.priceTier);
         const budgetScore = draft.budgetAmount && price.gt(0) ? (price.mul(draft.hours ?? 1).lte(draft.budgetAmount) ? 25 : -10) : 0;
         const onlineScore = profile?.onlineStatus === "ONLINE" ? 30 : profile?.onlineStatus === "BUSY" ? 10 : 0;
         const statusScore = candidate.status === OrderDraftCandidateStatus.TRIALING ? 15 : 5;
@@ -709,6 +720,7 @@ export class OrderDraftsService {
       game: draft.game,
       mode: draft.mode,
       hours: draft.hours.toString(),
+      priceTier: draft.priceTier,
       companionId: draft.selectedCompanionId ?? undefined,
       notes: draft.note ? `客服试音单 ${draft.draftNo}：${draft.note}` : `客服试音单 ${draft.draftNo}`,
       voiceTrialRequested: true,
@@ -825,6 +837,7 @@ export class OrderDraftsService {
     game: GameCode;
     mode: string;
     hours: Prisma.Decimal | null;
+    priceTier: ServicePriceTier;
     budgetAmount: Prisma.Decimal | null;
     status: OrderDraftStatus;
     note: string | null;
@@ -849,6 +862,9 @@ export class OrderDraftsService {
           pricePerHour: Prisma.Decimal;
           kookPricePerHour?: Prisma.Decimal | null;
           discordPricePerHour?: Prisma.Decimal | null;
+          entertainmentPricePerHour?: Prisma.Decimal | null;
+          rankedPricePerHour?: Prisma.Decimal | null;
+          highRankedPricePerHour?: Prisma.Decimal | null;
           onlineStatus: string;
           status: string;
         } | null;
@@ -876,6 +892,7 @@ export class OrderDraftsService {
     return {
       ...draft,
       hours: draft.hours?.toString() ?? null,
+      priceTier: draft.priceTier,
       budgetAmount: draft.budgetAmount?.toString() ?? null,
       convertedOrder: draft.convertedOrder
         ? { ...draft.convertedOrder, totalAmount: draft.convertedOrder.totalAmount.toString() }
@@ -887,7 +904,10 @@ export class OrderDraftsService {
           companionProfile: candidate.companion.companionProfile
             ? {
                 ...candidate.companion.companionProfile,
-                pricePerHour: this.pickCompanionPriceForPlatform(candidate.companion.companionProfile, draft.sourcePlatform).toString()
+                pricePerHour: this.pickCompanionPriceForTier(candidate.companion.companionProfile, draft.sourcePlatform, draft.priceTier).toString(),
+                entertainmentPricePerHour: candidate.companion.companionProfile.entertainmentPricePerHour?.toString() ?? null,
+                rankedPricePerHour: candidate.companion.companionProfile.rankedPricePerHour?.toString() ?? null,
+                highRankedPricePerHour: candidate.companion.companionProfile.highRankedPricePerHour?.toString() ?? null
               }
             : null
         }
@@ -949,6 +969,36 @@ export class OrderDraftsService {
     return profile.pricePerHour;
   }
 
+  private pickCompanionPriceForTier(
+    profile: {
+      pricePerHour: Prisma.Decimal;
+      kookPricePerHour?: Prisma.Decimal | null;
+      discordPricePerHour?: Prisma.Decimal | null;
+      entertainmentPricePerHour?: Prisma.Decimal | null;
+      rankedPricePerHour?: Prisma.Decimal | null;
+      highRankedPricePerHour?: Prisma.Decimal | null;
+    } | null | undefined,
+    sourcePlatform: OrderSourcePlatform,
+    priceTier: ServicePriceTier
+  ) {
+    if (!profile) return new Prisma.Decimal(0);
+    if (priceTier === ServicePriceTier.ENTERTAINMENT) return profile.entertainmentPricePerHour ?? this.pickCompanionPriceForPlatform(profile, sourcePlatform);
+    if (priceTier === ServicePriceTier.RANKED) return profile.rankedPricePerHour ?? this.pickCompanionPriceForPlatform(profile, sourcePlatform);
+    if (priceTier === ServicePriceTier.HIGH_RANKED) return profile.highRankedPricePerHour ?? profile.rankedPricePerHour ?? this.pickCompanionPriceForPlatform(profile, sourcePlatform);
+    return this.pickCompanionPriceForPlatform(profile, sourcePlatform);
+  }
+
+  private normalizePriceTier(priceTier: ServicePriceTier | undefined, mode: string) {
+    if (priceTier && Object.values(ServicePriceTier).includes(priceTier)) return priceTier;
+    const normalizedMode = mode.toLowerCase();
+    if (/高端|高分|高段|高等级|大师|王者|巅峰|immortal|radiant|master|challenger|predator/.test(normalizedMode)) {
+      return ServicePriceTier.HIGH_RANKED;
+    }
+    if (/排位|上分|rank|ranked|competitive|天梯/.test(normalizedMode)) return ServicePriceTier.RANKED;
+    if (/娱乐|休闲|陪聊|随便|casual|fun/.test(normalizedMode)) return ServicePriceTier.ENTERTAINMENT;
+    return ServicePriceTier.CUSTOM;
+  }
+
   private parseDemandText(demandText: string): ParsedDispatchDemand {
     const text = demandText.trim();
     if (!text) throw new BadRequestException("demandText is required");
@@ -957,6 +1007,7 @@ export class OrderDraftsService {
     const lower = text.toLowerCase();
     const game = this.detectGame(lower);
     const mode = this.detectMode(text, lower);
+    const priceTier = this.normalizePriceTier(undefined, mode);
     const hoursMatch = text.match(/(\d+(?:\.\d+)?)\s*(小时|h|H|个小时)/);
     const budgetMatch = text.match(/(?:预算|价格|金额|价位|不超过|以内)[^\d]*(\d+(?:\.\d+)?)/);
     const preferences = [
@@ -970,6 +1021,7 @@ export class OrderDraftsService {
     return {
       game,
       mode,
+      priceTier,
       hours: hoursMatch?.[1],
       budgetAmount: budgetMatch?.[1],
       preferences,

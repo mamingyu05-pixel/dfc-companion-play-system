@@ -62,7 +62,14 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: { customerId: string; game?: GameCode; mode: string; hours?: string; budgetAmount?: string; note?: string }
   ) {
-    return this.orderDrafts.createDraftFromCompanion(user.id, body);
+    return this.orderDrafts.createDraftFromCompanion(user.id, {
+      customerId: body.customerId,
+      game: body.game,
+      mode: body.mode,
+      hours: body.hours,
+      budgetAmount: body.budgetAmount,
+      note: body.note
+    });
   }
 
   @Post()
@@ -72,7 +79,14 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: { game?: GameCode; mode: string; hours: string; companionId?: string; notes?: string; voiceTrialRequested?: boolean }
   ) {
-    return this.orders.createOrder(user.id, body);
+    return this.orders.createOrder(user.id, {
+      game: body.game,
+      mode: body.mode,
+      hours: body.hours,
+      companionId: body.companionId,
+      notes: body.notes,
+      voiceTrialRequested: body.voiceTrialRequested
+    });
   }
 
   @Patch(":id/start")
