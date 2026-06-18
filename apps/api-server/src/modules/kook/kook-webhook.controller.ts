@@ -385,6 +385,13 @@ export class KookWebhookController {
 }
 
 function parseBindingText(content: string) {
+  const normalized = content.trim();
+  const bareCode = normalized.match(/^[A-Z0-9]{8}$/i);
+  if (bareCode) return bareCode[0].toUpperCase();
+
+  const directMatch = normalized.match(/^(?:\u7ed1\u5b9a|\u7d81\u5b9a|bind|\u7ed1\u5b9a\u7801|\u7d81\u5b9a\u78bc)\s*[:：]?\s*([A-Z0-9]{8})$/i);
+  if (directMatch) return directMatch[1].toUpperCase();
+
   const match = content.trim().match(/^(?:绑定|綁定|bind|绑定码|綁定碼)\s*[:：]?\s*([A-Z0-9]{6,12})$/i);
   return match?.[1]?.toUpperCase();
 }

@@ -436,6 +436,8 @@ export default function ProfilePage() {
             <div className="mt-3 rounded-dfc-control border border-dfc-border bg-[#050711]/80 px-3 py-2 text-sm text-dfc-text">
               在 {platformLabels[bindingCode.platform]} 私聊客服机器人，或在客服接待频道发送：
               <span className="ml-1 font-mono text-cyan-200">绑定 {bindingCode.code}</span>
+              <span className="mx-1 text-dfc-subtext">或直接发送</span>
+              <span className="font-mono text-cyan-200">{bindingCode.code}</span>
             </div>
             <div className="mt-2 text-xs text-dfc-subtext">10 分钟内有效。过期后重新生成即可。</div>
           </div>
