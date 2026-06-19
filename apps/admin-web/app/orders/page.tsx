@@ -46,6 +46,12 @@ type OrderDraft = {
   }>;
 };
 
+const closedDraftStatuses = new Set(["CONVERTED", "CANCELLED"]);
+
+function isClosedDraft(draft: Pick<OrderDraft, "status">) {
+  return closedDraftStatuses.has(draft.status);
+}
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [drafts, setDrafts] = useState<OrderDraft[]>([]);
@@ -68,6 +74,8 @@ export default function OrdersPage() {
   useEffect(() => {
     void loadOrders().catch(() => setError("无法加载真实订单数据"));
   }, []);
+
+  const activeDrafts = useMemo(() => drafts.filter((draft) => !isClosedDraft(draft)), [drafts]);
 
   async function failDraft(draftId: string) {
     if (!window.confirm("确认把这条派单草稿标记为流单吗？适用于长时间无人接单、客户失联或需求取消。")) return;
@@ -105,9 +113,9 @@ export default function OrdersPage() {
     const active = orders.filter((order) => ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"].includes(order.status)).length;
     const completed = orders.filter((order) => order.status === "COMPLETED").length;
     const amount = orders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-    const openDrafts = drafts.filter((draft) => !["CONVERTED", "CANCELLED"].includes(draft.status)).length;
+    const openDrafts = activeDrafts.length;
     return { paid, active, completed, amount, openDrafts };
-  }, [orders, drafts]);
+  }, [orders, activeDrafts]);
 
   return (
     <AdminShell>
@@ -134,7 +142,7 @@ export default function OrdersPage() {
         </div>
         <DataTable
           columns={["草稿号", "客户来源", "已发布", "客户", "游戏", "模式", "备注", "时长", "预算", "报名", "状态", "人工操作"]}
-          rows={drafts.slice(0, 8).map((draft) => [
+          rows={activeDrafts.slice(0, 8).map((draft) => [
             <Link key={`${draft.id}-no`} href="/order-drafts" className="font-black text-cyan-200">{draft.draftNo}</Link>,
             <PlatformBadge key={`${draft.id}-source`} platform={draft.sourcePlatform} />,
             <PublishedPlatforms key={`${draft.id}-published`} platforms={draft.publishedPlatforms ?? []} />,

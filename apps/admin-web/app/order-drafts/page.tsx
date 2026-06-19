@@ -124,6 +124,12 @@ const gameOptions = [
   ["STEAM", "Steam 综合游戏"]
 ] as const;
 
+const closedDraftStatuses = new Set(["CONVERTED", "CANCELLED"]);
+
+function isClosedDraft(draft: Pick<OrderDraft, "status">) {
+  return closedDraftStatuses.has(draft.status);
+}
+
 export default function OrderDraftsPage() {
   const [drafts, setDrafts] = useState<OrderDraft[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -165,7 +171,11 @@ export default function OrderDraftsPage() {
     setDrafts(nextDrafts);
     setUsers((await usersResponse.json()) as AdminUser[]);
     setCompanions((await companionsResponse.json()) as Companion[]);
-    setSelectedDraftId((current) => current || nextDrafts.find((draft) => !["CONVERTED", "CANCELLED"].includes(draft.status))?.id || "");
+    setSelectedDraftId((current) => {
+      const currentDraft = nextDrafts.find((draft) => draft.id === current);
+      if (currentDraft && !isClosedDraft(currentDraft)) return current;
+      return nextDrafts.find((draft) => !isClosedDraft(draft))?.id || "";
+    });
   }
 
   useEffect(() => {
@@ -173,7 +183,9 @@ export default function OrderDraftsPage() {
   }, []);
 
   const customers = users.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
-  const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId);
+  const activeDrafts = useMemo(() => drafts.filter((draft) => !isClosedDraft(draft)), [drafts]);
+  const hiddenClosedDraftCount = drafts.length - activeDrafts.length;
+  const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
   const listedCompanions = useMemo(
     () => {
       const keyword = companionQuery.trim().toLowerCase();
@@ -187,11 +199,11 @@ export default function OrderDraftsPage() {
     [companions, selectedDraft, companionQuery]
   );
   const stats = useMemo(() => {
-    const open = drafts.filter((draft) => !["CONVERTED", "CANCELLED"].includes(draft.status)).length;
+    const open = activeDrafts.length;
     const converted = drafts.filter((draft) => draft.status === "CONVERTED").length;
-    const candidates = drafts.reduce((sum, draft) => sum + draft.candidates.length, 0);
+    const candidates = activeDrafts.reduce((sum, draft) => sum + draft.candidates.length, 0);
     return { open, converted, candidates };
-  }, [drafts]);
+  }, [activeDrafts, drafts]);
 
   async function callApi<T>(path: string, options: RequestInit) {
     const token = localStorage.getItem("dfc_admin_token");
@@ -443,7 +455,7 @@ export default function OrderDraftsPage() {
         <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr_1fr_auto]">
           <select value={selectedDraftId} onChange={(event) => setSelectedDraftId(event.target.value)} className="input">
             <option value="">选择试音草稿</option>
-            {drafts.map((draft) => (
+            {activeDrafts.map((draft) => (
               <option key={draft.id} value={draft.id}>{draft.draftNo} / {draft.customer?.displayName ?? draft.customerDisplayName ?? "未绑定客户"} / {toDraftStatus(draft.status)}</option>
             ))}
           </select>
@@ -498,9 +510,10 @@ export default function OrderDraftsPage() {
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
-        <DataTable
+        <div>
+          <DataTable
           columns={["草稿", "客户", "备注", "来源", "游戏/模式", "候选", "已选陪玩", "状态", "正式订单"]}
-          rows={drafts.map((draft) => [
+          rows={activeDrafts.map((draft) => [
             <button key={draft.id} type="button" onClick={() => setSelectedDraftId(draft.id)} className="text-left font-black text-cyan-200">{draft.draftNo}</button>,
             <Person key={`${draft.id}-customer`} name={draft.customer?.displayName ?? draft.customerDisplayName ?? "未绑定"} sub={draft.customer?.email ?? draft.customerPlatformUserId ?? "-"} />,
             <span key={`note-${draft.id}`} className="line-clamp-2 text-xs text-dfc-subtext">{draft.note || "-"}</span>,
@@ -511,7 +524,13 @@ export default function OrderDraftsPage() {
             <StatusBadge key={`${draft.id}-status`} tone={statusTone(draft.status)}>{toDraftStatus(draft.status, draft.note)}</StatusBadge>,
             draft.convertedOrder ? `${draft.convertedOrder.orderNo} / ${draft.convertedOrder.status}` : "-"
           ])}
-        />
+          />
+          {hiddenClosedDraftCount > 0 ? (
+            <p className="mt-3 text-xs text-dfc-muted">
+              已隐藏 {hiddenClosedDraftCount} 条已取消、已流单或已转订单的草稿，避免影响当前派单操作。
+            </p>
+          ) : null}
+        </div>
 
         <div className="admin-panel">
           <h2 className="text-base font-black text-white">当前草稿详情</h2>
