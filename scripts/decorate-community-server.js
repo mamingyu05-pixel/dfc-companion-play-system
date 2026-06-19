@@ -182,6 +182,64 @@ const kookChannels = [
   ...Array.from({ length: 10 }, (_, index) => ({ key: `kookXp${index + 1}`, name: `⚡｜XP · 接单 ${String(index + 1).padStart(2, "0")} 厅`, type: 2, limit: 6 }))
 ];
 
+const discordCategoryOrder = ["service", "xp", "welcome", "chat", "assessment", "vip"];
+
+const discordChannelOrder = [
+  "support",
+  "support2",
+  "vipSupport",
+  "afterSales",
+  "feedback",
+  "complaint",
+  "voiceWaiting",
+  "aiDispatch",
+  "dispatch",
+  "recharge",
+  "withdrawal",
+  "admin",
+  "pricing",
+  "nav",
+  "announcement",
+  "activity",
+  "benefits",
+  "penalty",
+  ...Array.from({ length: 10 }, (_, index) => `xp${index + 1}`),
+  ...Array.from({ length: 3 }, (_, index) => `xpGlobal${index + 1}`),
+  "gameChat",
+  "tag",
+  "gift",
+  "rechargeCode",
+  "ranking",
+  "reviews",
+  "examNotice",
+  "examTag",
+  ...Array.from({ length: 6 }, (_, index) => `assessment${index + 1}`),
+  ...Array.from({ length: 3 }, (_, index) => `vip${index + 1}`)
+];
+
+const kookChannelOrder = [
+  "support",
+  "dispatch",
+  "recharge",
+  "withdrawal",
+  "complaint",
+  "admin",
+  "aiDispatch",
+  "pricing",
+  "nav",
+  "announcement",
+  "activity",
+  "benefits",
+  "tag",
+  "gift",
+  "reviews",
+  "examNotice",
+  "voiceWaiting",
+  ...Array.from({ length: 6 }, (_, index) => `kookAssessment${index + 1}`),
+  ...Array.from({ length: 3 }, (_, index) => `kookVip${index + 1}`),
+  ...Array.from({ length: 10 }, (_, index) => `kookXp${index + 1}`)
+];
+
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
@@ -210,6 +268,7 @@ async function decorateDiscord(env, args) {
   console.log(`\nDiscord guild: ${guildId}`);
   const channels = await discordRequest(token, `/guilds/${guildId}/channels`, { method: "GET" });
   const categories = {};
+  const channelIdsByKey = {};
 
   if (args.cleanupOld) {
     await cleanupLegacyDiscordChannels(token, env, channels, args);
@@ -224,6 +283,7 @@ async function decorateDiscord(env, args) {
     };
     const result = existing || (args.dryRun ? previewChannel(category.name, 4) : await discordCreateChannel(token, guildId, categoryBody));
     categories[category.key] = result.id;
+    channelIdsByKey[category.key] = result.id;
     pushIfCreated(channels, existing, result);
     if (existing && !args.dryRun) await discordPatchChannel(token, result.id, categoryBody);
     console.log(`${existing ? "reuse" : args.dryRun ? "would create" : "create"} category ${category.name} -> ${result.id}`);
@@ -240,6 +300,7 @@ async function decorateDiscord(env, args) {
       permission_overwrites: buildDiscordPermissionOverwrites(env, guildId, item)
     };
     const channel = existing || (args.dryRun ? previewChannel(item.name, body.type) : await discordCreateChannel(token, guildId, body));
+    channelIdsByKey[item.key] = channel.id;
     pushIfCreated(channels, existing, channel);
     if (existing && !args.dryRun) await discordPatchChannel(token, channel.id, body);
     if (item.env) envOutput[item.env] = channel.id;
@@ -248,6 +309,8 @@ async function decorateDiscord(env, args) {
       await discordPostMessage(token, channel.id, buildGuideMessage(textGuides[item.guide]));
     }
   }
+
+  await orderDiscordChannels(token, guildId, categories, channelIdsByKey, args);
 
   printEnvOutput("Discord", envOutput);
 }
@@ -261,6 +324,7 @@ async function decorateKook(env, args) {
   console.log(`\nKOOK guild: ${guildId}`);
   const channels = await kookListChannels(token, guildId);
   const envOutput = {};
+  const channelIdsByKey = {};
 
   if (args.cleanupOld) {
     await cleanupLegacyKookChannels(token, env, channels, args);
@@ -269,6 +333,7 @@ async function decorateKook(env, args) {
   for (const item of kookChannels) {
     const existing = findChannelByEnvOrName(channels, env, item, item.env, item.name, item.type);
     const channel = existing || (args.dryRun ? previewChannel(item.name, item.type) : await kookCreateChannel(token, guildId, item));
+    channelIdsByKey[item.key] = channel.id;
     pushIfCreated(channels, existing, channel);
     if (existing && !args.dryRun) await kookPatchChannel(token, channel.id, item);
     if (!args.dryRun) await applyKookChannelPermissions(token, env, channel.id, item);
@@ -279,7 +344,83 @@ async function decorateKook(env, args) {
     }
   }
 
+  await orderKookChannels(token, channelIdsByKey, args);
+
   printEnvOutput("KOOK", envOutput);
+}
+
+async function orderDiscordChannels(token, guildId, categories, channelIdsByKey, args) {
+  const categoryByKey = new Map(discordCategories.map((category, index) => [category.key, { ...category, index }]));
+  const orderedCategories = discordCategoryOrder
+    .map((key) => categoryByKey.get(key))
+    .filter(Boolean)
+    .concat(discordCategories.filter((category) => !discordCategoryOrder.includes(category.key)));
+  const itemByKey = new Map([...discordTextChannels, ...discordVoiceChannels].map((item) => [item.key, item]));
+  const positions = [];
+  let position = 0;
+
+  for (const category of orderedCategories) {
+    const categoryId = categories[category.key];
+    if (!categoryId) continue;
+    positions.push({ id: String(categoryId), position: position++ });
+
+    const orderedItems = discordChannelOrder
+      .map((key) => itemByKey.get(key))
+      .filter((item) => item && item.category === category.key);
+
+    for (const item of orderedItems) {
+      const channelId = channelIdsByKey[item.key];
+      if (!channelId) continue;
+      positions.push({
+        id: String(channelId),
+        position: position++,
+        parent_id: String(categoryId),
+        lock_permissions: false
+      });
+    }
+  }
+
+  const orphanItems = discordChannelOrder
+    .map((key) => itemByKey.get(key))
+    .filter((item) => item && (!categoryByKey.has(item.category) || !categories[item.category]));
+
+  for (const item of orphanItems) {
+    const channelId = channelIdsByKey[item.key];
+    if (!channelId) continue;
+    positions.push({ id: String(channelId), position: position++ });
+  }
+
+  if (!positions.length) return;
+  if (args.dryRun) {
+    console.log(`would reorder ${positions.length} Discord channels/categories`);
+    return;
+  }
+
+  await discordRequest(token, `/guilds/${guildId}/channels`, {
+    method: "PATCH",
+    body: JSON.stringify(positions)
+  });
+  console.log(`reordered ${positions.length} Discord channels/categories`);
+}
+
+async function orderKookChannels(token, channelIdsByKey, args) {
+  const itemByKey = new Map(kookChannels.map((item) => [item.key, item]));
+  const positions = kookChannelOrder
+    .map((key, index) => ({ key, index, channelId: channelIdsByKey[key], item: itemByKey.get(key) }))
+    .filter((item) => item.channelId);
+
+  if (!positions.length) return;
+  if (args.dryRun) {
+    console.log(`would reorder ${positions.length} KOOK channels`);
+    return;
+  }
+
+  let updated = 0;
+  for (const item of positions) {
+    const ok = await kookPatchChannelPosition(token, item.channelId, item.index, item.item);
+    if (ok) updated += 1;
+  }
+  console.log(`reorder KOOK channels requested: ${updated}/${positions.length}`);
 }
 
 function parseArgs(argv) {
@@ -579,6 +720,27 @@ async function kookPatchChannel(token, channelId, item) {
     });
   } catch (error) {
     console.warn(`warn update KOOK channel ${item.name}: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+async function kookPatchChannelPosition(token, channelId, position, item) {
+  if (!item) return false;
+  try {
+    await kookRequest(token, "/api/v3/channel/update", {
+      method: "POST",
+      body: JSON.stringify({
+        channel_id: channelId,
+        name: item.name,
+        topic: buildTopic(item),
+        position,
+        sort: position,
+        sorting: position
+      })
+    });
+    return true;
+  } catch (error) {
+    console.warn(`warn reorder KOOK channel=${channelId}: ${error instanceof Error ? error.message : error}`);
+    return false;
   }
 }
 
