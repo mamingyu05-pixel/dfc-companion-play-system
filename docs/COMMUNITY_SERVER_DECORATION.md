@@ -20,12 +20,31 @@ sudo docker compose up -d api-server admin-web nginx
 sudo docker compose run --rm api-server node /app/scripts/decorate-community-server.js --platform=both --dry-run
 ```
 
+## 预览清理旧频道
+
+旧的 KOOK / Discord 默认频道不会自动删除。需要先预览，确认只会删除无用旧频道后再正式清理：
+
+```bash
+sudo docker compose run --rm api-server node /app/scripts/decorate-community-server.js --platform=both --dry-run --cleanup-old
+```
+
 ## 正式装饰 Discord 和 KOOK
 
 ```bash
-sudo docker compose run --rm api-server node /app/scripts/decorate-community-server.js --platform=both
+sudo docker compose run --rm api-server node /app/scripts/decorate-community-server.js --platform=both --cleanup-old
 sudo docker compose restart api-server discord-bot kook-bot nginx
 ```
+
+脚本会尝试给不同频道写入权限：
+
+- 服务价目 / 店内导航 / 公告 / 活动 / 福利：公开只读
+- 客服接待 / 投诉 / 售后：公开可沟通
+- AI 派单 / 人工派单 / XP 接单语音：管理员和陪玩可见
+- 充值审核 / 提现审核 / 管理提醒：管理员可见
+- 考核频道 / 考核语音：管理员和考核相关身份可见
+- VIP 专属频道：管理员和 VIP / 高等级客户可见
+
+如果某些角色 ID 没有写进 `.env`，对应权限会跳过，需要先在 KOOK / Discord 创建身份组并填写环境变量。
 
 ## 只装饰 Discord
 

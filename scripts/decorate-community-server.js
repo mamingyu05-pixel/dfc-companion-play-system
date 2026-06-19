@@ -6,6 +6,42 @@ const DISCORD_API_BASE_URL = "https://discord.com/api/v10";
 const KOOK_API_BASE_URL = "https://www.kookapp.cn";
 const SITE_URL = "https://maycatplay.com/customer/";
 
+const discordPermissions = {
+  view: 1n << 10n,
+  send: 1n << 11n,
+  readHistory: 1n << 16n,
+  connect: 1n << 20n,
+  speak: 1n << 21n
+};
+
+const kookPermissions = {
+  view: 1 << 10,
+  send: 1 << 11,
+  readHistory: 1 << 16,
+  connect: 1 << 20,
+  speak: 1 << 21
+};
+
+const legacyChannelNames = [
+  "欢迎大厅",
+  "新人接待",
+  "入会申请",
+  "通知",
+  "公告信息",
+  "公告",
+  "交流区",
+  "游戏资讯",
+  "闲聊专区",
+  "随便聊聊",
+  "游戏开黑",
+  "游戏文字区",
+  "游戏频道1",
+  "游戏频道2",
+  "活动中心",
+  "活动大厅",
+  "活动语音"
+];
+
 const discordCategories = [
   { key: "welcome", name: "✦ 欢迎来到 May猫饼 ✦" },
   { key: "service", name: "☎ 客服接待大厅 ☎" },
@@ -175,11 +211,21 @@ async function decorateDiscord(env, args) {
   const channels = await discordRequest(token, `/guilds/${guildId}/channels`, { method: "GET" });
   const categories = {};
 
+  if (args.cleanupOld) {
+    await cleanupLegacyDiscordChannels(token, env, channels, args);
+  }
+
   for (const category of discordCategories) {
     const existing = findChannel(channels, category.name, 4);
-    const result = existing || (args.dryRun ? previewChannel(category.name, 4) : await discordCreateChannel(token, guildId, { name: category.name, type: 4 }));
+    const categoryBody = {
+      name: category.name,
+      type: 4,
+      permission_overwrites: buildDiscordPermissionOverwrites(env, guildId, category)
+    };
+    const result = existing || (args.dryRun ? previewChannel(category.name, 4) : await discordCreateChannel(token, guildId, categoryBody));
     categories[category.key] = result.id;
     pushIfCreated(channels, existing, result);
+    if (existing && !args.dryRun) await discordPatchChannel(token, result.id, categoryBody);
     console.log(`${existing ? "reuse" : args.dryRun ? "would create" : "create"} category ${category.name} -> ${result.id}`);
   }
 
@@ -190,7 +236,8 @@ async function decorateDiscord(env, args) {
       name: item.name,
       type: item.type ?? 0,
       parent_id: categories[item.category],
-      topic: item.type === 2 ? undefined : buildTopic(item)
+      topic: item.type === 2 ? undefined : buildTopic(item),
+      permission_overwrites: buildDiscordPermissionOverwrites(env, guildId, item)
     };
     const channel = existing || (args.dryRun ? previewChannel(item.name, body.type) : await discordCreateChannel(token, guildId, body));
     pushIfCreated(channels, existing, channel);
@@ -215,11 +262,16 @@ async function decorateKook(env, args) {
   const channels = await kookListChannels(token, guildId);
   const envOutput = {};
 
+  if (args.cleanupOld) {
+    await cleanupLegacyKookChannels(token, env, channels, args);
+  }
+
   for (const item of kookChannels) {
     const existing = findChannelByEnvOrName(channels, env, item, item.env, item.name, item.type);
     const channel = existing || (args.dryRun ? previewChannel(item.name, item.type) : await kookCreateChannel(token, guildId, item));
     pushIfCreated(channels, existing, channel);
     if (existing && !args.dryRun) await kookPatchChannel(token, channel.id, item);
+    if (!args.dryRun) await applyKookChannelPermissions(token, env, channel.id, item);
     if (item.env) envOutput[item.env] = channel.id;
     console.log(`${existing ? "update" : args.dryRun ? "would create" : "create"} ${item.name} -> ${channel.id}`);
     if (args.postGuides && item.guide && !args.dryRun) {
@@ -241,6 +293,7 @@ function parseArgs(argv) {
     platform: flags.get("platform") || "both",
     discordGuildId: flags.get("discord-guild"),
     kookGuildId: flags.get("kook-guild"),
+    cleanupOld: flags.has("cleanup-old"),
     postGuides: flags.has("post-guides"),
     dryRun: flags.has("dry-run")
   };
@@ -302,6 +355,172 @@ function printEnvOutput(platform, output) {
   }
 }
 
+async function cleanupLegacyDiscordChannels(token, env, channels, args) {
+  const currentNames = new Set([...discordCategories, ...discordTextChannels, ...discordVoiceChannels].map((item) => normalizeName(item.name)));
+  const envChannelIds = getConfiguredChannelIds(env, "DISCORD_");
+  const legacyNames = new Set(legacyChannelNames.map(normalizeName));
+  for (const channel of [...channels]) {
+    const normalized = normalizeName(channel.name);
+    if (!legacyNames.has(normalized)) continue;
+    if (currentNames.has(normalized)) continue;
+    if (envChannelIds.has(String(channel.id))) continue;
+    console.log(`${args.dryRun ? "would delete" : "delete"} legacy Discord channel ${channel.name} -> ${channel.id}`);
+    if (!args.dryRun) {
+      await discordDeleteChannel(token, channel.id);
+      const index = channels.findIndex((item) => String(item.id) === String(channel.id));
+      if (index !== -1) channels.splice(index, 1);
+    }
+  }
+}
+
+async function cleanupLegacyKookChannels(token, env, channels, args) {
+  const currentNames = new Set(kookChannels.map((item) => normalizeName(item.name)));
+  const envChannelIds = getConfiguredChannelIds(env, "KOOK_");
+  const legacyNames = new Set(legacyChannelNames.map(normalizeName));
+  for (const channel of [...channels]) {
+    const normalized = normalizeName(channel.name);
+    if (!legacyNames.has(normalized)) continue;
+    if (currentNames.has(normalized)) continue;
+    if (envChannelIds.has(String(channel.id))) continue;
+    console.log(`${args.dryRun ? "would delete" : "delete"} legacy KOOK channel ${channel.name} -> ${channel.id}`);
+    if (!args.dryRun) {
+      await kookDeleteChannel(token, channel.id);
+      const index = channels.findIndex((item) => String(item.id) === String(channel.id));
+      if (index !== -1) channels.splice(index, 1);
+    }
+  }
+}
+
+function getConfiguredChannelIds(env, prefix) {
+  return new Set(
+    Object.entries(env)
+      .filter(([key, value]) => key.startsWith(prefix) && key.endsWith("_CHANNEL_ID") && value)
+      .map(([, value]) => String(value))
+  );
+}
+
+function getAccessPolicy(item) {
+  const key = item.key || "";
+  const category = item.category || "";
+  if (["recharge", "withdrawal", "admin"].includes(key)) return "staff";
+  if (["examNotice", "examTag"].includes(key) || category === "assessment") return "assessment";
+  if (["dispatch", "aiDispatch"].includes(key) || category === "xp") return "companion";
+  if (category === "vip" || key === "vipSupport") return "vip";
+  if (["support", "support2", "complaint", "voiceWaiting", "afterSales", "feedback"].includes(key)) return "support";
+  if (["gameChat", "tag", "rechargeCode"].includes(key)) return "public-chat";
+  if (["gift", "reviews", "pricing", "nav", "announcement", "activity", "benefits", "penalty", "ranking"].includes(key)) return "public-readonly";
+  return "public-readonly";
+}
+
+function buildDiscordPermissionOverwrites(env, guildId, item) {
+  const access = getAccessPolicy(item);
+  const isVoice = Number(item.type) === 2 || isVoiceLikeKey(item.key);
+  const roleGroups = getDiscordRoleGroups(env);
+  const everyoneId = String(guildId);
+  const read = discordPermissions.view | discordPermissions.readHistory;
+  const write = read | discordPermissions.send;
+  const voice = write | discordPermissions.connect | discordPermissions.speak;
+  const full = isVoice ? voice : write;
+  const overwrites = new Map();
+
+  const setRole = (id, allow, deny = 0n) => {
+    if (!id) return;
+    overwrites.set(String(id), { id: String(id), type: 0, allow: String(allow), deny: String(deny) });
+  };
+  const denyEveryone = () => setRole(everyoneId, 0n, discordPermissions.view | discordPermissions.connect | discordPermissions.speak);
+  const allowRoles = (ids, allow = full) => ids.forEach((id) => setRole(id, allow));
+
+  if (access === "public-readonly") {
+    setRole(everyoneId, read, discordPermissions.send);
+  } else if (access === "public-chat" || access === "support") {
+    setRole(everyoneId, isVoice ? voice : write);
+    allowRoles(roleGroups.staff);
+  } else if (access === "staff") {
+    denyEveryone();
+    allowRoles(roleGroups.staff);
+  } else if (access === "assessment") {
+    denyEveryone();
+    allowRoles([...roleGroups.staff, ...roleGroups.assessment]);
+  } else if (access === "companion") {
+    denyEveryone();
+    allowRoles([...roleGroups.staff, ...roleGroups.companion]);
+  } else if (access === "vip") {
+    denyEveryone();
+    allowRoles([...roleGroups.staff, ...roleGroups.vip]);
+  }
+
+  return Array.from(overwrites.values());
+}
+
+function getDiscordRoleGroups(env) {
+  const customerLevelRoles = Array.from({ length: 15 }, (_, index) => env[`DISCORD_CUSTOMER_LEVEL_${index + 1}_ROLE_ID`]).filter(Boolean);
+  return {
+    staff: uniqueValues([env.DISCORD_SUPER_ADMIN_ROLE_ID, env.DISCORD_ADMIN_ROLE_ID, env.DISCORD_SUPPORT_ROLE_ID]),
+    companion: uniqueValues([env.DISCORD_COMPANION_ROLE_ID, env.DISCORD_CERTIFIED_COMPANION_ROLE_ID]),
+    assessment: uniqueValues([env.DISCORD_COMPANION_APPLICANT_ROLE_ID, env.DISCORD_APPLICANT_ROLE_ID, env.DISCORD_COMPANION_ROLE_ID]),
+    vip: uniqueValues([
+      env.DISCORD_CUSTOMER_SPECIAL_NEON_ROLE_ID,
+      env.DISCORD_CUSTOMER_SPECIAL_HALL_ROLE_ID,
+      env.DISCORD_CUSTOMER_LEVEL_12_ROLE_ID,
+      env.DISCORD_CUSTOMER_LEVEL_13_ROLE_ID,
+      env.DISCORD_CUSTOMER_LEVEL_14_ROLE_ID,
+      env.DISCORD_CUSTOMER_LEVEL_15_ROLE_ID,
+      ...customerLevelRoles.slice(11)
+    ])
+  };
+}
+
+async function applyKookChannelPermissions(token, env, channelId, item) {
+  const access = getAccessPolicy(item);
+  if (access === "public-readonly" || access === "public-chat" || access === "support") return;
+
+  const roleGroups = getKookRoleGroups(env);
+  const isVoice = Number(item.type) === 2 || isVoiceLikeKey(item.key);
+  const read = kookPermissions.view | kookPermissions.readHistory;
+  const write = read | kookPermissions.send;
+  const voice = write | kookPermissions.connect | kookPermissions.speak;
+  const allow = isVoice ? voice : write;
+  const deny = kookPermissions.view | kookPermissions.connect | kookPermissions.speak;
+  const everyoneRoleId = env.KOOK_EVERYONE_ROLE_ID || "0";
+  const allowRoleIds =
+    access === "staff"
+      ? roleGroups.staff
+      : access === "assessment"
+        ? [...roleGroups.staff, ...roleGroups.assessment]
+        : access === "companion"
+          ? [...roleGroups.staff, ...roleGroups.companion]
+          : [...roleGroups.staff, ...roleGroups.vip];
+
+  await kookUpsertChannelRolePermission(token, channelId, everyoneRoleId, 0, deny);
+  for (const roleId of uniqueValues(allowRoleIds)) {
+    await kookUpsertChannelRolePermission(token, channelId, roleId, allow, 0);
+  }
+}
+
+function getKookRoleGroups(env) {
+  return {
+    staff: uniqueValues([env.KOOK_SUPER_ADMIN_ROLE_ID, env.KOOK_ADMIN_ROLE_ID, env.KOOK_SUPPORT_ROLE_ID]),
+    companion: uniqueValues([env.KOOK_COMPANION_ROLE_ID, env.KOOK_CERTIFIED_COMPANION_ROLE_ID]),
+    assessment: uniqueValues([env.KOOK_COMPANION_APPLICANT_ROLE_ID, env.KOOK_APPLICANT_ROLE_ID, env.KOOK_COMPANION_ROLE_ID]),
+    vip: uniqueValues([
+      env.KOOK_CUSTOMER_SPECIAL_NEON_ROLE_ID,
+      env.KOOK_CUSTOMER_SPECIAL_HALL_ROLE_ID,
+      env.KOOK_CUSTOMER_LEVEL_12_ROLE_ID,
+      env.KOOK_CUSTOMER_LEVEL_13_ROLE_ID,
+      env.KOOK_CUSTOMER_LEVEL_14_ROLE_ID,
+      env.KOOK_CUSTOMER_LEVEL_15_ROLE_ID
+    ])
+  };
+}
+
+function isVoiceLikeKey(key) {
+  return String(key || "").includes("voice") || String(key || "").includes("assessment") || String(key || "").includes("vip") || String(key || "").includes("xp");
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))];
+}
+
 function toChineseNumber(value) {
   return ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"][value] || String(value);
 }
@@ -312,6 +531,10 @@ async function discordCreateChannel(token, guildId, body) {
 
 async function discordPatchChannel(token, channelId, body) {
   return discordRequest(token, `/channels/${channelId}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+async function discordDeleteChannel(token, channelId) {
+  return discordRequest(token, `/channels/${channelId}`, { method: "DELETE" });
 }
 
 async function discordPostMessage(token, channelId, content) {
@@ -356,6 +579,37 @@ async function kookPatchChannel(token, channelId, item) {
     });
   } catch (error) {
     console.warn(`warn update KOOK channel ${item.name}: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+async function kookDeleteChannel(token, channelId) {
+  return kookRequest(token, "/api/v3/channel/delete", {
+    method: "POST",
+    body: JSON.stringify({ channel_id: channelId })
+  });
+}
+
+async function kookUpsertChannelRolePermission(token, channelId, roleId, allow, deny) {
+  if (!roleId) return;
+  const body = { channel_id: channelId, type: "role_id", value: roleId, allow, deny };
+  try {
+    await kookRequest(token, "/api/v3/channel-role/create", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+  } catch (createError) {
+    try {
+      await kookRequest(token, "/api/v3/channel-role/update", {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+    } catch (updateError) {
+      console.warn(
+        `warn KOOK permission channel=${channelId} role=${roleId}: ${
+          updateError instanceof Error ? updateError.message : updateError
+        }`
+      );
+    }
   }
 }
 
