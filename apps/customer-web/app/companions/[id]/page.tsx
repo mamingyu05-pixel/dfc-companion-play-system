@@ -20,11 +20,28 @@ type ApiCompanion = {
   pricePerHour: string;
   voicePreference: string;
   bio?: string | null;
+  externalAccounts?: ExternalAccount[];
+};
+
+type ExternalAccount = {
+  platform: "DISCORD" | "KOOK";
+  externalUserId: string;
+  displayName?: string | null;
+};
+
+type PublicConfig = {
+  support?: {
+    discordUrl?: string | null;
+    kookUrl?: string | null;
+    voiceTrialDiscordUrl?: string | null;
+    voiceTrialKookUrl?: string | null;
+  };
 };
 
 export default function CompanionDetailPage() {
   const params = useParams<{ id: string }>();
   const [companion, setCompanion] = useState<ApiCompanion | null>(null);
+  const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -38,6 +55,16 @@ export default function CompanionDetailPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "无法加载陪玩资料"));
   }, [params.id]);
+
+  useEffect(() => {
+    void fetch("/api/auth/public-config")
+      .then(async (response) => {
+        if (!response.ok) return {};
+        return (await response.json()) as PublicConfig;
+      })
+      .then(setPublicConfig)
+      .catch(() => setPublicConfig({}));
+  }, []);
 
   if (error) {
     return (
@@ -64,6 +91,8 @@ export default function CompanionDetailPage() {
   const canVoice = companion.voicePreference !== "TEXT_ONLY";
   const companionGames = getCompanionGames(companion);
   const primaryGame = companionGames[0] ?? companion.game;
+  const trialHref = companionTrialHref(companion, publicConfig);
+  const trialIsExternal = /^https?:\/\//.test(trialHref);
 
   return (
     <CustomerShell>
@@ -117,7 +146,12 @@ export default function CompanionDetailPage() {
             <Link href={`/order?companion=${companion.id}&game=${primaryGame}`} className="maycat-button mt-5 block px-4 py-3 text-center text-sm font-black">
               立即下单
             </Link>
-            <Link href={`/order?companion=${companion.id}&game=${primaryGame}&trial=1`} className="maycat-button-secondary mt-3 block px-4 py-3 text-center text-sm font-black">
+            <Link
+              href={trialHref}
+              target={trialIsExternal ? "_blank" : undefined}
+              rel={trialIsExternal ? "noreferrer" : undefined}
+              className="maycat-button-secondary mt-3 block px-4 py-3 text-center text-sm font-black"
+            >
               申请试音
             </Link>
           </aside>
@@ -221,6 +255,20 @@ function CompanionDetailSkeleton() {
       </div>
     </div>
   );
+}
+
+function companionTrialPlatform(companion: ApiCompanion): "DISCORD" | "KOOK" | null {
+  const platforms = companion.externalAccounts?.map((account) => account.platform) ?? [];
+  if (platforms.includes("DISCORD")) return "DISCORD";
+  if (platforms.includes("KOOK")) return "KOOK";
+  return null;
+}
+
+function companionTrialHref(companion: ApiCompanion, publicConfig: PublicConfig) {
+  const platform = companionTrialPlatform(companion);
+  if (platform === "DISCORD") return publicConfig.support?.voiceTrialDiscordUrl || publicConfig.support?.discordUrl || "https://discord.gg/dX5prAZMPu";
+  if (platform === "KOOK") return publicConfig.support?.voiceTrialKookUrl || publicConfig.support?.kookUrl || "https://kook.vip/i0o2qA";
+  return "/support";
 }
 
 function gameName(code: string) {

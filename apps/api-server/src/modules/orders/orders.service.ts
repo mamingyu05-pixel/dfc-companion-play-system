@@ -33,7 +33,20 @@ export class OrdersService {
       },
       orderBy: [{ onlineStatus: "asc" }, { updatedAt: "desc" }],
       include: {
-        user: { select: { id: true, email: true, displayName: true } }
+        user: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            externalAccounts: {
+              select: {
+                platform: true,
+                externalUserId: true,
+                displayName: true
+              }
+            }
+          }
+        }
       }
     });
 
@@ -41,6 +54,11 @@ export class OrdersService {
       id: profile.userId,
       email: profile.user.email,
       displayName: profile.user.displayName,
+      externalAccounts: profile.user.externalAccounts.map((account) => ({
+        platform: account.platform,
+        externalUserId: account.externalUserId,
+        displayName: account.displayName
+      })),
       nickname: profile.nickname,
       avatarUrl: profile.avatarUrl,
       photoUrls: profile.photoUrls,

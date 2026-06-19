@@ -24,6 +24,8 @@ type Companion = {
   rating: string;
   orders: number;
   accent: string;
+  trialHref?: string;
+  trialPlatform?: "DISCORD" | "KOOK" | null;
 };
 
 export function CustomerShell({ children }: { children: ReactNode }) {
@@ -102,6 +104,8 @@ export function StatCard({ label, value, hint }: { label: string; value: string;
 
 export function CompanionCard({ companion }: { companion: Companion }) {
   const isRecommended = companion.accent === "gold";
+  const trialHref = companion.trialHref || "/support";
+  const trialIsExternal = /^https?:\/\//.test(trialHref);
 
   return (
     <article className="maycat-card group p-4 transition duration-200 hover:-translate-y-0.5">
@@ -165,7 +169,7 @@ export function CompanionCard({ companion }: { companion: Companion }) {
         <Link href={`/companions/${companion.id}`} className="maycat-button-secondary px-3 py-2 text-center text-sm font-semibold">
           详情
         </Link>
-        <Link href={`/order?companion=${companion.id}&trial=1`} className="maycat-button-secondary px-3 py-2 text-center text-sm font-semibold">
+        <Link href={trialHref} target={trialIsExternal ? "_blank" : undefined} rel={trialIsExternal ? "noreferrer" : undefined} className="maycat-button-secondary px-3 py-2 text-center text-sm font-semibold">
           试音
         </Link>
         <Link href={`/order?companion=${companion.id}`} className="maycat-button px-3 py-2 text-center text-sm font-black">

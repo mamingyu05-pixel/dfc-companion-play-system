@@ -41,7 +41,7 @@ export default function OrderPage() {
   const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [assignmentType, setAssignmentType] = useState<"DIRECT" | "MATCH">("DIRECT");
   const [companionId, setCompanionId] = useState("");
-  const [mode, setMode] = useState("排位/上分");
+  const [mode, setMode] = useState("娱乐陪玩");
   const [hours, setHours] = useState("2");
   const [notes, setNotes] = useState("");
   const [voiceTrialRequested, setVoiceTrialRequested] = useState(true);
@@ -49,11 +49,11 @@ export default function OrderPage() {
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function loadData(selectedGame = game) {
+  async function loadData() {
     const token = localStorage.getItem("dfc_customer_token");
     if (!token) return;
     const [companionsResponse, walletResponse] = await Promise.all([
-      fetch(`/api/orders/companions?game=${encodeURIComponent(selectedGame)}`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch("/api/orders/companions", { headers: { Authorization: `Bearer ${token}` } }),
       fetch("/api/wallet/customer-summary", { headers: { Authorization: `Bearer ${token}` } })
     ]);
     if (!companionsResponse.ok || !walletResponse.ok) throw new Error("无法加载下单数据");
@@ -61,7 +61,10 @@ export default function OrderPage() {
     const requestedCompanionId = new URLSearchParams(window.location.search).get("companion");
     const requestedCompanion = companionData.find((companion) => companion.id === requestedCompanionId);
     setCompanions(companionData);
-    setCompanionId(requestedCompanion?.id ?? companionData[0]?.id ?? "");
+    if (requestedCompanion) {
+      setCompanionId(requestedCompanion.id);
+      setGame(getCompanionGames(requestedCompanion)[0] ?? requestedCompanion.game);
+    }
     setWallet((await walletResponse.json()) as WalletSummary);
   }
 
@@ -69,14 +72,9 @@ export default function OrderPage() {
     const urlGame = new URLSearchParams(window.location.search).get("game");
     if (urlGame && games.some((item) => item.code === urlGame)) {
       setGame(urlGame);
-      return;
     }
-    void loadData(game).catch(() => setError("无法加载真实下单数据，请刷新页面"));
+    void loadData().catch(() => setError("无法加载真实下单数据，请刷新页面"));
   }, []);
-
-  useEffect(() => {
-    void loadData(game).catch(() => setError("无法加载真实下单数据，请刷新页面"));
-  }, [game]);
 
   useEffect(() => {
     void fetch("/api/auth/public-config")
@@ -88,8 +86,33 @@ export default function OrderPage() {
       .catch(() => setPublicConfig({}));
   }, []);
 
+  const gameOptions = useMemo(
+    () => games.filter((item) => companions.some((companion) => getCompanionGames(companion).includes(item.code))),
+    [companions]
+  );
+  const visibleGameOptions = gameOptions.length ? gameOptions : games.filter((item) => item.code === game);
+  const availableCompanions = useMemo(
+    () => companions.filter((companion) => getCompanionGames(companion).includes(game)),
+    [companions, game]
+  );
+
+  useEffect(() => {
+    if (!companions.length) return;
+    if (!availableCompanions.length && gameOptions[0] && game !== gameOptions[0].code) {
+      setGame(gameOptions[0].code);
+      return;
+    }
+    if (assignmentType !== "DIRECT") return;
+    if (availableCompanions.length && !availableCompanions.some((companion) => companion.id === companionId)) {
+      setCompanionId(availableCompanions[0].id);
+    }
+    if (!availableCompanions.length && companionId) {
+      setCompanionId("");
+    }
+  }, [assignmentType, availableCompanions, companionId, companions.length, game, gameOptions]);
+
   const selectedGame = games.find((item) => item.code === game);
-  const selectedCompanion = companions.find((item) => item.id === companionId);
+  const selectedCompanion = availableCompanions.find((item) => item.id === companionId);
   const platformMatchUnitPrice = Number(publicConfig.pricing?.platformMatchUnitPrice ?? 0);
   const inferredPriceTier = inferPriceTierFromMode(mode);
   const unitPrice = assignmentType === "MATCH" ? platformMatchUnitPrice : Number(selectedCompanion ? companionPriceForTier(selectedCompanion, inferredPriceTier) : 0);
@@ -133,7 +156,7 @@ export default function OrderPage() {
         throw new Error(toFriendlyError(message));
       }
       setStatus(`下单成功：${data.orderNo ?? ""}。订单已进入待派单/待接单流程。`);
-      await loadData(game);
+      await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "下单失败，请稍后重试");
     } finally {
@@ -147,11 +170,9 @@ export default function OrderPage() {
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-end">
           <div>
             <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Order Console</div>
-            <h1 className="maycat-text-glow mt-4 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">
-              提交订单，进入派单队列。
-            </h1>
+            <h1 className="maycat-text-glow mt-4 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">提交订单，进入派单队列。</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-dfc-subtext md:text-base">
-              选择游戏和服务方式，写清楚语音、段位、时间需求。金额由后端计算并冻结余额，管理员确认后进入派单或接单流程。
+              只展示当前已上架陪玩实际可接的游戏。选择游戏、服务方式和时长后，金额由后端按模式和后台价格配置计算。
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
@@ -167,7 +188,7 @@ export default function OrderPage() {
           <div className="flex flex-col gap-2 border-b border-cyan-300/15 pb-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-lg font-black text-white">订单信息</h2>
-              <p className="mt-1 text-xs leading-5 text-dfc-muted">信息越明确，管理员越容易快速派到合适陪玩。</p>
+              <p className="mt-1 text-xs leading-5 text-dfc-muted">信息越明确，客服越容易快速派到合适陪玩。</p>
             </div>
             <Link href="/companions" className="text-sm font-semibold text-cyan-300 hover:text-cyan-100">
               返回陪玩大厅
@@ -177,7 +198,7 @@ export default function OrderPage() {
           <label className="mt-4 block">
             <span className="text-sm font-semibold text-cyan-50/80">游戏</span>
             <select value={game} onChange={(event) => setGame(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm">
-              {games.map((item) => (
+              {visibleGameOptions.map((item) => (
                 <option key={item.code} value={item.code}>
                   {item.name} / {item.category}
                 </option>
@@ -189,21 +210,21 @@ export default function OrderPage() {
             <label className={`maycat-choice ${assignmentType === "DIRECT" ? "maycat-choice-active" : ""}`}>
               <input name="assignmentType" type="radio" checked={assignmentType === "DIRECT"} onChange={() => setAssignmentType("DIRECT")} className="mt-1 accent-cyan-300" />
               <span className="text-sm font-black text-white">指定陪玩</span>
-              <p className="mt-1 text-xs leading-5 text-dfc-subtext">选择具体陪玩下单，管理员确认后派给该陪玩。</p>
+              <p className="mt-1 text-xs leading-5 text-dfc-subtext">选择具体陪玩下单，客服确认后派给该陪玩。</p>
             </label>
             <label className={`maycat-choice ${assignmentType === "MATCH" ? "maycat-choice-active" : ""}`}>
               <input name="assignmentType" type="radio" checked={assignmentType === "MATCH"} onChange={() => setAssignmentType("MATCH")} className="mt-1 accent-cyan-300" />
               <span className="text-sm font-black text-white">平台人工挑人</span>
-              <p className="mt-1 text-xs leading-5 text-dfc-subtext">没选好陪玩时提交需求，管理员按游戏、语音、预算人工匹配。</p>
+              <p className="mt-1 text-xs leading-5 text-dfc-subtext">没选好陪玩时提交需求，客服按游戏、语音和预算匹配。</p>
             </label>
           </div>
 
           {assignmentType === "DIRECT" ? (
             <label className="mt-4 block">
               <span className="text-sm font-semibold text-cyan-50/80">陪玩</span>
-              {companions.length ? (
+              {availableCompanions.length ? (
                 <select value={companionId} onChange={(event) => setCompanionId(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm">
-                  {companions.map((companion) => (
+                  {availableCompanions.map((companion) => (
                     <option key={companion.id} value={companion.id}>
                       {companion.nickname} / {gameCountLabel(companion)} / {companion.deltaForceRank} / {priceTierLabel(inferredPriceTier)} ¥{formatMoney(companionPriceForTier(companion, inferredPriceTier))}/小时
                     </option>
@@ -225,7 +246,7 @@ export default function OrderPage() {
 
           <label className="mt-4 block">
             <span className="text-sm font-semibold text-cyan-50/80">服务模式</span>
-            <input value={mode} onChange={(event) => setMode(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm" placeholder="例如：排位上分、娱乐陪玩、教学复盘、烽火地带" />
+            <input value={mode} onChange={(event) => setMode(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm" placeholder="例如：娱乐陪玩、排位上分、教学复盘、烽火地带" />
           </label>
 
           <div className="mt-4 rounded-dfc-control border border-cyan-300/20 bg-cyan-300/10 px-3 py-3 text-sm leading-6 text-cyan-50/85">
@@ -259,10 +280,8 @@ export default function OrderPage() {
           <label className="mt-4 flex gap-3 rounded-dfc-control border border-cyan-300/20 bg-[#07111f]/70 p-3">
             <input type="checkbox" checked={voiceTrialRequested} onChange={(event) => setVoiceTrialRequested(event.target.checked)} className="mt-1 accent-cyan-300" />
             <span>
-              <span className="block text-sm font-black text-white">申请进入语音频道试音</span>
-              <span className="mt-1 block text-xs leading-5 text-dfc-subtext">
-                管理员派单后可创建临时 Discord/KOOK 语音房。试音只确认沟通体验，不代表订单开始或收益结算。
-              </span>
+              <span className="block text-sm font-black text-white">订单中需要试音</span>
+              <span className="mt-1 block text-xs leading-5 text-dfc-subtext">提交订单后由客服安排 Discord/KOOK 语音试音。这里只记录需求，不会把你跳出当前页面。</span>
             </span>
           </label>
 
@@ -344,7 +363,7 @@ function priceTierLabel(priceTier: ServicePriceTier) {
 
 function inferPriceTierFromMode(mode: string): ServicePriceTier {
   const normalized = mode.toLowerCase();
-  if (/高排|高端|巅峰|大师|宗师|王者|超凡|神话|高分|high|premium/.test(normalized)) return "HIGH_RANKED";
+  if (/高排|高端|巅峰|大师|宗师|王者|超凡|神话|高分|高等级|high|premium|master|challenger|predator|radiant|immortal/.test(normalized)) return "HIGH_RANKED";
   if (/排位|上分|rank|ranked|competitive|天梯/.test(normalized)) return "RANKED";
   if (/娱乐|休闲|陪聊|随便|casual|fun/.test(normalized)) return "ENTERTAINMENT";
   return "CUSTOM";
@@ -357,8 +376,12 @@ function companionPriceForTier(companion: CompanionOption, priceTier: ServicePri
   return companion.pricePerHour;
 }
 
+function getCompanionGames(companion: CompanionOption) {
+  return companion.games?.length ? companion.games : [companion.game];
+}
+
 function gameCountLabel(companion: CompanionOption) {
-  const count = companion.games?.length ?? 1;
+  const count = getCompanionGames(companion).length;
   return count > 1 ? `${count} 个游戏` : "单游戏";
 }
 

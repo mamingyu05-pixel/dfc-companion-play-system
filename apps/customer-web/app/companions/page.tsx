@@ -16,6 +16,12 @@ const filters = [
 
 type FilterId = (typeof filters)[number]["id"];
 
+type ExternalAccount = {
+  platform: "DISCORD" | "KOOK";
+  externalUserId: string;
+  displayName?: string | null;
+};
+
 type ApiCompanion = {
   id: string;
   nickname: string;
@@ -30,10 +36,21 @@ type ApiCompanion = {
   pricePerHour: string;
   voicePreference: string;
   bio?: string | null;
+  externalAccounts?: ExternalAccount[];
+};
+
+type PublicConfig = {
+  support?: {
+    discordUrl?: string | null;
+    kookUrl?: string | null;
+    voiceTrialDiscordUrl?: string | null;
+    voiceTrialKookUrl?: string | null;
+  };
 };
 
 export default function CompanionsPage() {
   const [companions, setCompanions] = useState<ApiCompanion[]>([]);
+  const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -55,6 +72,13 @@ export default function CompanionsPage() {
 
   useEffect(() => {
     void loadCompanions();
+    void fetch("/api/auth/public-config")
+      .then(async (response) => {
+        if (!response.ok) return {};
+        return (await response.json()) as PublicConfig;
+      })
+      .then(setPublicConfig)
+      .catch(() => setPublicConfig({}));
   }, []);
 
   const onlineCount = companions.filter((companion) => companion.onlineStatus === "ONLINE").length;
@@ -167,14 +191,16 @@ export default function CompanionsPage() {
           </div>
         ) : null}
         {!isLoading && !error && filteredCompanions.map((companion) => (
-          <CompanionCard key={companion.id} companion={toCardCompanion(companion)} />
+          <CompanionCard key={companion.id} companion={toCardCompanion(companion, publicConfig)} />
         ))}
       </section>
     </CustomerShell>
   );
 }
 
-function toCardCompanion(companion: ApiCompanion) {
+function toCardCompanion(companion: ApiCompanion, publicConfig: PublicConfig) {
+  const trialPlatform = companionTrialPlatform(companion);
+
   return {
     id: companion.id,
     nickname: companion.nickname,
@@ -193,8 +219,24 @@ function toCardCompanion(companion: ApiCompanion) {
     intro: companion.bio || "该陪玩资料已通过后台上架，具体服务内容以下单沟通为准。",
     rating: "新陪玩",
     orders: 0,
-    accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue"
+    accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue",
+    trialHref: companionTrialHref(companion, publicConfig),
+    trialPlatform
   };
+}
+
+function companionTrialPlatform(companion: ApiCompanion): "DISCORD" | "KOOK" | null {
+  const platforms = companion.externalAccounts?.map((account) => account.platform) ?? [];
+  if (platforms.includes("DISCORD")) return "DISCORD";
+  if (platforms.includes("KOOK")) return "KOOK";
+  return null;
+}
+
+function companionTrialHref(companion: ApiCompanion, publicConfig: PublicConfig) {
+  const platform = companionTrialPlatform(companion);
+  if (platform === "DISCORD") return publicConfig.support?.voiceTrialDiscordUrl || publicConfig.support?.discordUrl || "https://discord.gg/dX5prAZMPu";
+  if (platform === "KOOK") return publicConfig.support?.voiceTrialKookUrl || publicConfig.support?.kookUrl || "https://kook.vip/i0o2qA";
+  return "/support";
 }
 
 function gameName(code: string) {

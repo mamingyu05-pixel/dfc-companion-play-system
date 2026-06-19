@@ -506,6 +506,17 @@ export class AuthService {
   }
 
   getPublicConfig() {
+    const discordTrialUrl =
+      process.env.DISCORD_VOICE_WAITING_URL ||
+      (process.env.DISCORD_GUILD_ID && process.env.DISCORD_VOICE_WAITING_CHANNEL_ID
+        ? `https://discord.com/channels/${process.env.DISCORD_GUILD_ID}/${process.env.DISCORD_VOICE_WAITING_CHANNEL_ID}`
+        : process.env.SUPPORT_DISCORD_URL || "https://discord.gg/dX5prAZMPu");
+    const kookTrialUrl =
+      process.env.KOOK_VOICE_WAITING_URL ||
+      (process.env.KOOK_GUILD_ID && process.env.KOOK_VOICE_WAITING_CHANNEL_ID
+        ? `https://www.kookapp.cn/app/channels/${process.env.KOOK_GUILD_ID}/${process.env.KOOK_VOICE_WAITING_CHANNEL_ID}`
+        : process.env.SUPPORT_KOOK_URL || "https://kook.vip/i0o2qA");
+
     return {
       pricing: {
         platformMatchUnitPrice: process.env.PLATFORM_MATCH_UNIT_PRICE || null
@@ -513,6 +524,8 @@ export class AuthService {
       support: {
         discordUrl: process.env.SUPPORT_DISCORD_URL || "https://discord.gg/dX5prAZMPu",
         kookUrl: process.env.SUPPORT_KOOK_URL || "https://kook.vip/i0o2qA",
+        voiceTrialDiscordUrl: discordTrialUrl,
+        voiceTrialKookUrl: kookTrialUrl,
         wechatId: process.env.SUPPORT_WECHAT_ID || null,
         wechatQrUrl: process.env.SUPPORT_WECHAT_QR_URL || null
       }
