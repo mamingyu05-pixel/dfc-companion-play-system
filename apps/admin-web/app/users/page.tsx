@@ -304,7 +304,8 @@ export default function UsersPage() {
   }
 
   const normalizedSearch = normalizeSearchValue(search);
-  const rankedUsers = useMemo(() => (normalizedSearch ? rankUsersBySearch(users, normalizedSearch) : users), [users, normalizedSearch]);
+  const visibleUsers = useMemo(() => users.filter((user) => !isMergedPlatformPlaceholderUser(user)), [users]);
+  const rankedUsers = useMemo(() => (normalizedSearch ? rankUsersBySearch(visibleUsers, normalizedSearch) : visibleUsers), [visibleUsers, normalizedSearch]);
   const filteredUsers = rankedUsers;
   const customerOptions = useMemo(() => rankedUsers.filter((user) => user.status === "ACTIVE" && Boolean(user.wallet)), [rankedUsers]);
   const companionCandidateOptions = rankedUsers.filter(
@@ -321,12 +322,12 @@ export default function UsersPage() {
   }, [normalizedSearch, customerOptions, selectedCustomerId]);
 
   const stats = useMemo(() => {
-    const customers = users.filter((user) => user.role === "CUSTOMER").length;
-    const companions = users.filter((user) => Boolean(user.companionProfile)).length;
-    const admins = users.filter((user) => user.role === "ADMIN" || user.role === "SUPER_ADMIN").length;
-    const banned = users.filter((user) => user.status === "BANNED").length;
+    const customers = visibleUsers.filter((user) => user.role === "CUSTOMER").length;
+    const companions = visibleUsers.filter((user) => Boolean(user.companionProfile)).length;
+    const admins = visibleUsers.filter((user) => user.role === "ADMIN" || user.role === "SUPER_ADMIN").length;
+    const banned = visibleUsers.filter((user) => user.status === "BANNED").length;
     return { customers, companions, admins, banned };
-  }, [users]);
+  }, [visibleUsers]);
 
   const rows = filteredUsers.map((user) => [
     shortId(user.id),
@@ -503,7 +504,7 @@ export default function UsersPage() {
           <div>
             <h2 className="text-base font-black text-white">用户列表</h2>
             <p className="mt-1 text-xs text-dfc-muted">
-              当前显示 {filteredUsers.length} / {users.length} 个账号。列表区域固定高度滚动，避免用户多时页面过长。
+              当前显示 {filteredUsers.length} / {visibleUsers.length} 个账号。列表区域固定高度滚动，避免用户多时页面过长。
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 md:w-auto md:min-w-[420px] md:flex-row md:items-center">
@@ -770,6 +771,10 @@ function isValidExternalAccount(account: AdminUser["externalAccounts"][number]) 
 
 function hasInvalidExternalAccount(user: AdminUser) {
   return user.externalAccounts.some((account) => !isValidExternalAccount(account));
+}
+
+function isMergedPlatformPlaceholderUser(user: AdminUser) {
+  return user.status === "BANNED" && user.email.endsWith("@platform.maycatplay.local") && user.displayName.startsWith("Merged platform placeholder ");
 }
 
 function userOptionLabel(user: AdminUser) {

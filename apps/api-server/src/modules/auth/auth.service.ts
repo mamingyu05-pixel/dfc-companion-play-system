@@ -9,6 +9,7 @@ import { JwtPayload } from "./auth.types";
 import { normalizeDisplayNameKey } from "./display-name.util";
 import { isValidEmail, normalizeEmail } from "./email.util";
 import { createPasswordHash, verifyPassword } from "./password.util";
+import { migrateSafePlatformPlaceholderAccount } from "./platform-account-merge.util";
 
 type Portal = "customer" | "companion" | "admin";
 type OAuthPortal = "customer" | "companion";
@@ -604,29 +605,35 @@ export class AuthService {
         },
         select: { userId: true }
       });
-      if (existingExternal && existingExternal.userId !== binding.userId) {
-        throw new BadRequestException("这个平台账号已经绑定其他网站账号");
-      }
+      const migratedAccount = existingExternal && existingExternal.userId !== binding.userId
+        ? await migrateSafePlatformPlaceholderAccount({
+            tx,
+            platform,
+            externalUserId,
+            targetUserId: binding.userId,
+            displayName: body.displayName
+          })
+        : null;
 
-      const account = await tx.userExternalAccount.upsert({
-        where: {
-          userId_platform: {
+      const account = migratedAccount?.account ?? (await tx.userExternalAccount.upsert({
+          where: {
+            userId_platform: {
+              userId: binding.userId,
+              platform
+            }
+          },
+          update: {
+            externalUserId,
+            displayName: sanitizePlatformDisplayName(body.displayName)
+          },
+          create: {
             userId: binding.userId,
-            platform
-          }
-        },
-        update: {
-          externalUserId,
-          displayName: sanitizePlatformDisplayName(body.displayName)
-        },
-        create: {
-          userId: binding.userId,
-          platform,
-          externalUserId,
-          displayName: sanitizePlatformDisplayName(body.displayName)
-        },
-        select: { id: true, platform: true, externalUserId: true, displayName: true }
-      });
+            platform,
+            externalUserId,
+            displayName: sanitizePlatformDisplayName(body.displayName)
+          },
+          select: { id: true, platform: true, externalUserId: true, displayName: true }
+        }));
 
       await tx.platformBindingCode.update({
         where: { id: binding.id },
