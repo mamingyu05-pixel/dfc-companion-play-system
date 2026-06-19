@@ -71,7 +71,7 @@ export default function UsersPage() {
   const [adminPassword, setAdminPassword] = useState("");
   const [adminRole, setAdminRole] = useState<"ADMIN" | "SUPER_ADMIN">("ADMIN");
   const [promoteUserId, setPromoteUserId] = useState("");
-  const [promoteRole, setPromoteRole] = useState<"ADMIN" | "SUPER_ADMIN">("ADMIN");
+  const [promoteRole, setPromoteRole] = useState<"CUSTOMER" | "ADMIN" | "SUPER_ADMIN">("ADMIN");
   const [promoteNote, setPromoteNote] = useState("");
   const [companionCustomerId, setCompanionCustomerId] = useState("");
   const [companionNickname, setCompanionNickname] = useState("");
@@ -250,7 +250,7 @@ export default function UsersPage() {
       return;
     }
 
-    setStatus("已把现有用户设置为管理员，该用户可用原邮箱和密码登录管理端");
+    setStatus(promoteRole === "CUSTOMER" ? "已取消该用户的后台管理员权限" : "已更新现有用户的后台权限，该用户可用原邮箱和密码登录管理端");
     setPromoteUserId("");
     setPromoteRole("ADMIN");
     setPromoteNote("");
@@ -312,7 +312,7 @@ export default function UsersPage() {
     (user) => ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "COMPANION"].includes(user.role) && user.status === "ACTIVE" && !user.companionProfile
   );
   const passwordResetOptions = rankedUsers.filter((user) => user.status === "ACTIVE");
-  const promotableUserOptions = rankedUsers.filter((user) => (user.role === "CUSTOMER" || user.role === "ADMIN") && user.status === "ACTIVE");
+  const promotableUserOptions = rankedUsers.filter((user) => ["CUSTOMER", "COMPANION", "ADMIN", "SUPER_ADMIN"].includes(user.role) && user.status === "ACTIVE");
 
   useEffect(() => {
     if (!normalizedSearch) return;
@@ -481,7 +481,7 @@ export default function UsersPage() {
           </div>
         </AdminPanel>
 
-        <AdminPanel title="把已有用户设为管理员" hint="保留原邮箱和密码，只变更后台角色。陪玩账号不能直接提升。">
+        <AdminPanel title="更新已有用户后台角色" hint="保留原邮箱、密码、钱包、平台绑定和陪玩资料，只调整后台角色。选 CUSTOMER 可取消误设的管理员权限。">
           <div className="grid gap-3 md:grid-cols-2">
             <select value={promoteUserId} onChange={(event) => setPromoteUserId(event.target.value)} className="input">
               <option value="">选择已有用户</option>
@@ -489,13 +489,21 @@ export default function UsersPage() {
                 <option key={user.id} value={user.id}>{userOptionLabel(user)} / {user.role}</option>
               ))}
             </select>
-            <select value={promoteRole} onChange={(event) => setPromoteRole(event.target.value === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN")} className="input">
+            <select
+              value={promoteRole}
+              onChange={(event) => {
+                const nextRole = event.target.value;
+                setPromoteRole(nextRole === "SUPER_ADMIN" ? "SUPER_ADMIN" : nextRole === "CUSTOMER" ? "CUSTOMER" : "ADMIN");
+              }}
+              className="input"
+            >
+              <option value="CUSTOMER">CUSTOMER（取消管理员）</option>
               <option value="ADMIN">ADMIN</option>
               <option value="SUPER_ADMIN">SUPER_ADMIN</option>
             </select>
           </div>
           <input value={promoteNote} onChange={(event) => setPromoteNote(event.target.value)} className="input mt-3" placeholder="备注，例如邮箱误注册为客户" />
-          <ActionButton onClick={() => void promoteExistingUserToAdmin()}>设置为管理员</ActionButton>
+          <ActionButton onClick={() => void promoteExistingUserToAdmin()}>更新后台角色</ActionButton>
         </AdminPanel>
       </section>
 

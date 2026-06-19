@@ -385,12 +385,22 @@ export class AdminController {
   async updateUserRole(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
-    @Body() body: { role: "ADMIN" | "SUPER_ADMIN"; note?: string }
+    @Body() body: { role: "CUSTOMER" | "ADMIN" | "SUPER_ADMIN"; note?: string }
   ) {
     if (user.role !== UserRole.SUPER_ADMIN) {
       throw new ForbiddenException("Only SUPER_ADMIN can update admin roles");
     }
-    const nextRole = body.role === "SUPER_ADMIN" ? UserRole.SUPER_ADMIN : UserRole.ADMIN;
+    const nextRole =
+      body.role === "SUPER_ADMIN"
+        ? UserRole.SUPER_ADMIN
+        : body.role === "ADMIN"
+          ? UserRole.ADMIN
+          : body.role === "CUSTOMER"
+            ? UserRole.CUSTOMER
+            : null;
+    if (!nextRole) {
+      throw new BadRequestException("Invalid role");
+    }
     const target = await this.prisma.user.findUnique({
       where: { id },
       select: { id: true, email: true, role: true, status: true, displayName: true }
@@ -399,10 +409,22 @@ export class AdminController {
       throw new BadRequestException("User does not exist");
     }
     if (target.status !== UserStatus.ACTIVE) {
-      throw new BadRequestException("User must be active before becoming admin");
+      throw new BadRequestException("User must be active before role changes");
     }
-    if (target.role === UserRole.COMPANION) {
-      throw new BadRequestException("Companion accounts cannot be promoted to admin");
+    if (target.id === user.id && nextRole !== UserRole.SUPER_ADMIN) {
+      throw new BadRequestException("You cannot downgrade your own SUPER_ADMIN role");
+    }
+    if (target.role === UserRole.SUPER_ADMIN && nextRole !== UserRole.SUPER_ADMIN) {
+      const otherSuperAdmins = await this.prisma.user.count({
+        where: {
+          id: { not: target.id },
+          role: UserRole.SUPER_ADMIN,
+          status: UserStatus.ACTIVE
+        }
+      });
+      if (!otherSuperAdmins) {
+        throw new BadRequestException("At least one active SUPER_ADMIN is required");
+      }
     }
 
     try {
