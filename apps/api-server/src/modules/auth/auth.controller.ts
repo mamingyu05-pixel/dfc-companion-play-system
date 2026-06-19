@@ -52,10 +52,11 @@ export class AuthController {
   @Get("oauth/:platform/start")
   startOAuth(
     @Param("platform") platform: "discord" | "kook",
-    @Query("portal") portal: "customer" | "companion" | undefined,
+    @Query("portal") portal: "customer" | "companion" | "admin" | undefined,
     @Res() response: { redirect: (url: string) => void }
   ) {
-    response.redirect(this.auth.getOAuthStartUrl(platform, portal === "companion" ? "companion" : "customer"));
+    const resolvedPortal = portal === "companion" || portal === "admin" ? portal : "customer";
+    response.redirect(this.auth.getOAuthStartUrl(platform, resolvedPortal));
   }
 
   @Get("oauth/:platform/callback")

@@ -12,7 +12,7 @@ import { createPasswordHash, verifyPassword } from "./password.util";
 import { migrateSafePlatformPlaceholderAccount } from "./platform-account-merge.util";
 
 type Portal = "customer" | "companion" | "admin";
-type OAuthPortal = "customer" | "companion";
+type OAuthPortal = "customer" | "companion" | "admin";
 type OAuthPlatform = "discord" | "kook";
 type OAuthProfile = {
   externalUserId: string;
@@ -685,6 +685,7 @@ export class AuthService {
       redirect.searchParams.set("token", token);
       redirect.searchParams.set("displayName", result.user.displayName);
       redirect.searchParams.set("platform", platform);
+      redirect.searchParams.set("role", result.user.role);
       return redirect.toString();
     } catch (error) {
       const message = error instanceof Error ? error.message : "第三方登录失败，请稍后重试";
@@ -768,7 +769,6 @@ export class AuthService {
 
   private async findOrCreateOAuthUser(platform: OAuthPlatform, portal: OAuthPortal, profile: OAuthProfile) {
     const botPlatform = oauthPlatformToBotPlatform(platform);
-    const role = portal === "companion" ? UserRole.COMPANION : UserRole.CUSTOMER;
     const existingAccount = await this.prisma.userExternalAccount.findUnique({
       where: {
         platform_externalUserId: {
@@ -782,6 +782,23 @@ export class AuthService {
     if (existingAccount) {
       if (existingAccount.user.status !== "ACTIVE") {
         throw new UnauthorizedException("User is not active");
+      }
+      if (portal === "admin") {
+        if (existingAccount.user.role !== UserRole.ADMIN && existingAccount.user.role !== UserRole.SUPER_ADMIN) {
+          throw new UnauthorizedException("This Discord account is not bound to an admin user");
+        }
+        await this.prisma.userExternalAccount.update({
+          where: { id: existingAccount.id },
+          data: { displayName: profile.displayName }
+        });
+        return {
+          user: {
+            id: existingAccount.user.id,
+            email: existingAccount.user.email,
+            role: existingAccount.user.role,
+            displayName: existingAccount.user.displayName
+          }
+        };
       }
       if (portal === "companion" && !existingAccount.user.companionProfile) {
         await this.prisma.$transaction(async (tx) => {
@@ -819,6 +836,11 @@ export class AuthService {
       };
     }
 
+    if (portal === "admin") {
+      throw new UnauthorizedException("This Discord account is not bound to an admin user");
+    }
+
+    const role = portal === "companion" ? UserRole.COMPANION : UserRole.CUSTOMER;
     const displayName = await this.getAvailableDisplayName(role, profile.displayName);
     const displayNameKey = normalizeDisplayNameKey(displayName);
     const email = buildOAuthEmail(platform, role, profile.externalUserId);
@@ -1317,14 +1339,24 @@ function isOAuthPlatform(value: string): value is OAuthPlatform {
 }
 
 function isOAuthPortal(value: string): value is OAuthPortal {
-  return value === "customer" || value === "companion";
+  return value === "customer" || value === "companion" || value === "admin";
 }
 
 function getPortalWebUrl(portal: OAuthPortal) {
+  if (portal === "admin") {
+    const domain = normalizeWebDomain(process.env.DOMAIN);
+    return (process.env.ADMIN_WEB_URL || (domain ? `${domain}/admin` : "http://localhost:3002/admin")).replace(/\/$/, "");
+  }
   if (portal === "companion") {
     return (process.env.COMPANION_WEB_URL || "http://localhost:3001/companion").replace(/\/$/, "");
   }
   return (process.env.CUSTOMER_WEB_URL || "http://localhost:3000/customer").replace(/\/$/, "");
+}
+
+function normalizeWebDomain(domain?: string) {
+  const value = domain?.trim().replace(/\/$/, "");
+  if (!value) return null;
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
 }
 
 function signValue(value: string) {

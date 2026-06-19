@@ -63,6 +63,19 @@ export function AdminLoginForm() {
             <p className="mt-1 text-sm text-dfc-subtext">仅 ADMIN 和 SUPER_ADMIN 可进入后台。</p>
           </div>
 
+          <a
+            href="/api/auth/oauth/discord/start?portal=admin"
+            className="mb-4 block rounded-dfc-control border border-indigo-300/40 bg-indigo-400/10 px-4 py-3 text-center text-sm font-black text-indigo-100 transition hover:border-indigo-200 hover:bg-indigo-400/20"
+          >
+            Discord 登录后台
+          </a>
+
+          <div className="mb-4 flex items-center gap-3 text-xs text-dfc-muted">
+            <div className="h-px flex-1 bg-cyan-300/15" />
+            <span>或使用后台邮箱</span>
+            <div className="h-px flex-1 bg-cyan-300/15" />
+          </div>
+
           <div className="space-y-4">
             <label className="block">
               <span className="mb-2 block text-xs font-black text-dfc-muted">管理员邮箱</span>
