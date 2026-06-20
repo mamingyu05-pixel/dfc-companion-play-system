@@ -1171,36 +1171,48 @@ export class AdminController {
         if (target.status !== UserStatus.ACTIVE) throw new BadRequestException("User must be active before enabling companion access");
         if (target.companionProfile) throw new BadRequestException("Companion profile already exists");
 
-        const updated = await tx.user.update({
-          where: { id },
+        if (!target.referralCode) {
+          await tx.user.update({
+            where: { id },
+            data: { referralCode: await generateUniqueReferralCode(tx, "P") },
+            select: { id: true }
+          });
+        }
+
+        await tx.wallet.upsert({
+          where: { userId: id },
+          update: {},
+          create: { userId: id }
+        });
+
+        await tx.companionProfile.create({
           data: {
-            referralCode: target.referralCode ?? (await generateUniqueReferralCode(tx, "P")),
-            wallet: target.wallet ? undefined : { create: {} },
-            companionProfile: {
-              create: {
-                nickname,
-                avatarUrl: body.avatarUrl,
-                photoUrls: normalizeMediaUrls(body.photoUrls),
-                voiceIntroUrl: normalizeOptionalString(body.voiceIntroUrl),
-                gender: body.gender,
-                game: primaryGame,
-                games,
-                deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
-                skillModes: body.skillModes ?? [],
-                pricePerHour,
-                kookPricePerHour,
-                discordPricePerHour,
-                entertainmentPricePerHour,
-                rankedPricePerHour,
-                highRankedPricePerHour,
-                commissionRate: parseCommissionRate(body.commissionRate ?? "0.2"),
-                onlineStatus: OnlineStatus.OFFLINE,
-                bio: body.bio,
-                voicePreference: body.voicePreference ?? VoicePreference.OPTIONAL,
-                status: CompanionProfileStatus.PENDING_REVIEW
-              }
-            }
-          },
+            userId: id,
+            nickname,
+            avatarUrl: body.avatarUrl,
+            photoUrls: normalizeMediaUrls(body.photoUrls),
+            voiceIntroUrl: normalizeOptionalString(body.voiceIntroUrl),
+            gender: body.gender,
+            game: primaryGame,
+            games,
+            deltaForceRank: body.deltaForceRank ?? DeltaForceRank.UNRANKED,
+            skillModes: body.skillModes ?? [],
+            pricePerHour,
+            kookPricePerHour,
+            discordPricePerHour,
+            entertainmentPricePerHour,
+            rankedPricePerHour,
+            highRankedPricePerHour,
+            commissionRate: parseCommissionRate(body.commissionRate ?? "0.2"),
+            onlineStatus: OnlineStatus.OFFLINE,
+            bio: body.bio,
+            voicePreference: body.voicePreference ?? VoicePreference.OPTIONAL,
+            status: CompanionProfileStatus.PENDING_REVIEW
+          }
+        });
+
+        const updated = await tx.user.findUnique({
+          where: { id },
           select: {
             id: true,
             email: true,
@@ -1210,6 +1222,7 @@ export class AdminController {
             companionProfile: true
           }
         });
+        if (!updated) throw new BadRequestException("User does not exist");
 
         await tx.adminLog.create({
           data: {
@@ -1233,7 +1246,16 @@ export class AdminController {
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        throw new BadRequestException(isDisplayNameUniqueError(error) ? "Display name is already taken" : "Referral code or account data conflicts");
+        if (isUniqueErrorTarget(error, "userId")) {
+          throw new BadRequestException("Companion profile already exists");
+        }
+        if (isDisplayNameUniqueError(error)) {
+          throw new BadRequestException("Existing account display name conflicts");
+        }
+        if (isUniqueErrorTarget(error, "referralCode")) {
+          throw new BadRequestException("Referral code conflicts, please retry");
+        }
+        throw new BadRequestException("Companion account data conflicts");
       }
       throw error;
     }
@@ -1476,8 +1498,12 @@ export class AdminController {
 }
 
 function isDisplayNameUniqueError(error: Prisma.PrismaClientKnownRequestError) {
+  return isUniqueErrorTarget(error, "displayNameKey");
+}
+
+function isUniqueErrorTarget(error: Prisma.PrismaClientKnownRequestError, field: string) {
   const target = error.meta?.target;
-  return Array.isArray(target) && target.includes("displayNameKey");
+  return Array.isArray(target) && target.includes(field);
 }
 
 function displayUser(user: { email: string; displayName: string }) {
