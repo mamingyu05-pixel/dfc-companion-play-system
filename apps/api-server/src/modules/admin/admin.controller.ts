@@ -1171,14 +1171,6 @@ export class AdminController {
         if (target.status !== UserStatus.ACTIVE) throw new BadRequestException("User must be active before enabling companion access");
         if (target.companionProfile) throw new BadRequestException("Companion profile already exists");
 
-        if (!target.referralCode) {
-          await tx.user.update({
-            where: { id },
-            data: { referralCode: await generateUniqueReferralCode(tx, "P") },
-            select: { id: true }
-          });
-        }
-
         await tx.wallet.upsert({
           where: { userId: id },
           update: {},
