@@ -1152,6 +1152,17 @@ export class AdminController {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const nicknameOwner = await tx.companionProfile.findFirst({
+          where: {
+            nickname: { equals: nickname, mode: "insensitive" },
+            userId: { not: id }
+          },
+          select: { id: true }
+        });
+        if (nicknameOwner) {
+          throw new BadRequestException("Companion nickname is already taken");
+        }
+
         const target = await tx.user.findUnique({
           where: { id },
           include: { wallet: true, companionProfile: true }
