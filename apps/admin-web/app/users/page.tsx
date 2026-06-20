@@ -826,7 +826,7 @@ function toFriendlyError(message?: string) {
   if (message.includes("Companion profile already exists")) return "该用户已经有陪玩资料";
   if (message.includes("Companion nickname is already taken")) return "该陪玩昵称已被使用，请换一个陪玩昵称";
   if (message.includes("Existing account display name conflicts")) return "该账号显示名和同角色账号冲突，请先修改账号昵称，或确认是否选错账号";
-  if (message.includes("Display name is already taken")) return "该账号显示名已存在，请换一个昵称或检查是否选错账号";
+  if (message.includes("Display name is already taken")) return "该账号显示名和同角色账号冲突，请先修改账号昵称，或确认是否选错账号";
   if (message.includes("Referral code conflicts")) return "邀请码生成冲突，请重试一次";
   if (message.includes("Companion account data conflicts")) return "陪玩资料数据冲突，请检查是否重复开通，或换一个陪玩昵称";
   if (message.includes("nickname and pricePerHour are required")) return "请填写陪玩昵称和每小时价格";
