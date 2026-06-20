@@ -429,9 +429,14 @@ export class AdminController {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const displayNameKey =
+          target.role === nextRole ? undefined : await generateAvailableDisplayNameKey(tx, nextRole, target.displayName, target.id);
         const updated = await tx.user.update({
           where: { id },
-          data: { role: nextRole },
+          data: {
+            role: nextRole,
+            ...(displayNameKey ? { displayNameKey } : {})
+          },
           select: { id: true, email: true, role: true, status: true, displayName: true }
         });
 
@@ -1599,4 +1604,28 @@ async function generateUniqueReferralCode(client: Prisma.TransactionClient | Pri
     if (!existing) return code;
   }
   return `${prefix}${Math.random().toString(16).slice(2, 10).toUpperCase()}`;
+}
+
+async function generateAvailableDisplayNameKey(
+  client: Prisma.TransactionClient | PrismaService,
+  role: UserRole,
+  displayName: string,
+  userId: string
+) {
+  const baseKey = normalizeDisplayNameKey(displayName) || userId;
+
+  for (let index = 0; index < 50; index += 1) {
+    const candidate = index === 0 ? baseKey : `${baseKey}-${index + 1}`;
+    const existing = await client.user.findFirst({
+      where: {
+        id: { not: userId },
+        role,
+        displayNameKey: candidate
+      },
+      select: { id: true }
+    });
+    if (!existing) return candidate;
+  }
+
+  return `${baseKey}-${Math.random().toString(16).slice(2, 8)}`;
 }
