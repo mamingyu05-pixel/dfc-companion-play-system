@@ -317,28 +317,23 @@ body {
 .maycat-qr-layout {
   display: grid;
   gap: 16px;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .maycat-qr-layout img,
 .maycat-qr-layout > div:first-child {
   justify-self: center;
+  max-width: 100%;
 }
 
 .maycat-qr-layout > div:last-child {
+  justify-self: center;
+  max-width: 26rem;
   min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-@media (min-width: 900px) {
-  .maycat-qr-layout {
-    grid-template-columns: 160px minmax(0, 1fr);
-    align-items: center;
-  }
-
-  .maycat-qr-layout img,
-  .maycat-qr-layout > div:first-child {
-    justify-self: start;
-  }
+  overflow-wrap: normal;
+  white-space: normal;
+  word-break: normal;
 }
 
 .maycat-profile-hero {

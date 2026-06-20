@@ -90,9 +90,15 @@ export default function RechargesPage() {
       <div className="mt-1 text-xs text-dfc-muted">当前余额 ¥{formatMoney(item.customer.availableBalance)}</div>
     </div>,
     <span key={`${item.id}-amount`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(item.amount)}</span>,
-    <a key={`${item.id}-shot`} href={item.screenshotUrl} target="_blank" rel="noreferrer" className="font-bold text-cyan-200 hover:text-white">
-      查看截图
-    </a>,
+    hasRechargeScreenshot(item.screenshotUrl) ? (
+      <a key={`${item.id}-shot`} href={item.screenshotUrl} target="_blank" rel="noreferrer" className="font-bold text-cyan-200 hover:text-white">
+        查看截图
+      </a>
+    ) : (
+      <span key={`${item.id}-shot`} className="rounded-dfc-control border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-xs font-black text-cyan-100">
+        客服确认
+      </span>
+    ),
     <StatusBadge key={`${item.id}-status`} tone={item.status === "APPROVED" ? "success" : item.status === "REJECTED" ? "danger" : "warning"}>
       {toRechargeStatus(item.status)}
     </StatusBadge>,
@@ -110,7 +116,7 @@ export default function RechargesPage() {
 
   return (
     <AdminShell>
-      <SectionHeader eyebrow="Finance Review" title="充值审核" desc="核对客户转账截图后再入账。通过后系统会增加客户余额并生成钱包流水。" />
+      <SectionHeader eyebrow="Finance Review" title="充值审核" desc="核对客户转账截图或人工客服到账确认后再入账。通过后系统会增加客户余额并生成钱包流水。" />
 
       <section className="mb-5 grid gap-4 md:grid-cols-3">
         <Signal label="待审核" value={String(stats.pendingCount)} hint={`待核金额 ¥${formatMoney(String(stats.pendingAmount))}`} tone="gold" />
@@ -127,7 +133,7 @@ export default function RechargesPage() {
             <h2 className="text-base font-black text-white">审核备注</h2>
             <p className="mt-1 text-xs text-dfc-muted">通过或拒绝时会随审核动作提交，可留空。</p>
           </div>
-          <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} className="input" placeholder="例如：到账金额一致，截图清晰" />
+          <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} className="input" placeholder="例如：客服已确认到账，金额一致" />
         </div>
       </section>
 
@@ -166,6 +172,11 @@ function formatDateTime(value: string) {
 
 function shortId(id: string) {
   return id.length > 12 ? `${id.slice(0, 8)}...` : id;
+}
+
+function hasRechargeScreenshot(url: string) {
+  const value = url.trim();
+  return value.startsWith("data:image/") || value.startsWith("http://") || value.startsWith("https://");
 }
 
 function toRechargeStatus(status: string) {

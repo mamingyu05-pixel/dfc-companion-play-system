@@ -98,11 +98,6 @@ export default function RechargePage() {
       return;
     }
 
-    if (!screenshotUrl) {
-      setError("请先上传转账截图");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const response = await fetch("/api/wallet/recharge-requests", {
@@ -111,7 +106,7 @@ export default function RechargePage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ amount, screenshotUrl, note, promotionCode: promotionCode.trim() || undefined })
+        body: JSON.stringify({ amount, screenshotUrl: screenshotUrl || undefined, note, promotionCode: promotionCode.trim() || undefined })
       });
       const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
       if (!response.ok) {
@@ -135,7 +130,7 @@ export default function RechargePage() {
 
   const availableBalance = summary?.wallet?.availableBalance ?? "0";
   const pendingRechargeAmount = summary?.pendingRechargeAmount ?? "0";
-  const canSubmit = !isSubmitting && Number(amount) > 0 && Boolean(screenshotUrl);
+  const canSubmit = !isSubmitting && Number(amount) > 0;
 
   return (
     <CustomerShell>
@@ -144,16 +139,16 @@ export default function RechargePage() {
           <div>
             <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Wallet Dock</div>
             <h1 className="maycat-text-glow mt-4 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">
-              余额补给，等待人工确认。
+              余额充值，人工确认到账。
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-dfc-subtext md:text-base">
-              上传转账截图后进入管理员审核。审核通过才会入账，订单支付、退款和优惠赠送都会保留钱包记录。
+              联系客服确认或上传转账截图后提交申请。后台审核通过才会入账，订单支付、退款和优惠赠送都会保留钱包记录。
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
             <WalletMetric label="可用余额" value={`¥${formatMoney(availableBalance)}`} hint="当前账号钱包" />
             <WalletMetric label="审核中" value={`¥${formatMoney(pendingRechargeAmount)}`} hint="待管理员确认" />
-            <WalletMetric label="到账方式" value="人工审核" hint="截图确认后入账" />
+            <WalletMetric label="到账方式" value="人工审核" hint="客服确认或截图审核" />
           </div>
         </div>
       </section>
@@ -203,7 +198,7 @@ export default function RechargePage() {
         <form onSubmit={submit} className="maycat-card p-4 md:p-5 lg:sticky lg:top-24 lg:self-start">
           <div className="border-b border-cyan-300/15 pb-4">
             <h2 className="text-lg font-black text-white">提交充值申请</h2>
-            <p className="mt-1 text-xs leading-5 text-dfc-muted">请确认金额和截图一致。不要上传包含密码、验证码或隐私信息的图片。</p>
+            <p className="mt-1 text-xs leading-5 text-dfc-muted">截图选填。已联系人工客服确认到账时，只填写金额和备注也可以提交。</p>
           </div>
 
           <div className="mt-4">
@@ -246,11 +241,11 @@ export default function RechargePage() {
           </label>
 
           <label className="mt-4 block">
-            <span className="text-sm font-semibold text-cyan-50/80">转账截图</span>
+            <span className="text-sm font-semibold text-cyan-50/80">转账截图（选填）</span>
             <input className="sr-only" type="file" accept="image/*" onChange={handleScreenshot} />
             <div className={`maycat-upload-zone mt-2 ${screenshotName ? "maycat-upload-zone-ready" : ""}`}>
-              <div className="text-sm font-black text-white">{screenshotName ? `已选择：${screenshotName}` : "点击上传转账截图"}</div>
-              <div className="mt-2 text-xs leading-5 text-dfc-muted">支持图片格式，不超过 2MB。截图金额需要和申请金额一致。</div>
+              <div className="text-sm font-black text-white">{screenshotName ? `已选择：${screenshotName}` : "可选：上传转账截图"}</div>
+              <div className="mt-2 text-xs leading-5 text-dfc-muted">支持图片格式，不超过 2MB。没有截图也可以提交，客服确认到账后后台会处理。</div>
             </div>
           </label>
 
@@ -314,7 +309,7 @@ function SupportPanel({ publicConfig }: { publicConfig: PublicConfig }) {
         <div>
           <h2 className="text-lg font-black text-white">人工客服充值</h2>
           <p className="mt-2 text-sm leading-6 text-dfc-subtext">
-            不会上传截图、转账备注填错、优惠码不确定，或者需要人工确认到账，可以联系人工客服。客服确认后仍需在本页提交充值申请，后台审核通过后才会入账。
+            转账备注填错、优惠码不确定，或者需要人工确认到账，可以联系人工客服。客服确认后，在本页填写金额和备注提交申请即可，截图不是必填。
           </p>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <SupportButton href={publicConfig.support?.kookUrl ?? undefined} label="KOOK 联系客服" />
@@ -342,7 +337,7 @@ function SupportPanel({ publicConfig }: { publicConfig: PublicConfig }) {
             )}
             <div className="text-sm leading-6 text-dfc-subtext">
               <div>添加时请备注：注册邮箱 / 昵称 / 充值金额。</div>
-              <div className="mt-2">截图金额、申请金额和备注信息越一致，审核越快。</div>
+              <div className="mt-2">没有截图也可以提交，客服确认到账后后台会审核入账。</div>
               <div className="mt-2 text-dfc-warning">不要把密码、验证码、后台 Token 发给任何人。</div>
             </div>
           </div>
@@ -387,7 +382,7 @@ function toChineseError(message?: string) {
   if (!message) return "提交失败，请检查填写内容";
   if (message.includes("amount must be a valid amount")) return "请输入正确的充值金额";
   if (message.includes("amount must be greater than 0")) return "充值金额必须大于 0";
-  if (message.includes("screenshotUrl is required")) return "请上传转账截图";
+  if (message.includes("screenshotUrl is required")) return "截图不是必填，请刷新页面后重试";
   if (message.includes("screenshotUrl is too large")) return "截图太大，请压缩到 2MB 以内";
   if (message.includes("Promotion code is invalid")) return "优惠码无效或已停用";
   if (message.includes("Promotion code is expired")) return "优惠码已过期";

@@ -36,7 +36,7 @@ export class WalletController {
   @Roles(UserRole.CUSTOMER)
   createRechargeRequest(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { amount: string; screenshotUrl: string; note?: string; promotionCode?: string }
+    @Body() body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string }
   ) {
     return this.wallet.createRechargeRequest(user.id, body);
   }

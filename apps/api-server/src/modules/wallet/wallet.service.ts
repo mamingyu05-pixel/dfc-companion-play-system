@@ -12,6 +12,8 @@ import {
 import { BotNotificationService } from "../bot/bot-notification.service";
 import { PrismaService } from "../prisma/prisma.service";
 
+const MANUAL_RECHARGE_EVIDENCE = "MANUAL_SUPPORT_CONFIRMATION";
+
 @Injectable()
 export class WalletService {
   constructor(
@@ -184,11 +186,11 @@ export class WalletService {
 
   async createRechargeRequest(
     customerId: string,
-    body: { amount: string; screenshotUrl: string; note?: string; promotionCode?: string }
+    body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string }
   ) {
     const amount = this.positiveDecimal(body.amount, "amount");
-    if (!body.screenshotUrl) throw new BadRequestException("screenshotUrl is required");
-    if (body.screenshotUrl.length > 2_500_000) {
+    const screenshotUrl = body.screenshotUrl?.trim();
+    if (screenshotUrl && screenshotUrl.length > 2_500_000) {
       throw new BadRequestException("screenshotUrl is too large");
     }
 
@@ -238,7 +240,7 @@ export class WalletService {
             promotionCodeId: promotion?.id,
             amount,
             promotionBonus,
-            screenshotUrl: body.screenshotUrl,
+            screenshotUrl: screenshotUrl || MANUAL_RECHARGE_EVIDENCE,
             note: body.note
           }
         });
