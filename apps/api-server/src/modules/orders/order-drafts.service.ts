@@ -308,6 +308,140 @@ export class OrderDraftsService {
     });
   }
 
+  async listCompanionDrafts(companionId: string) {
+    const companion = await this.prisma.user.findFirst({
+      where: {
+        id: companionId,
+        status: UserStatus.ACTIVE,
+        companionProfile: { is: { status: CompanionProfileStatus.LISTED } }
+      },
+      include: { companionProfile: true }
+    });
+    if (!companion?.companionProfile) throw new BadRequestException("Companion is not listed, active or does not exist");
+
+    const companionGames = [...new Set([companion.companionProfile.game, ...companion.companionProfile.games])];
+    const openStatuses = [OrderDraftStatus.OPEN, OrderDraftStatus.TRIALING];
+    const activeStatuses = [OrderDraftStatus.OPEN, OrderDraftStatus.TRIALING, OrderDraftStatus.SELECTED, OrderDraftStatus.CUSTOMER_CONFIRMED];
+
+    const drafts = await this.prisma.orderDraft.findMany({
+      where: {
+        status: { in: activeStatuses },
+        OR: [
+          { AND: [{ status: { in: openStatuses } }, { game: { in: companionGames } }] },
+          { selectedCompanionId: companionId },
+          { candidates: { some: { companionId } } }
+        ]
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+      include: {
+        customer: { select: { id: true, email: true, displayName: true } },
+        selectedCompanion: { select: { id: true, email: true, displayName: true } },
+        convertedOrder: { select: { id: true, orderNo: true, status: true } },
+        candidates: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            companion: {
+              select: {
+                id: true,
+                email: true,
+                displayName: true,
+                companionProfile: {
+                  select: {
+                    nickname: true,
+                    avatarUrl: true,
+                    pricePerHour: true,
+                    kookPricePerHour: true,
+                    discordPricePerHour: true,
+                    entertainmentPricePerHour: true,
+                    rankedPricePerHour: true,
+                    highRankedPricePerHour: true,
+                    onlineStatus: true,
+                    status: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    return drafts.map((draft) => {
+      const currentCandidate = draft.candidates.find((candidate) => candidate.companionId === companionId) ?? null;
+      const selectedForMe = draft.selectedCompanionId === companionId;
+      const canApply =
+        !currentCandidate &&
+        !draft.convertedOrder &&
+        !selectedForMe &&
+        (draft.status === OrderDraftStatus.OPEN || draft.status === OrderDraftStatus.TRIALING);
+
+      return {
+        id: draft.id,
+        draftNo: draft.draftNo,
+        sourcePlatform: draft.sourcePlatform,
+        customerDisplayName: draft.customer?.displayName ?? draft.customerDisplayName ?? "平台客户",
+        customerContact: draft.customer?.email ?? draft.customerPlatformUserId ?? null,
+        game: draft.game,
+        mode: draft.mode,
+        hours: draft.hours?.toString() ?? null,
+        priceTier: draft.priceTier,
+        estimatedPricePerHour: this.pickCompanionPriceForTier(companion.companionProfile, draft.sourcePlatform, draft.priceTier).toString(),
+        budgetAmount: draft.budgetAmount?.toString() ?? null,
+        note: draft.note,
+        status: draft.status,
+        candidatesCount: draft.candidates.length,
+        selectedForMe,
+        canApply,
+        currentCandidate: currentCandidate
+          ? { id: currentCandidate.id, status: currentCandidate.status, note: currentCandidate.note, createdAt: currentCandidate.createdAt }
+          : null,
+        selectedCompanion: draft.selectedCompanion,
+        convertedOrder: draft.convertedOrder,
+        updatedAt: draft.updatedAt
+      };
+    });
+  }
+
+  async companionApplyFromWeb(companionId: string, draftId: string, body: { note?: string }) {
+    return this.prisma.$transaction(async (tx) => {
+      const draft = await this.assertEditableDraft(tx, draftId);
+      await this.assertListedCompanion(tx, companionId, draft.game);
+      const note = body.note?.trim() || "陪玩端报名，等待客服或老板确认。";
+
+      const candidate = await tx.orderDraftCandidate.upsert({
+        where: { draftId_companionId: { draftId, companionId } },
+        create: {
+          draftId,
+          companionId,
+          status: OrderDraftCandidateStatus.TRIALING,
+          note
+        },
+        update: {
+          status: OrderDraftCandidateStatus.TRIALING,
+          note
+        }
+      });
+
+      await tx.orderDraft.update({
+        where: { id: draftId },
+        data: { status: OrderDraftStatus.TRIALING }
+      });
+
+      await this.writeDraftEvent(tx, {
+        draftId,
+        actorUserId: companionId,
+        actorType: OrderDraftActorType.COMPANION,
+        platform: draft.sourcePlatform,
+        platformUserId: draft.customerPlatformUserId,
+        eventType: OrderDraftEventType.COMPANION_APPLIED,
+        content: note,
+        metadata: { companionId, source: "COMPANION_WEB" }
+      });
+
+      return candidate;
+    });
+  }
   async expireStaleDrafts() {
     const staleMinutes = Math.max(10, Number(process.env.ORDER_DRAFT_STALE_MINUTES ?? 60));
     const cutoff = new Date(Date.now() - staleMinutes * 60_000);

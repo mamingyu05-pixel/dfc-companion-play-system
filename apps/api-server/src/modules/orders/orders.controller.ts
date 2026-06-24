@@ -55,6 +55,23 @@ export class OrdersController {
     return this.orders.searchCustomersForCompanion(query);
   }
 
+  @Get("companion/drafts")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  listCompanionDrafts(@CurrentUser() user: AuthenticatedUser) {
+    return this.orderDrafts.listCompanionDrafts(user.id);
+  }
+
+  @Post("companion/drafts/:draftId/apply")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  companionApplyToDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("draftId") draftId: string,
+    @Body() body: { note?: string }
+  ) {
+    return this.orderDrafts.companionApplyFromWeb(user.id, draftId, body);
+  }
   @Post("companion/customer-drafts")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)

@@ -910,16 +910,10 @@ export class OrdersService {
 
   private async resolvePricing(companionId: string | undefined, game: GameCode, sourcePlatform: OrderSourcePlatform, priceTier: ServicePriceTier) {
     if (!companionId) {
-      const configuredPrice =
-        sourcePlatform === OrderSourcePlatform.DISCORD
-          ? process.env.DISCORD_PLATFORM_MATCH_UNIT_PRICE ?? process.env.PLATFORM_MATCH_UNIT_PRICE
-          : sourcePlatform === OrderSourcePlatform.KOOK
-            ? process.env.KOOK_PLATFORM_MATCH_UNIT_PRICE ?? process.env.PLATFORM_MATCH_UNIT_PRICE
-            : process.env.PLATFORM_MATCH_UNIT_PRICE;
-      if (!configuredPrice) {
-        throw new BadRequestException("PLATFORM_MATCH_UNIT_PRICE is not configured");
-      }
-      return { unitPrice: this.positiveDecimal(configuredPrice, "PLATFORM_MATCH_UNIT_PRICE"), commissionRate: this.defaultPlatformCommissionRate() };
+      return {
+        unitPrice: await this.resolvePlatformMatchUnitPrice(sourcePlatform, priceTier),
+        commissionRate: this.defaultPlatformCommissionRate()
+      };
     }
 
     const companion = await this.prisma.companionProfile.findFirst({
@@ -951,6 +945,46 @@ export class OrdersService {
     };
   }
 
+  private async resolvePlatformMatchUnitPrice(sourcePlatform: OrderSourcePlatform, priceTier: ServicePriceTier) {
+    for (const key of this.platformMatchPriceKeys(sourcePlatform, priceTier)) {
+      const configured = await this.readPositivePlatformPrice(key);
+      if (configured) return configured;
+    }
+
+    return this.positiveDecimal(this.defaultPlatformMatchUnitPrice(priceTier), `DEFAULT_${priceTier}_PLATFORM_MATCH_UNIT_PRICE`);
+  }
+
+  private platformMatchPriceKeys(sourcePlatform: OrderSourcePlatform, priceTier: ServicePriceTier) {
+    const platformPrefix =
+      sourcePlatform === OrderSourcePlatform.DISCORD ? "DISCORD_" : sourcePlatform === OrderSourcePlatform.KOOK ? "KOOK_" : "";
+    const tier = priceTier === ServicePriceTier.HIGH_RANKED ? "HIGH_RANKED" : priceTier;
+    const tierKeys = [
+      ...(platformPrefix ? [`${platformPrefix}PLATFORM_MATCH_${tier}_UNIT_PRICE`] : []),
+      `PLATFORM_MATCH_${tier}_UNIT_PRICE`
+    ];
+    if (priceTier !== ServicePriceTier.CUSTOM) return tierKeys;
+
+    return [
+      ...tierKeys,
+      ...(platformPrefix ? [`${platformPrefix}PLATFORM_MATCH_UNIT_PRICE`] : []),
+      "PLATFORM_MATCH_UNIT_PRICE"
+    ];
+  }
+
+  private async readPositivePlatformPrice(key: string) {
+    const setting = await this.prisma.platformSetting.findUnique({
+      where: { key },
+      select: { value: true }
+    });
+    const configured = setting?.value ?? process.env[key];
+    return configured ? this.positiveDecimal(configured, key) : null;
+  }
+
+  private defaultPlatformMatchUnitPrice(priceTier: ServicePriceTier) {
+    if (priceTier === ServicePriceTier.HIGH_RANKED) return "140";
+    if (priceTier === ServicePriceTier.RANKED) return "120";
+    return "100";
+  }
   private pickCompanionPriceForTier(
     companion: {
       pricePerHour: Prisma.Decimal;
