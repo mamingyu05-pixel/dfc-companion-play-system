@@ -339,15 +339,18 @@ export default function OrderDraftsPage() {
 
   async function convertDraft() {
     if (!selectedDraftId) return;
+    const companionToSelect = selectedCompanionId || candidateId || selectedDraft?.selectedCompanion?.id || "";
     try {
-      await callApi(`/api/admin/order-drafts/${selectedDraftId}/convert`, { method: "POST", body: JSON.stringify({}) });
-      setStatus("已转为正式订单。客户余额已冻结，订单进入后台。");
+      await callApi(`/api/admin/order-drafts/${selectedDraftId}/convert`, {
+        method: "POST",
+        body: JSON.stringify({ companionId: companionToSelect || undefined })
+      });
+      setStatus(companionToSelect ? "\u5df2\u6307\u5b9a\u966a\u73a9\u5e76\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002" : "\u5df2\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002");
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "转订单失败");
+      setError(err instanceof Error ? err.message : "\u8f6c\u8ba2\u5355\u5931\u8d25");
     }
   }
-
   async function cancelDraft() {
     if (!selectedDraftId) return;
     try {
@@ -473,7 +476,7 @@ export default function OrderDraftsPage() {
         <div className="mt-3 flex flex-wrap gap-2">
           <ActionButton tone="secondary" onClick={() => void recommendCandidates()}>AI 推荐候选</ActionButton>
           <ActionButton tone="secondary" onClick={() => void confirmDraft()}>客户确认</ActionButton>
-          <ActionButton onClick={() => void convertDraft()}>转正式订单</ActionButton>
+          <ActionButton onClick={() => void convertDraft()}>{"\u786e\u8ba4\u5e76\u8f6c\u6b63\u5f0f\u8ba2\u5355"}</ActionButton>
           <ActionButton tone="danger" onClick={() => void failDraft()}>标记流单</ActionButton>
           <ActionButton tone="danger" onClick={() => void cancelDraft()}>取消草稿</ActionButton>
           <ActionButton tone="secondary" onClick={() => void expireStaleDrafts()}>处理超时流单</ActionButton>

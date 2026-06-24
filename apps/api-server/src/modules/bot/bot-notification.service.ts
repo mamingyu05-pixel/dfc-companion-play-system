@@ -9,6 +9,7 @@ interface OrderNotificationData {
   mode: string;
   hours: string;
   totalAmount: string;
+  companionId?: string;
   companionName?: string;
 }
 
@@ -66,6 +67,7 @@ export class BotNotificationService {
       mode: order.mode,
       hours: order.hours.toString(),
       totalAmount: order.totalAmount.toString(),
+      companionId: order.companionId ?? undefined,
       companionName: order.companion?.companionProfile?.nickname ?? order.companion?.displayName
     };
 
@@ -76,6 +78,9 @@ export class BotNotificationService {
   async sendOrderDraftDispatchNotifications(draftId: string): Promise<NotificationResult[]> {
     const draft = await this.prisma.orderDraft.findUnique({ where: { id: draftId } });
     if (!draft) throw new Error("Order draft not found");
+    if (draft.selectedCompanionId) {
+      return this.sendOrderDraftSelectedCompanionNotification(draft.id, draft.selectedCompanionId);
+    }
 
     const payload: OrderDraftNotificationData = {
       draftId: draft.id,
@@ -451,7 +456,7 @@ export class BotNotificationService {
         method: "POST",
         headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: "May猫饼新订单待接单",
+          content: payload.companionId ? "May\u732b\u997c\u8ba2\u5355\u5df2\u6307\u5b9a\u966a\u73a9" : "May\u732b\u997c\u65b0\u8ba2\u5355\u5f85\u63a5\u5355",
           embeds: [
             {
               title: `订单 ${payload.orderNo}`,
@@ -463,12 +468,14 @@ export class BotNotificationService {
               ]
             }
           ],
-          components: [
-            {
-              type: 1,
-              components: [{ type: 2, style: 1, label: "接单", custom_id: `order.accept.${payload.orderId}` }]
-            }
-          ]
+          components: payload.companionId
+            ? []
+            : [
+                {
+                  type: 1,
+                  components: [{ type: 2, style: 1, label: "\u63a5\u5355", custom_id: `order.accept.${payload.orderId}` }]
+                }
+              ]
         })
       });
       if (!response.ok) throw new Error(`Discord API HTTP ${response.status}`);
@@ -541,7 +548,7 @@ export class BotNotificationService {
         theme: "primary",
         size: "lg",
         modules: [
-          { type: "header", text: { type: "plain-text", content: "May猫饼新订单待接单" } },
+          { type: "header", text: { type: "plain-text", content: payload.companionId ? "May\u732b\u997c\u8ba2\u5355\u5df2\u6307\u5b9a\u966a\u73a9" : "May\u732b\u997c\u65b0\u8ba2\u5355\u5f85\u63a5\u5355" } },
           {
             type: "section",
             text: {
@@ -559,7 +566,11 @@ export class BotNotificationService {
           },
           {
             type: "action-group",
-            elements: [{ type: "button", theme: "primary", value: `order.accept.${payload.orderId}`, click: "return-val", text: { type: "plain-text", content: "接单" } }]
+            elements: [
+              payload.companionId
+                ? { type: "button", theme: "success", value: `order.assigned.${payload.orderId}`, click: "return-val", text: { type: "plain-text", content: "\u5df2\u6307\u5b9a\u966a\u73a9" } }
+                : { type: "button", theme: "primary", value: `order.accept.${payload.orderId}`, click: "return-val", text: { type: "plain-text", content: "\u63a5\u5355" } }
+            ]
           }
         ]
       }

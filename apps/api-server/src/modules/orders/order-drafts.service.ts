@@ -834,7 +834,11 @@ export class OrderDraftsService {
     });
   }
 
-  async convertDraftToOrder(adminId: string, draftId: string) {
+  async convertDraftToOrder(adminId: string, draftId: string, body: { companionId?: string; note?: string } = {}) {
+    const requestedCompanionId = body.companionId?.trim();
+    if (requestedCompanionId) {
+      await this.selectCompanion(adminId, draftId, { companionId: requestedCompanionId, note: body.note });
+    }
     const draft = await this.prisma.orderDraft.findUnique({
       where: { id: draftId },
       include: { convertedOrder: true }

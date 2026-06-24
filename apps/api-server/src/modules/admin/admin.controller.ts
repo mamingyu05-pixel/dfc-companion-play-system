@@ -750,8 +750,12 @@ export class AdminController {
   }
 
   @Post("order-drafts/:id/convert")
-  convertOrderDraft(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.orderDrafts.convertDraftToOrder(user.id, id);
+  convertOrderDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { companionId?: string; note?: string }
+  ) {
+    return this.orderDrafts.convertDraftToOrder(user.id, id, body);
   }
 
   @Get("companions")
