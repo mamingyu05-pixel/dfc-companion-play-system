@@ -255,18 +255,27 @@ async function reorderTextChannels(token, guildId, channels) {
       seen.add(channel.id);
       return true;
     })
-    .map((channel, position) => ({
-      id: channel.id,
-      position,
-      parent_id: category.id
-    }));
+    .map((channel, position) => ({ channel, position }));
 
   if (!body.length) {
     console.log("- Text Channels 下目标频道均未找到，跳过排序");
     return;
   }
 
-  await discordPatch(token, `/guilds/${guildId}/channels`, body);
+  for (const item of body) {
+    if (item.channel.parent_id === category.id) continue;
+    await discordPatch(token, `/channels/${item.channel.id}`, { parent_id: category.id });
+    console.log(`✓ 已移动到 Text Channels：${item.channel.name}`);
+  }
+
+  await discordPatch(
+    token,
+    `/guilds/${guildId}/channels`,
+    body.map((item) => ({
+      id: item.channel.id,
+      position: item.position
+    }))
+  );
   console.log(`✓ 已调整 Text Channels 顺序：${body.length} 个频道`);
 }
 
