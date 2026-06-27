@@ -92,3 +92,14 @@ ADMIN_PASSWORD=ChangeMe123!
 - [测试报告](docs/TEST_REPORT.md)
 - [已知问题](docs/KNOWN_ISSUES.md)
 - [变更记录](docs/CHANGELOG.md)
+## 平台频道搭建
+
+Discord + KOOK 频道说明、服务价目、自助下单格式和派单规则可用脚本幂等同步：
+
+```bash
+node scripts/platform-setup/index.js
+node scripts/platform-setup/index.js --discord-only
+node scripts/platform-setup/index.js --kook-only
+```
+
+脚本从 `.env` / `.env.production` 读取 token 和频道 ID，不会硬编码密钥；重复运行会检查最近消息并跳过已发布内容。
