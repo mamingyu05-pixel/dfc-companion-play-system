@@ -209,7 +209,7 @@ function matchesAnyAlias(name, aliases) {
 }
 
 function chooseCanonical(env, group, matches) {
-  const envId = group.env.map((name) => env[name]).find(Boolean);
+  const envId = (group.env || []).map((name) => env[name]).find(Boolean);
   if (envId) {
     const envMatch = matches.find((match) => match.id === envId);
     if (envMatch) return envMatch;
@@ -282,5 +282,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  runDiscordDuplicateAudit
+  runDiscordDuplicateAudit,
+  buildDuplicatePlans
 };
