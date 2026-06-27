@@ -50,7 +50,7 @@ export class OrdersController {
 
   @Get("companion/customers")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   searchCustomersForCompanion(@Query("query") query?: string) {
     return this.orders.searchCustomersForCompanion(query);
   }

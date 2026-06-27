@@ -362,6 +362,11 @@ function CompanionGamesEditor({ game, games, onSave }: { game: string; games: st
   );
 }
 
+function mediaUrl(src?: string | null): string | undefined {
+  if (!src) return undefined;
+  return src.startsWith("/uploads/") ? `/api${src}` : src;
+}
+
 function SafeAvatar({ nickname, avatarUrl }: { nickname: string; avatarUrl?: string | null }) {
   const [failed, setFailed] = useState(false);
 
@@ -372,7 +377,7 @@ function SafeAvatar({ nickname, avatarUrl }: { nickname: string; avatarUrl?: str
   return (
     <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-dfc border border-cyan-300/20 bg-[#101827] text-sm font-black text-cyan-200">
       {avatarUrl && !failed ? (
-        <img src={avatarUrl} alt={`${nickname} 头像`} className="h-full w-full object-cover" onError={() => setFailed(true)} />
+        <img src={mediaUrl(avatarUrl)} alt={`${nickname} 头像`} className="h-full w-full object-cover" onError={() => setFailed(true)} />
       ) : (
         nickname.slice(0, 1)
       )}

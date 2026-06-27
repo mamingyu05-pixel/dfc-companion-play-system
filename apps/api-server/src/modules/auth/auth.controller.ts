@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
+import { AuthRateLimitGuard } from "./auth-rate-limit.guard";
 import { AuthService } from "./auth.service";
 import { AuthenticatedUser } from "./auth.types";
 import { CurrentUser } from "./current-user.decorator";
@@ -9,11 +10,13 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post("email-verification-code")
+  @UseGuards(AuthRateLimitGuard)
   requestCustomerEmailVerification(@Body() body: { email: string }) {
     return this.auth.requestCustomerEmailVerification(body);
   }
 
   @Post("password-reset-code")
+  @UseGuards(AuthRateLimitGuard)
   requestCustomerPasswordResetCode(@Body() body: { email: string }) {
     return this.auth.requestCustomerPasswordResetCode(body);
   }
@@ -34,6 +37,7 @@ export class AuthController {
   }
 
   @Post("login")
+  @UseGuards(AuthRateLimitGuard)
   login(@Body() body: { email: string; password: string; portal: "customer" | "companion" | "admin" }) {
     return this.auth.login(body);
   }

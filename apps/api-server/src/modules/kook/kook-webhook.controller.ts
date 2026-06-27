@@ -60,7 +60,10 @@ export class KookWebhookController {
     const expectedVerifyToken = process.env.KOOK_VERIFY_TOKEN;
     const actualVerifyToken = webhookBody.verify_token ?? webhookBody.d?.verify_token;
 
-    if (expectedVerifyToken && actualVerifyToken !== expectedVerifyToken) {
+    if (!expectedVerifyToken) {
+      throw new UnauthorizedException("KOOK_VERIFY_TOKEN is not configured");
+    }
+    if (actualVerifyToken !== expectedVerifyToken) {
       throw new UnauthorizedException("Invalid KOOK verify token");
     }
 

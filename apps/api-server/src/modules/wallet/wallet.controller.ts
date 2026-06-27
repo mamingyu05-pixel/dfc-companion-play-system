@@ -53,14 +53,14 @@ export class WalletController {
 
   @Get("companion-payout-profile")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   getCompanionPayoutProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.wallet.getCompanionPayoutProfile(user.id);
   }
 
   @Patch("companion-payout-profile")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.COMPANION)
   updateCompanionPayoutProfile(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: { payoutMethod?: string; payoutAccountName?: string; payoutAccountNo?: string; payoutQrCodeUrl?: string }

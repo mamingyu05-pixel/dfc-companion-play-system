@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Badge, CompanionAvatar, CustomerShell, SafeMediaImage } from "../../components";
+import { Badge, CompanionAvatar, CustomerShell, SafeMediaImage, mediaUrl } from "../../components";
 import { games } from "../../data";
 
 type ApiCompanion = {
@@ -112,7 +112,7 @@ export default function CompanionDetailPage() {
             {companion.voiceIntroUrl ? (
               <div className="mt-5 max-w-xl rounded-dfc-control border border-cyan-300/25 bg-[#050711]/70 p-3">
                 <div className="mb-2 text-xs font-black text-cyan-300">语音介绍</div>
-                <audio controls src={companion.voiceIntroUrl} className="w-full" />
+                <audio controls src={mediaUrl(companion.voiceIntroUrl)} className="w-full" />
               </div>
             ) : null}
             <div className="mt-5 flex flex-wrap gap-2">

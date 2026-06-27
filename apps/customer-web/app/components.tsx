@@ -140,7 +140,7 @@ export function CompanionCard({ companion }: { companion: Companion }) {
         <div className="text-xs font-semibold text-cyan-300">语音展示</div>
         <div className="mt-1 text-sm text-dfc-subtext">{companion.voiceStyle}</div>
         <div className="mt-1 text-xs text-dfc-muted">{companion.trial}</div>
-        {companion.voiceIntroUrl ? <audio controls src={companion.voiceIntroUrl} className="mt-3 w-full" /> : null}
+        {companion.voiceIntroUrl ? <audio controls src={mediaUrl(companion.voiceIntroUrl)} className="mt-3 w-full" /> : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -189,6 +189,11 @@ export function CompanionAvatar({ nickname, avatarUrl, size = "md" }: { nickname
   );
 }
 
+export function mediaUrl(src?: string | null): string | undefined {
+  if (!src) return undefined;
+  return src.startsWith("/uploads/") ? `/api${src}` : src;
+}
+
 export function SafeMediaImage({ src, alt, className, fallbackText }: { src?: string | null; alt: string; className: string; fallbackText: string }) {
   const [failed, setFailed] = useState(false);
 
@@ -204,7 +209,7 @@ export function SafeMediaImage({ src, alt, className, fallbackText }: { src?: st
     );
   }
 
-  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+  return <img src={mediaUrl(src)} alt={alt} className={className} onError={() => setFailed(true)} />;
 }
 
 export function PriceSummary() {

@@ -474,7 +474,7 @@ export default function ProfilePage() {
             </div>
           </UploadBox>
           <UploadBox label="语音介绍" hint="建议 10-30 秒，客户可试听" accept="audio/*" uploading={uploading === "voice"} onChange={handleVoiceChange}>
-            {voiceIntroUrl ? <audio controls src={voiceIntroUrl} className="mt-2 w-full" /> : null}
+            {voiceIntroUrl ? <audio controls src={mediaUrl(voiceIntroUrl)} className="mt-2 w-full" /> : null}
           </UploadBox>
         </div>
         <button type="button" disabled={isSaving} onClick={() => void saveMedia()} className="mt-5 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
@@ -543,6 +543,11 @@ function PlatformBindingCard({
   );
 }
 
+function mediaUrl(src?: string | null): string | undefined {
+  if (!src) return undefined;
+  return src.startsWith("/uploads/") ? `/api${src}` : src;
+}
+
 function SafeMediaImage({ src, alt, className, fallbackText }: { src: string; alt: string; className: string; fallbackText: string }) {
   const [failed, setFailed] = useState(false);
 
@@ -558,7 +563,7 @@ function SafeMediaImage({ src, alt, className, fallbackText }: { src: string; al
     );
   }
 
-  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+  return <img src={mediaUrl(src)} alt={alt} className={className} onError={() => setFailed(true)} />;
 }
 
 function Field({ label, value }: { label: string; value: string }) {

@@ -1,17 +1,20 @@
+import { timingSafeEqual } from "node:crypto";
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 
 @Injectable()
 export class BotInternalGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const expected = process.env.BOT_INTERNAL_TOKEN;
-    if (!expected) {
+    const expectedToken = process.env.BOT_INTERNAL_TOKEN;
+    if (!expectedToken) {
       throw new UnauthorizedException("BOT_INTERNAL_TOKEN is not configured");
     }
 
     const request = context.switchToHttp().getRequest<{ header(name: string): string | undefined }>();
-    const actual = request.header("x-bot-token");
+    const receivedToken = request.header("x-bot-token");
+    const actual = Buffer.from(receivedToken ?? "");
+    const expected = Buffer.from(expectedToken);
 
-    if (!actual || actual !== expected) {
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
       throw new UnauthorizedException("Invalid bot token");
     }
 
