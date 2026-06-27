@@ -115,9 +115,18 @@ function discordPut(token, apiPath, body) {
   return discordRequest(token, "PUT", apiPath, body);
 }
 
+function discordEditMessage(token, channelId, messageId, content) {
+  return discordPatch(token, `/channels/${channelId}/messages/${messageId}`, { content });
+}
+
+function discordGetMessages(token, channelId, limit = 50) {
+  const boundedLimit = Math.max(1, Math.min(100, Number(limit) || 50));
+  return discordGet(token, `/channels/${channelId}/messages?limit=${boundedLimit}`);
+}
+
 async function checkMessageExists(token, channelId, markerText) {
   if (!channelId) return false;
-  const messages = await discordGet(token, `/channels/${channelId}/messages?limit=50`);
+  const messages = await discordGetMessages(token, channelId, 50);
   return Array.isArray(messages) && messages.some((message) => String(message.content || "").includes(markerText));
 }
 
@@ -168,11 +177,26 @@ function kookPost(token, apiPath, body) {
   return kookRequest(token, "POST", apiPath, body);
 }
 
+function kookEditMessage(token, messageId, content) {
+  return kookPost(token, "/message/update", {
+    msg_id: messageId,
+    content
+  });
+}
+
+async function kookGetMessages(token, channelId, limit = 50) {
+  const boundedLimit = Math.max(1, Math.min(100, Number(limit) || 50));
+  const data = await kookGet(
+    token,
+    `/message/list?target_id=${encodeURIComponent(channelId)}&msg_pin=0&page_size=${boundedLimit}`
+  );
+  return Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+}
+
 async function kookCheckMessageExists(token, channelId, markerText) {
   if (!channelId) return false;
-  const data = await kookGet(token, `/message/list?target_id=${encodeURIComponent(channelId)}&msg_pin=0`);
-  const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-  return items.some((message) => String(message.content || "").includes(markerText));
+  const messages = await kookGetMessages(token, channelId, 50);
+  return messages.some((message) => String(message.content || "").includes(markerText));
 }
 
 async function kookPostIfNotExists(token, channelId, content, markerText) {
@@ -216,10 +240,14 @@ module.exports = {
   discordPost,
   discordPatch,
   discordPut,
+  discordEditMessage,
+  discordGetMessages,
   checkMessageExists,
   postIfNotExists,
   kookGet,
   kookPost,
+  kookEditMessage,
+  kookGetMessages,
   kookCheckMessageExists,
   kookPostIfNotExists,
   normalizeName,

@@ -103,3 +103,11 @@ node scripts/platform-setup/index.js --kook-only
 ```
 
 脚本从 `.env` / `.env.production` 读取 token 和频道 ID，不会硬编码密钥；重复运行会检查最近消息并跳过已发布内容。
+
+频道权限、命名、顺序和 Bot 自有规则消息可用优化脚本幂等修正：
+
+```bash
+node scripts/platform-setup/optimize-index.js
+node scripts/platform-setup/optimize-index.js --discord-only
+node scripts/platform-setup/optimize-index.js --kook-only
+```
