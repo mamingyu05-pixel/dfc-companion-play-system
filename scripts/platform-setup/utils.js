@@ -119,6 +119,38 @@ function discordDelete(token, apiPath) {
   return discordRequest(token, "DELETE", apiPath);
 }
 
+async function discordPostImage(token, channelId, imagePath, content) {
+  const buffer = fs.readFileSync(imagePath);
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const form = new FormData();
+    form.append("files[0]", new Blob([buffer]), path.basename(imagePath));
+    if (content) form.append("payload_json", JSON.stringify({ content }));
+
+    const response = await fetch(`${DISCORD_API_BASE_URL}/channels/${channelId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bot ${token}`
+      },
+      body: form
+    });
+
+    if (response.status === 429) {
+      const waitMs = parseRetryAfter(response);
+      console.log(`rate limited Discord image upload; retry in ${waitMs}ms`);
+      await sleep(waitMs);
+      continue;
+    }
+
+    const text = await response.text();
+    await sleep(500);
+    if (!response.ok) throw new Error(`Discord image upload HTTP ${response.status}: ${text.slice(0, 500)}`);
+    return text ? JSON.parse(text) : null;
+  }
+
+  throw new Error("Discord image upload failed after repeated rate limits");
+}
+
 function discordEditMessage(token, channelId, messageId, content) {
   return discordPatch(token, `/channels/${channelId}/messages/${messageId}`, { content });
 }
@@ -245,6 +277,7 @@ module.exports = {
   discordPatch,
   discordPut,
   discordDelete,
+  discordPostImage,
   discordEditMessage,
   discordGetMessages,
   checkMessageExists,

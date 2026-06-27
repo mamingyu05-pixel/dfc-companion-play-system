@@ -97,6 +97,16 @@ ADMIN_PASSWORD=ChangeMe123!
 Discord + KOOK 频道说明、服务价目、自助下单格式和派单规则可用脚本幂等同步：
 
 ```bash
+node scripts/platform-setup/master-index.js
+node scripts/platform-setup/master-index.js --discord-only
+node scripts/platform-setup/master-index.js --kook-only
+```
+
+`master-index.js` 会执行频道重命名、权限修正、频道简介横幅图文重置、考核/违规内容、运营内容和 KOOK 同步。频道简介横幅图片放在 `scripts/platform-setup/banners/`。
+
+旧的分步入口仍可单独使用：
+
+```bash
 node scripts/platform-setup/index.js
 node scripts/platform-setup/index.js --discord-only
 node scripts/platform-setup/index.js --kook-only
