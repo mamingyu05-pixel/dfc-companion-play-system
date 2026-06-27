@@ -87,10 +87,35 @@ client.on(Events.GuildMemberAdd, async (member) => {
     });
     if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
     console.log(`Ensured Discord customer for ${member.user.tag} (${member.user.id})`);
+    await sendAccountBindingGuide(member);
   } catch (error) {
     console.warn(`Failed to ensure Discord customer ${member.user.id}: ${errorMessage(error)}`);
   }
 });
+
+async function sendAccountBindingGuide(member: { displayName: string; user: { id: string; send: (options: { content: string }) => Promise<unknown> }; guild: { id: string } }) {
+  const content = buildAccountBindingGuide("Discord");
+
+  try {
+    await member.user.send({ content });
+    return;
+  } catch (error) {
+    console.warn(`Failed to DM Discord binding guide to ${member.user.id}: ${errorMessage(error)}`);
+  }
+
+  const supportChannelId = process.env.DISCORD_SUPPORT_CHANNEL_ID;
+  if (!supportChannelId) return;
+
+  const channel = await client.channels.fetch(supportChannelId).catch(() => null);
+  const textChannel = channel as { send?: (options: { content: string }) => Promise<unknown> } | null;
+  if (!channel?.isTextBased() || typeof textChannel?.send !== "function") return;
+
+  await textChannel.send({
+    content: [`<@${member.user.id}> 欢迎加入 May猫饼电竞。`, content].join("\n")
+  }).catch((error: unknown) => {
+    console.warn(`Failed to send Discord binding guide fallback for ${member.user.id}: ${errorMessage(error)}`);
+  });
+}
 
 async function handleOrderAccept(interaction: ButtonInteraction, orderId: string) {
   await interaction.deferReply({ ephemeral: true });
@@ -276,6 +301,21 @@ function parseBindingText(content: string) {
 
   const match = content.trim().match(/^(?:绑定|綁定|bind|绑定码|綁定碼)\s*[:：]?\s*([A-Z0-9]{6,12})$/i);
   return match?.[1]?.toUpperCase();
+}
+
+function buildAccountBindingGuide(platform: "Discord" | "KOOK") {
+  const customerUrl = process.env.CUSTOMER_WEB_URL || "https://maycatplay.com/customer";
+  const companionUrl = process.env.COMPANION_WEB_URL || "https://maycatplay.com/companion";
+
+  return [
+    `为了让后台正确关联你的${platform}身份、充值、下单、派单和客服记录，请绑定网站账号。`,
+    `客户入口：${customerUrl}`,
+    `陪玩入口：${companionUrl}`,
+    "已注册：登录后进入个人中心/平台绑定，生成绑定码，然后在这里发送：绑定 你的绑定码",
+    "未注册：先注册网站账号，再回来发送绑定码。",
+    "只想走人工也可以直接联系人工客服，但后台绑定后处理充值、订单和售后会更快。",
+    "不要把密码、邮箱验证码、后台 Token 发给任何人。"
+  ].join("\n");
 }
 
 async function callApi(path: string, body: unknown) {

@@ -83,13 +83,16 @@ export class KookWebhookController {
           }))
         : null;
 
+      const guideNotification = await this.sendKookAccountBindingGuide(memberJoin.kookUserId);
+
       return {
         registered: Boolean(account),
         platform: BotPlatform.KOOK,
         kookUserId: memberJoin.kookUserId,
         userId: account?.userId,
         displayName: account?.displayName ?? memberJoin.displayName,
-        roleSync
+        roleSync,
+        guideNotification
       };
     }
 
@@ -259,6 +262,17 @@ export class KookWebhookController {
     return { ...result, notification };
   }
 
+  private async sendKookAccountBindingGuide(kookUserId: string) {
+    const content = buildAccountBindingGuide("KOOK");
+    const directNotification = await this.botNotifications.sendKookDirectMessage(kookUserId, content);
+    if (directNotification.status === BotEventStatus.SENT) return directNotification;
+
+    const supportChannelId = process.env.KOOK_SUPPORT_CHANNEL_ID;
+    if (!supportChannelId) return directNotification;
+
+    return this.botNotifications.sendKookChannelText(supportChannelId, `(met)${kookUserId}(met) 欢迎加入 May猫饼电竞。\n${content}`);
+  }
+
   private parseApplyText(content: string) {
     const normalized = content.replace(/\s+/g, " ").trim();
     const match = normalized.match(/(?:报名|我要报名|接单|我来)?\s*(TRY[0-9A-Z]+)\s*(.*)/i);
@@ -397,6 +411,21 @@ function parseBindingText(content: string) {
 
   const match = content.trim().match(/^(?:绑定|綁定|bind|绑定码|綁定碼)\s*[:：]?\s*([A-Z0-9]{6,12})$/i);
   return match?.[1]?.toUpperCase();
+}
+
+function buildAccountBindingGuide(platform: "Discord" | "KOOK") {
+  const customerUrl = process.env.CUSTOMER_WEB_URL || "https://maycatplay.com/customer";
+  const companionUrl = process.env.COMPANION_WEB_URL || "https://maycatplay.com/companion";
+
+  return [
+    `为了让后台正确关联你的${platform}身份、充值、下单、派单和客服记录，请绑定网站账号。`,
+    `客户入口：${customerUrl}`,
+    `陪玩入口：${companionUrl}`,
+    "已注册：登录后进入个人中心/平台绑定，生成绑定码，然后在这里发送：绑定 你的绑定码",
+    "未注册：先注册网站账号，再回来发送绑定码。",
+    "只想走人工也可以直接联系人工客服，但后台绑定后处理充值、订单和售后会更快。",
+    "不要把密码、邮箱验证码、后台 Token 发给任何人。"
+  ].join("\n");
 }
 
 function errorMessage(error: unknown) {
