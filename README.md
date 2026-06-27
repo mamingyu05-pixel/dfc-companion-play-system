@@ -111,3 +111,11 @@ node scripts/platform-setup/optimize-index.js
 node scripts/platform-setup/optimize-index.js --discord-only
 node scripts/platform-setup/optimize-index.js --kook-only
 ```
+
+Discord 重复频道先用审计脚本输出保留/清理建议，默认不修改频道：
+
+```bash
+node scripts/platform-setup/audit-discord-duplicates.js
+```
+
+确认计划后如需只隐藏重复候选频道，可追加 `--hide-duplicates`；脚本不会删除频道或迁移历史消息。
