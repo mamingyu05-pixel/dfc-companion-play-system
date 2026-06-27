@@ -41,6 +41,31 @@ const DUPLICATE_GROUPS = [
     note: "客服大厅和具体接待房可能有不同用途；隐藏前先确认没有正在使用。"
   },
   {
+    key: "SUPPORT_VOICE",
+    title: "客服语音频道",
+    canonicalName: "客服",
+    env: ["DISCORD_VOICE_SUPPORT_CHANNEL_ID", "DISCORD_SUPPORT_VOICE_CHANNEL_ID"],
+    aliases: ["客服", "语音客服"],
+    types: [2],
+    note: "客服语音保留一个主频道即可。"
+  },
+  {
+    key: "VOICE_TEMPLATE_CHANNEL",
+    title: "语音模板频道",
+    deleteAll: true,
+    aliases: ["点这里创建新频道"],
+    types: [2],
+    note: "这是 Discord 模板/临时频道入口，不属于正式客服或试音流程。"
+  },
+  {
+    key: "ORDER_STALE_CHANNELS",
+    title: "点单临时 / 归档频道",
+    deleteAll: true,
+    aliases: ["点单记录", "closed"],
+    types: [0],
+    note: "清理旧点单记录和 closed 临时频道；正式点单频道会保留。"
+  },
+  {
     key: "VIOLATION_RULES",
     title: "违规 / 处罚规则",
     canonicalName: "违规处理",
@@ -55,6 +80,23 @@ const DUPLICATE_GROUPS = [
     env: ["DISCORD_EXAM_CHANNEL_ID"],
     aliases: ["考核标准"],
     note: "考核标准保留为员工守则；考核入职须知不再作为重复候选自动清理。"
+  },
+  {
+    key: "DUPLICATE_VOICE_CATEGORY",
+    title: "重复 Voice Channels 分类",
+    canonicalName: "Voice Channels",
+    aliases: ["Voice Channels"],
+    types: [4],
+    note: "保留第一个通用语音分类，删除多余的同名分类。"
+  },
+  {
+    key: "EMPTY_LEGACY_CATEGORY",
+    title: "空的旧分类",
+    deleteAll: true,
+    emptyOnly: true,
+    aliases: ["May猫饼｜客户服务", "点单看这里"],
+    types: [4],
+    note: "只清理已经没有子频道的旧分类。"
   }
 ];
 
@@ -81,8 +123,9 @@ async function runDiscordDuplicateAudit(options = {}) {
   const categories = Object.fromEntries(
     channels.filter((channel) => Number(channel.type) === 4).map((channel) => [channel.id, channel.name])
   );
+  const childCounts = countChildrenByParent(channels);
   const everyoneId = guildId;
-  const plans = buildDuplicatePlans(env, channels, categories);
+  const plans = buildDuplicatePlans(env, channels, categories, childCounts);
 
   if (!plans.length) {
     console.log("✓ 未发现明显重复频道组");
@@ -96,6 +139,10 @@ async function runDiscordDuplicateAudit(options = {}) {
     } else if (hideDuplicates) {
       await hideDuplicateChannels(token, everyoneId, plan.duplicates);
     }
+  }
+
+  if (deleteDuplicates) {
+    await deleteEmptyLegacyCategories(token, guildId);
   }
 
   if (!hideDuplicates && !deleteDuplicates) {
@@ -114,9 +161,13 @@ async function getGuildChannels(token, guildId) {
   return Array.isArray(channels) ? channels : [];
 }
 
-function buildDuplicatePlans(env, channels, categories) {
+function buildDuplicatePlans(env, channels, categories, childCounts) {
   return DUPLICATE_GROUPS.map((group) => {
-    const matches = matchGroupChannels(group, channels, categories);
+    const matches = matchGroupChannels(group, channels, categories, childCounts);
+    if (group.deleteAll) {
+      if (!matches.length) return null;
+      return { group, canonical: null, duplicates: matches };
+    }
     if (matches.length <= 1) return null;
     const canonical = chooseCanonical(env, group, matches);
     const duplicates = matches.filter((match) => match.id !== canonical.id);
@@ -124,18 +175,29 @@ function buildDuplicatePlans(env, channels, categories) {
   }).filter(Boolean);
 }
 
-function matchGroupChannels(group, channels, categories) {
+function matchGroupChannels(group, channels, categories, childCounts) {
+  const allowedTypes = group.types || [0];
   return channels
-    .filter((channel) => Number(channel.type) === 0)
+    .filter((channel) => allowedTypes.includes(Number(channel.type)))
     .filter((channel) => matchesAnyAlias(channel.name, group.aliases))
+    .filter((channel) => !group.emptyOnly || Number(channel.type) !== 4 || !childCounts[channel.id])
     .map((channel) => ({
       id: channel.id,
       name: channel.name,
+      type: Number(channel.type),
       parentId: channel.parent_id,
       category: categories[channel.parent_id] || "无分类",
-      position: Number(channel.position || 0)
+      position: Number(channel.position || 0),
+      childCount: childCounts[channel.id] || 0
     }))
     .sort((a, b) => a.position - b.position);
+}
+
+function countChildrenByParent(channels) {
+  return channels.reduce((counts, channel) => {
+    if (channel.parent_id) counts[channel.parent_id] = (counts[channel.parent_id] || 0) + 1;
+    return counts;
+  }, {});
 }
 
 function matchesAnyAlias(name, aliases) {
@@ -161,11 +223,16 @@ function chooseCanonical(env, group, matches) {
 
 function printPlan(plan) {
   console.log(`\n[${plan.group.title}]`);
-  console.log(`保留建议：#${plan.canonical.name} (${plan.canonical.id}) / ${plan.canonical.category}`);
+  if (plan.canonical) {
+    console.log(`保留建议：#${plan.canonical.name} (${plan.canonical.id}) / ${plan.canonical.category}`);
+  } else {
+    console.log("清理建议：以下频道/分类均可清理");
+  }
   console.log(`说明：${plan.group.note}`);
   console.log("重复候选：");
   for (const duplicate of plan.duplicates) {
-    console.log(`  - #${duplicate.name} (${duplicate.id}) / ${duplicate.category}`);
+    const suffix = duplicate.type === 4 ? ` / 子频道 ${duplicate.childCount}` : ` / ${duplicate.category}`;
+    console.log(`  - #${duplicate.name} (${duplicate.id})${suffix}`);
   }
 }
 
@@ -184,6 +251,21 @@ async function deleteDuplicateChannels(token, duplicates) {
   for (const channel of duplicates) {
     await discordDelete(token, `/channels/${channel.id}`);
     console.log(`✓ 已删除重复候选：#${channel.name}`);
+  }
+}
+
+async function deleteEmptyLegacyCategories(token, guildId) {
+  const channels = await getGuildChannels(token, guildId);
+  const childCounts = countChildrenByParent(channels);
+  const aliases = ["May猫饼｜客户服务", "点单看这里"];
+  const emptyLegacyCategories = channels
+    .filter((channel) => Number(channel.type) === 4)
+    .filter((channel) => matchesAnyAlias(channel.name, aliases))
+    .filter((channel) => !childCounts[channel.id]);
+
+  for (const category of emptyLegacyCategories) {
+    await discordDelete(token, `/channels/${category.id}`);
+    console.log(`✓ 已删除空旧分类：#${category.name}`);
   }
 }
 
