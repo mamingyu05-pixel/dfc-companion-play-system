@@ -115,6 +115,10 @@ function discordPut(token, apiPath, body) {
   return discordRequest(token, "PUT", apiPath, body);
 }
 
+function discordDelete(token, apiPath) {
+  return discordRequest(token, "DELETE", apiPath);
+}
+
 function discordEditMessage(token, channelId, messageId, content) {
   return discordPatch(token, `/channels/${channelId}/messages/${messageId}`, { content });
 }
@@ -240,6 +244,7 @@ module.exports = {
   discordPost,
   discordPatch,
   discordPut,
+  discordDelete,
   discordEditMessage,
   discordGetMessages,
   checkMessageExists,

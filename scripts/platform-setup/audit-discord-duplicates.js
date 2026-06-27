@@ -1,4 +1,5 @@
 const {
+  discordDelete,
   discordGet,
   discordPut,
   loadProjectEnv,
@@ -34,37 +35,47 @@ const DUPLICATE_GROUPS = [
   {
     key: "SUPPORT_TEXT",
     title: "客服文字接待",
-    canonicalName: "客服-文字",
+    canonicalName: "客服接待-1-厅",
     env: ["DISCORD_SUPPORT_CHANNEL_ID"],
     aliases: ["客服-文字", "客服", "客服接待", "客服接待1", "客服接待1厅", "客服接待-1厅"],
     note: "客服大厅和具体接待房可能有不同用途；隐藏前先确认没有正在使用。"
   },
   {
-    key: "COMPLAINT_RULES",
-    title: "投诉 / 处罚 / 违规",
+    key: "VIOLATION_RULES",
+    title: "违规 / 处罚规则",
     canonicalName: "违规处理",
-    env: ["DISCORD_COMPLAINT_CHANNEL_ID", "DISCORD_VIOLATION_CHANNEL_ID"],
-    aliases: ["违规处理", "投诉处理", "处罚通知", "处刑通知"],
-    note: "规则说明和投诉入口可分开；如果内容重复，建议规则留在违规处理，投诉留在投诉处理。"
+    env: ["DISCORD_VIOLATION_CHANNEL_ID"],
+    aliases: ["违规处理", "处罚通知", "处刑通知"],
+    note: "保留员工守则里的违规处理；处罚通知若只是旧规则入口，可清理。"
   },
   {
     key: "EXAM",
-    title: "考核 / 入职",
+    title: "考核标准",
     canonicalName: "考核标准",
     env: ["DISCORD_EXAM_CHANNEL_ID"],
-    aliases: ["考核标准", "考核入职须知", "考核须知"],
-    note: "考核标准和入职申请可以拆分；如果只有规则说明，建议保留考核标准。"
+    aliases: ["考核标准"],
+    note: "考核标准保留为员工守则；考核入职须知不再作为重复候选自动清理。"
   }
 ];
 
 async function runDiscordDuplicateAudit(options = {}) {
+  const hideDuplicates = Boolean(options.hideDuplicates);
+  const deleteDuplicates = Boolean(options.deleteDuplicates);
+
+  if (deleteDuplicates && !options.confirmDelete) {
+    throw new Error("删除频道需要同时传入 --delete-duplicates 和 --confirm-delete-duplicate-channels");
+  }
+
   const env = loadProjectEnv();
   const token = requireAny(env, ["DISCORD_BOT_TOKEN", "DISCORD_TOKEN"], "Discord bot token");
   const guildId = requireAny(env, ["DISCORD_GUILD_ID"], "DISCORD_GUILD_ID");
-  const hideDuplicates = Boolean(options.hideDuplicates);
 
   console.log(`Discord guild: ${guildId}`);
-  console.log(hideDuplicates ? "模式：隐藏重复候选，不删除频道" : "模式：只审计，不修改频道");
+  if (deleteDuplicates) {
+    console.log("模式：删除重复候选频道，频道历史消息会永久丢失");
+  } else {
+    console.log(hideDuplicates ? "模式：隐藏重复候选，不删除频道" : "模式：只审计，不修改频道");
+  }
 
   const channels = await getGuildChannels(token, guildId);
   const categories = Object.fromEntries(
@@ -80,15 +91,19 @@ async function runDiscordDuplicateAudit(options = {}) {
 
   for (const plan of plans) {
     printPlan(plan);
-    if (hideDuplicates) {
+    if (deleteDuplicates) {
+      await deleteDuplicateChannels(token, plan.duplicates);
+    } else if (hideDuplicates) {
       await hideDuplicateChannels(token, everyoneId, plan.duplicates);
     }
   }
 
-  if (!hideDuplicates) {
+  if (!hideDuplicates && !deleteDuplicates) {
     console.log("\n如需只隐藏重复候选频道，可在确认计划后运行：");
     console.log("node scripts/platform-setup/audit-discord-duplicates.js --hide-duplicates");
-    console.log("注意：该命令不会删除频道，也不会迁移历史消息。");
+    console.log("\n如需删除重复候选频道，可在确认计划后运行：");
+    console.log("node scripts/platform-setup/audit-discord-duplicates.js --delete-duplicates --confirm-delete-duplicate-channels");
+    console.log("注意：删除频道会永久删除频道历史消息，脚本不会迁移历史消息。");
   }
 
   return plans;
@@ -165,9 +180,20 @@ async function hideDuplicateChannels(token, everyoneId, duplicates) {
   }
 }
 
+async function deleteDuplicateChannels(token, duplicates) {
+  for (const channel of duplicates) {
+    await discordDelete(token, `/channels/${channel.id}`);
+    console.log(`✓ 已删除重复候选：#${channel.name}`);
+  }
+}
+
 if (require.main === module) {
   const args = new Set(process.argv.slice(2));
-  runDiscordDuplicateAudit({ hideDuplicates: args.has("--hide-duplicates") }).catch((error) => {
+  runDiscordDuplicateAudit({
+    hideDuplicates: args.has("--hide-duplicates"),
+    deleteDuplicates: args.has("--delete-duplicates"),
+    confirmDelete: args.has("--confirm-delete-duplicate-channels")
+  }).catch((error) => {
     console.error("❌ 错误：", error instanceof Error ? error.message : error);
     process.exit(1);
   });

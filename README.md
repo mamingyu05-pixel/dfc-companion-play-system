@@ -119,3 +119,11 @@ node scripts/platform-setup/audit-discord-duplicates.js
 ```
 
 确认计划后如需只隐藏重复候选频道，可追加 `--hide-duplicates`；脚本不会删除频道或迁移历史消息。
+
+如需删除重复候选频道，必须同时传入删除和确认参数：
+
+```bash
+node scripts/platform-setup/audit-discord-duplicates.js --delete-duplicates --confirm-delete-duplicate-channels
+```
+
+删除频道会永久删除该频道历史消息，脚本不会迁移历史消息。
