@@ -15,6 +15,7 @@ const {
 const EXAM_RULES_MARKER = "May猫饼电竞 · 陪玩考核标准";
 const VIOLATION_RULES_MARKER = "May猫饼电竞 · 违规处理规则";
 const NAV_CATEGORY_NAME = "May猫饼｜频道导航";
+const VOICE_CATEGORY_NAME = "May猫饼｜语音服务";
 
 const EXAM_RULES_CONTENT = `## 🏕️ May猫饼电竞 · 陪玩考核标准
 
@@ -238,23 +239,36 @@ async function renameSupportTextChannel(token, channels) {
 async function normalizeLayoutCategories(token, channels) {
   if (findExactChannel(channels, NAV_CATEGORY_NAME, 4)) {
     console.log(`✓ ${NAV_CATEGORY_NAME} 分类已存在`);
+  } else {
+    const textChannels = findExactChannel(channels, "Text Channels", 4);
+    if (textChannels) {
+      await discordPatch(token, `/channels/${textChannels.id}`, { name: NAV_CATEGORY_NAME });
+      console.log(`✓ 已重命名分类：Text Channels → ${NAV_CATEGORY_NAME}`);
+    } else {
+      console.log("- 未找到 Text Channels 分类，跳过分类重命名");
+    }
+  }
+
+  if (findExactChannel(channels, VOICE_CATEGORY_NAME, 4)) {
+    console.log(`✓ ${VOICE_CATEGORY_NAME} 分类已存在`);
     return;
   }
 
-  const textChannels = findExactChannel(channels, "Text Channels", 4);
-  if (!textChannels) {
-    console.log("- 未找到 Text Channels 分类，跳过分类重命名");
+  const voiceChannels = findExactChannel(channels, "Voice Channels", 4);
+  if (!voiceChannels) {
+    console.log("- 未找到 Voice Channels 分类，跳过语音分类重命名");
     return;
   }
 
-  await discordPatch(token, `/channels/${textChannels.id}`, { name: NAV_CATEGORY_NAME });
-  console.log(`✓ 已重命名分类：Text Channels → ${NAV_CATEGORY_NAME}`);
+  await discordPatch(token, `/channels/${voiceChannels.id}`, { name: VOICE_CATEGORY_NAME });
+  console.log(`✓ 已重命名分类：Voice Channels → ${VOICE_CATEGORY_NAME}`);
 }
 
 async function reorderDiscordLayout(token, guildId, channels) {
   await reorderCategories(token, guildId, channels);
   const refreshedChannels = await getGuildChannels(token, guildId);
   await reorderNavigationChannels(token, guildId, refreshedChannels);
+  await reorderExamChannels(token, guildId, refreshedChannels);
 }
 
 async function reorderCategories(token, guildId, channels) {
@@ -264,8 +278,8 @@ async function reorderCategories(token, guildId, channels) {
     ["☎ 客服接待大厅 ☎", "客服接待大厅"],
     ["员工守则"],
     ["🧾 考核专区", "考核专区"],
-    ["May猫饼｜陪玩派单", "陪玩派单"],
-    ["Voice Channels", "语音服务"]
+    [VOICE_CATEGORY_NAME, "Voice Channels", "语音服务"],
+    ["May猫饼｜陪玩派单", "陪玩派单"]
   ];
 
   const seen = new Set();
@@ -304,6 +318,7 @@ async function reorderNavigationChannels(token, guildId, channels) {
     findChannel(channels, ["服务价目", "服务项目"], 0),
     findChannel(channels, ["点单", "自助下单"], 0),
     findChannel(channels, ["好评展示", "好评"], 0),
+    findChannel(channels, ["社区守则", "社区规则"], 0),
     findChannel(channels, ["聊天大厅", "文字聊天区"], 0)
   ].filter(Boolean);
 
@@ -336,6 +351,56 @@ async function reorderNavigationChannels(token, guildId, channels) {
     }))
   );
   console.log(`✓ 已调整 ${NAV_CATEGORY_NAME} 顺序：${body.length} 个频道`);
+}
+
+async function reorderExamChannels(token, guildId, channels) {
+  const category = findChannel(channels, ["🧾 考核专区", "考核专区"], 4);
+  if (!category) {
+    console.log("- 未找到考核专区分类，跳过考核频道排序");
+    return;
+  }
+
+  const targets = [
+    findChannel(channels, ["考核入职须知", "入职须知"], 0),
+    findChannel(channels, ["tag-登记", "tag登记", "技能登记"], 0),
+    findChannel(channels, ["试音大厅"], 0),
+    findChannel(channels, ["考核一厅"], 2),
+    findChannel(channels, ["考核二厅"], 2),
+    findChannel(channels, ["考核三厅"], 2),
+    findChannel(channels, ["考核四厅"], 2),
+    findChannel(channels, ["考核五厅"], 2),
+    findChannel(channels, ["考核六厅"], 2)
+  ].filter(Boolean);
+
+  const seen = new Set();
+  const body = targets
+    .filter((channel) => {
+      if (seen.has(channel.id)) return false;
+      seen.add(channel.id);
+      return true;
+    })
+    .map((channel, position) => ({ channel, position }));
+
+  if (!body.length) {
+    console.log("- 考核专区下目标频道均未找到，跳过排序");
+    return;
+  }
+
+  for (const item of body) {
+    if (item.channel.parent_id === category.id) continue;
+    await discordPatch(token, `/channels/${item.channel.id}`, { parent_id: category.id });
+    console.log(`✓ 已移动到考核专区：${item.channel.name}`);
+  }
+
+  await discordPatch(
+    token,
+    `/guilds/${guildId}/channels`,
+    body.map((item) => ({
+      id: item.channel.id,
+      position: item.position
+    }))
+  );
+  console.log(`✓ 已调整考核专区顺序：${body.length} 个频道`);
 }
 
 async function upsertDiscordMessage(token, channelId, botId, markerText, content, label) {

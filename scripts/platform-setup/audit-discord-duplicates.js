@@ -9,6 +9,14 @@ const {
 
 const DUPLICATE_GROUPS = [
   {
+    key: "INTERNAL_TEST_CHANNELS",
+    title: "内部测试频道",
+    deleteAll: true,
+    aliases: ["施工", "我帅得要命真的", "我们得要命真的", "帅得要命", "要命真的"],
+    types: [0],
+    note: "这些是搭建期测试频道，正式运营不需要保留。"
+  },
+  {
     key: "STORE_NAV",
     title: "店内导航 / 频道简介",
     canonicalName: "频道简介",
@@ -84,8 +92,8 @@ const DUPLICATE_GROUPS = [
   {
     key: "DUPLICATE_VOICE_CATEGORY",
     title: "重复 Voice Channels 分类",
-    canonicalName: "Voice Channels",
-    aliases: ["Voice Channels"],
+    canonicalName: "May猫饼｜语音服务",
+    aliases: ["Voice Channels", "May猫饼｜语音服务"],
     types: [4],
     note: "保留第一个通用语音分类，删除多余的同名分类。"
   },
@@ -162,7 +170,7 @@ async function getGuildChannels(token, guildId) {
 }
 
 function buildDuplicatePlans(env, channels, categories, childCounts) {
-  return DUPLICATE_GROUPS.map((group) => {
+  const configuredPlans = DUPLICATE_GROUPS.map((group) => {
     const matches = matchGroupChannels(group, channels, categories, childCounts);
     if (group.deleteAll) {
       if (!matches.length) return null;
@@ -173,6 +181,11 @@ function buildDuplicatePlans(env, channels, categories, childCounts) {
     const duplicates = matches.filter((match) => match.id !== canonical.id);
     return { group, canonical, duplicates };
   }).filter(Boolean);
+
+  return [
+    ...configuredPlans,
+    ...buildExactNameDuplicatePlans(channels, categories, childCounts)
+  ];
 }
 
 function matchGroupChannels(group, channels, categories, childCounts) {
@@ -198,6 +211,44 @@ function countChildrenByParent(channels) {
     if (channel.parent_id) counts[channel.parent_id] = (counts[channel.parent_id] || 0) + 1;
     return counts;
   }, {});
+}
+
+function buildExactNameDuplicatePlans(channels, categories, childCounts) {
+  const groups = channels
+    .filter((channel) => [0, 2].includes(Number(channel.type)))
+    .filter((channel) => normalizeName(channel.name).includes("考核") && normalizeName(channel.name).includes("厅"))
+    .reduce((result, channel) => {
+      const key = normalizeName(channel.name);
+      if (!result[key]) result[key] = [];
+      result[key].push(channel);
+      return result;
+    }, {});
+
+  return Object.values(groups)
+    .filter((items) => items.length > 1)
+    .map((items) => {
+      const matches = items
+        .map((channel) => ({
+          id: channel.id,
+          name: channel.name,
+          type: Number(channel.type),
+          parentId: channel.parent_id,
+          category: categories[channel.parent_id] || "无分类",
+          position: Number(channel.position || 0),
+          childCount: childCounts[channel.id] || 0
+        }))
+        .sort((a, b) => a.position - b.position);
+
+      return {
+        group: {
+          key: `EXACT_DUPLICATE_${matches[0].id}`,
+          title: `重复考核频道：${matches[0].name}`,
+          note: "同名考核频道只保留第一个，其余作为重复候选清理。"
+        },
+        canonical: matches[0],
+        duplicates: matches.slice(1)
+      };
+    });
 }
 
 function matchesAnyAlias(name, aliases) {
