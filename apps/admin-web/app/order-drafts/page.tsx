@@ -10,6 +10,10 @@ type AdminUser = {
   role: string;
   status: string;
   displayName: string;
+  companionProfile?: {
+    nickname: string;
+    status: string;
+  } | null;
 };
 
 type ServicePriceTier = "CUSTOM" | "ENTERTAINMENT" | "RANKED" | "HIGH_RANKED";
@@ -91,13 +95,6 @@ type OrderDraft = {
   }>;
 };
 
-type DispatchNotification = {
-  platform: "DISCORD" | "KOOK";
-  status: "SENT" | "FAILED" | string;
-  messageId?: string;
-  error?: string;
-};
-
 type PromotionSetting = {
   key: string;
   value: string;
@@ -150,17 +147,12 @@ export default function OrderDraftsPage() {
   const [form, setForm] = useState({
     customerId: "",
     sourcePlatform: "KOOK" as "WEB" | "DISCORD" | "KOOK",
-    customerDisplayName: "",
-    customerPlatformUserId: "",
     sourceChannelId: "",
-    voiceRoomId: "",
     game: "DELTA_FORCE",
     mode: "",
     hours: "",
     priceTier: "CUSTOM" as ServicePriceTier,
-    budgetAmount: "",
-    note: "",
-    demandText: ""
+    note: ""
   });
 
   async function loadData() {
@@ -318,29 +310,6 @@ export default function OrderDraftsPage() {
     return data;
   }
 
-  async function createDraftFromDemand() {
-    try {
-      const data = await callApi<{ draft: { id: string; draftNo?: string }; notifications?: DispatchNotification[] }>("/api/admin/order-drafts/from-demand", {
-        method: "POST",
-        body: JSON.stringify({
-          customerId: form.customerId || undefined,
-          sourcePlatform: form.sourcePlatform,
-          customerDisplayName: form.customerDisplayName || undefined,
-          customerPlatformUserId: form.customerPlatformUserId || undefined,
-          sourceChannelId: form.sourceChannelId || undefined,
-          voiceRoomId: form.voiceRoomId || undefined,
-          demandText: form.demandText
-        })
-      });
-      setSelectedDraftId(data.draft.id);
-      setStatus(buildNotificationStatus(data.draft.draftNo, data.notifications));
-      setForm((current) => ({ ...current, demandText: "" }));
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败");
-    }
-  }
-
   async function createDirectOrder() {
     if (!form.customerId) {
       setError("请先选择已注册客户");
@@ -383,7 +352,7 @@ export default function OrderDraftsPage() {
           : `已直接创建正式订单 ${firstOrderNo ?? groupNo ?? ""}。`
       );
       setDirectCompanionIds([]);
-      setForm((current) => ({ ...current, mode: "", hours: "", budgetAmount: "", note: "" }));
+      setForm((current) => ({ ...current, mode: "", hours: "", note: "" }));
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "直接成单失败");
@@ -478,7 +447,7 @@ export default function OrderDraftsPage() {
 
   return (
     <AdminShell>
-      <SectionHeader eyebrow="Group Order Desk" title="群下单成单台" desc="客户已选陪玩就直接后台成单；未选人时只发布到 Discord / KOOK @ 标签招募，陪玩在平台报名。" />
+      <SectionHeader eyebrow="Group Order Desk" title="群下单成单台" desc="招募消息在 Discord / KOOK 频道由人工或 AI 发布；后台只处理平台报名回流和客户已选陪玩的直接成单。" />
 
       <section className="mb-5 grid gap-4 md:grid-cols-3">
         <Signal label="待处理草稿" value={String(stats.open)} hint="等待平台报名或客户确认选择" tone="cyan" />
@@ -489,37 +458,7 @@ export default function OrderDraftsPage() {
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
-      <section className="mb-6 grid gap-4 xl:grid-cols-2">
-        <Panel title="发布平台招募" hint="客户没点名陪玩时使用：AI 或人工客服把需求发到 KOOK / Discord 招募频道，@ 对应标签，陪玩在平台报名。">
-          <div className="grid gap-3 md:grid-cols-2">
-            <CustomerSelect value={form.customerId} customers={customers} onChange={(value) => setForm({ ...form, customerId: value })} />
-            <select value={form.sourcePlatform} onChange={(event) => setForm({ ...form, sourcePlatform: event.target.value as "WEB" | "DISCORD" | "KOOK" })} className="input">
-              <option value="KOOK">KOOK</option>
-              <option value="DISCORD">Discord</option>
-              <option value="WEB">后台手动</option>
-            </select>
-            <input value={form.customerDisplayName} onChange={(event) => setForm({ ...form, customerDisplayName: event.target.value })} className="input" placeholder="客户频道昵称，可选" />
-            <input value={form.customerPlatformUserId} onChange={(event) => setForm({ ...form, customerPlatformUserId: event.target.value })} className="input" placeholder="KOOK/DC 用户 ID，可选" />
-            <input value={form.sourceChannelId} onChange={(event) => setForm({ ...form, sourceChannelId: event.target.value })} className="input" placeholder="来源频道 ID，可选" />
-            <input value={form.voiceRoomId} onChange={(event) => setForm({ ...form, voiceRoomId: event.target.value })} className="input" placeholder="试音语音频道 ID，可选" />
-          </div>
-          <textarea value={form.demandText} onChange={(event) => setForm({ ...form, demandText: event.target.value })} className="input mt-3 min-h-28" placeholder="粘贴客户原话，例如：三角洲，模式随意，2 小时，不试音，现在开始。" />
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[
-              "三角洲，模式随意，2小时，不试音，现在开始",
-              "Apex，娱乐模式，2小时，预算按报价，先试音",
-              "无畏契约，排位上分，3小时，今晚开始"
-            ].map((template) => (
-              <button key={template} type="button" onClick={() => setForm((current) => ({ ...current, demandText: template }))} className="rounded-dfc-control border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs font-semibold text-cyan-100 hover:border-cyan-300/50">
-                {template}
-              </button>
-            ))}
-          </div>
-          <button type="button" onClick={() => void createDraftFromDemand()} className="mt-4 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">
-            创建草稿并发布平台招募
-          </button>
-        </Panel>
-
+      <section className="mb-6">
         <Panel title="已选陪玩直接成单" hint="客户已经在 KOOK / Discord 点名陪玩时使用：后台选择客户和陪玩后直接扣余额、生成正式订单。">
           <div className="grid gap-3 md:grid-cols-2">
             <CustomerSelect value={form.customerId} customers={customers} onChange={(value) => setForm({ ...form, customerId: value })} />
@@ -780,12 +719,19 @@ function Panel({ title, hint, children }: { title: string; hint: string; childre
 function CustomerSelect({ value, customers, onChange }: { value: string; customers: AdminUser[]; onChange: (value: string) => void }) {
   return (
     <select value={value} onChange={(event) => onChange(event.target.value)} className="input">
-      <option value="">选择已注册客户</option>
+      <option value="">选择已注册客户（仅客户身份）</option>
       {customers.map((customer) => (
-        <option key={customer.id} value={customer.id}>{customer.displayName} / {customer.email}</option>
+        <option key={customer.id} value={customer.id}>{customer.displayName} / {customerIdentityLabel(customer)} / {customer.email}</option>
       ))}
     </select>
   );
+}
+
+function customerIdentityLabel(user: AdminUser) {
+  if (user.role === "CUSTOMER" && user.companionProfile) return "客户+陪玩";
+  if (user.role === "CUSTOMER") return "仅客户";
+  if (user.companionProfile || user.role === "COMPANION") return "仅陪玩";
+  return user.role;
 }
 
 function DetailBlock({ title, children }: { title: string; children: ReactNode }) {
@@ -866,27 +812,6 @@ function Signal({ label, value, hint, tone }: { label: string; value: string; hi
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
   const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
   return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
-}
-
-function buildNotificationStatus(draftNo?: string, notifications: DispatchNotification[] = []) {
-  const sent = notifications.filter((item) => item.status === "SENT").map((item) => platformLabel(item.platform));
-  const failed = notifications.filter((item) => item.status !== "SENT").map((item) => `${platformLabel(item.platform)}${item.error ? `：${item.error}` : ""}`);
-
-  if (sent.length > 0) {
-    return `派单 ${draftNo ?? ""} 已创建，并已发布到 ${sent.join("、")} 派单频道${failed.length ? `；失败：${failed.join("；")}` : ""}。`;
-  }
-
-  if (notifications.length > 0) {
-    return `派单 ${draftNo ?? ""} 已创建，但频道通知失败：${failed.join("；")}。请检查 Bot 权限、频道 ID 和 .env。`;
-  }
-
-  return `派单 ${draftNo ?? ""} 已创建，但没有返回频道通知结果。请检查 Bot 通知服务配置。`;
-}
-
-function platformLabel(platform: string) {
-  if (platform === "DISCORD") return "Discord";
-  if (platform === "KOOK") return "KOOK";
-  return platform;
 }
 
 function priceTierLabel(priceTier?: ServicePriceTier | string | null) {
