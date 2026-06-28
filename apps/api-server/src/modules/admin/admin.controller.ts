@@ -653,6 +653,55 @@ export class AdminController {
     return this.orders.listAdminOrders();
   }
 
+  @Post("orders/direct")
+  createDirectOrderFromGroupSelection(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body()
+    body: {
+      customerId?: string;
+      companionId?: string;
+      companionIds?: string[];
+      sourcePlatform?: OrderSourcePlatform;
+      sourceChannelId?: string;
+      sourceMessageId?: string;
+      game?: GameCode;
+      mode?: string;
+      hours?: string;
+      priceTier?: ServicePriceTier;
+      notes?: string;
+      voiceTrialRequested?: boolean;
+    }
+  ) {
+    const customerId = body.customerId?.trim();
+    if (!customerId) throw new BadRequestException("customerId is required");
+
+    const companionIds = [...new Set([...(body.companionIds ?? []), body.companionId].map((id) => id?.trim()).filter((id): id is string => Boolean(id)))];
+    if (!companionIds.length) throw new BadRequestException("companionId or companionIds is required");
+
+    const game = body.game ?? GameCode.DELTA_FORCE;
+    if (!SUPPORTED_GAME_CODES.has(game)) throw new BadRequestException("Unsupported game");
+    if (!body.mode?.trim()) throw new BadRequestException("mode is required");
+    if (!body.hours?.trim()) throw new BadRequestException("hours is required");
+    const priceTier = body.priceTier ?? ServicePriceTier.CUSTOM;
+    if (!Object.values(ServicePriceTier).includes(priceTier)) throw new BadRequestException("Unsupported price tier");
+    const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
+    if (!Object.values(OrderSourcePlatform).includes(sourcePlatform)) throw new BadRequestException("Unsupported source platform");
+
+    return this.orders.createOrderGroup(customerId, {
+      game,
+      mode: body.mode.trim(),
+      hours: body.hours.trim(),
+      priceTier,
+      companionIds,
+      notes: body.notes?.trim() || undefined,
+      voiceTrialRequested: body.voiceTrialRequested ?? false,
+      sourcePlatform,
+      sourceChannelId: body.sourceChannelId?.trim() || undefined,
+      sourceMessageId: body.sourceMessageId?.trim() || undefined,
+      assignedById: user.id
+    });
+  }
+
   @Patch("orders/:id/cancel")
   cancelOrder(
     @CurrentUser() user: AuthenticatedUser,

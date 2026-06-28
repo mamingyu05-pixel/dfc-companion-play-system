@@ -502,18 +502,18 @@ export class BotNotificationService {
         method: "POST",
         headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: [roleMentions.content, "May猫饼 AI 派单，有空的陪玩可以报名"].filter(Boolean).join("\n"),
+          content: [roleMentions.content, "May猫饼平台招募：符合标签的陪玩可报名，客户会从报名里选择"].filter(Boolean).join("\n"),
           allowed_mentions: { parse: [], roles: roleMentions.roleIds },
           embeds: [
             {
-              title: `AI 派单 ${payload.draftNo}`,
+              title: `平台招募 ${payload.draftNo}`,
               fields: [
                 { name: "游戏", value: payload.game, inline: true },
                 { name: "模式", value: payload.mode, inline: true },
                 { name: "时长", value: payload.hours ? `${payload.hours} 小时` : "待确认", inline: true },
                 { name: "预算", value: payload.budgetAmount ? `¥${payload.budgetAmount}` : "待确认", inline: true },
                 { name: "需求", value: payload.note?.slice(0, 900) || "无", inline: false },
-                { name: "陪玩报名", value: `点击按钮填写，或发送：报名 ${payload.draftNo} 段位/水平/报价/可服务时间/性格优势/是否可试音`, inline: false }
+                { name: "陪玩报名", value: `点击按钮报名，或发送：报名 ${payload.draftNo} 段位/水平/报价/可服务时间/性格优势/是否可试音`, inline: false }
               ]
             }
           ],
@@ -604,7 +604,7 @@ export class BotNotificationService {
         theme: "primary",
         size: "lg",
         modules: [
-          { type: "header", text: { type: "plain-text", content: `May猫饼 AI 派单 ${payload.draftNo}` } },
+          { type: "header", text: { type: "plain-text", content: `May猫饼平台招募 ${payload.draftNo}` } },
           {
             type: "section",
             text: {
