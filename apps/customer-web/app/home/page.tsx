@@ -159,14 +159,14 @@ export default function CustomerHomePage() {
                 {profile.user.displayName}，今晚进场先试音。
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-cyan-50/80 sm:text-base">
-                May猫饼电竞支持 KOOK 和 Discord。你可以先找客服说需求，进入语音频道试音，确认陪玩风格后再下单；充值、派单、订单、钱包和投诉都会在后台留痕。
+                May猫饼电竞支持 KOOK 和 Discord。你可以先找客服说需求，进入语音频道试音，确认陪玩风格后再到群里发单；充值、派单、订单、钱包和投诉都会在后台留痕。
               </p>
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Link href="/companions" className="maycat-button px-5 py-3 text-center text-sm font-black">
                   进入陪玩大厅
                 </Link>
                 <Link href="/order" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
-                  直接提交需求
+                  查看群下单方式
                 </Link>
                 <Link href="/support" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
                   联系 KOOK / DC 客服
@@ -189,7 +189,7 @@ export default function CustomerHomePage() {
                 选陪玩
               </Link>
               <Link href="/order" className="maycat-button-secondary px-4 py-3 text-center text-sm font-black">
-                提交下单需求
+                群下单指引
               </Link>
               <Link href="/recharge" className="maycat-button-secondary px-4 py-3 text-center text-sm font-black">
                 余额充值
@@ -245,9 +245,9 @@ export default function CustomerHomePage() {
       </section>
 
       <section className="mt-10 grid gap-3 md:grid-cols-4">
-        <FlowStep step="01" title="说需求" desc="在网页、KOOK 或 Discord 找客服说明游戏、模式、时长和预算。" />
+        <FlowStep step="01" title="说需求" desc="在 KOOK 或 Discord 群里说明游戏、模式、时长和预算。" />
         <FlowStep step="02" title="进试音" desc="客服安排语音频道，先确认声音、沟通和打法节奏。" />
-        <FlowStep step="03" title="充值下单" desc="充值人工审核到账后，用余额提交正式订单。" />
+        <FlowStep step="03" title="余额确认" desc="充值人工审核到账后，客服确认余额并在后台扣费。" />
         <FlowStep step="04" title="后台派单" desc="管理员派单并通知陪玩，服务和投诉记录都可追踪。" />
       </section>
 
@@ -418,8 +418,8 @@ function toCardCompanion(companion: ApiCompanion) {
     voice: companion.voicePreference === "TEXT_ONLY" ? "仅文字" : "可语音",
     voiceStyle: companion.voicePreference === "TEXT_ONLY" ? "文字沟通" : "支持语音沟通",
     trial: companion.voicePreference === "TEXT_ONLY" ? "暂不支持试音" : "支持进语音频道试音",
-    tags: companion.onlineStatus === "ONLINE" ? ["在线", "可下单"] : ["已上架"],
-    intro: companion.bio || "该陪玩资料已通过后台上架，具体服务内容以下单沟通为准。",
+    tags: companion.onlineStatus === "ONLINE" ? ["在线", "可接待"] : ["已上架"],
+    intro: companion.bio || "该陪玩资料已通过后台上架，具体服务内容以群内沟通和后台记录为准。",
     rating: "新陪玩",
     orders: 0,
     accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue"

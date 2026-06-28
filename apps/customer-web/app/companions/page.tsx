@@ -105,11 +105,11 @@ export default function CompanionsPage() {
               选择今晚的队友。
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-dfc-subtext md:text-base">
-              先看在线状态、语音偏好和价格，再进入详情或试音。May猫饼会把下单、派单、接单和结算记录完整留在后台。
+              先看在线状态、语音偏好和价格，再进入详情或试音。正式发单请到 KOOK / Discord 群里，May猫饼会把派单、接单和结算记录完整留在后台。
             </p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <Link href="/order" className="maycat-button px-5 py-3 text-center text-sm font-black">
-                直接下单
+                查看群下单方式
               </Link>
               <Link href="/support" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
                 找客服推荐
@@ -119,7 +119,7 @@ export default function CompanionsPage() {
 
           <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
             <LobbyMetric label="已上架陪玩" value={String(companions.length)} hint="真实后台数据" />
-            <LobbyMetric label="当前在线" value={String(onlineCount)} hint="可优先试音/下单" />
+            <LobbyMetric label="当前在线" value={String(onlineCount)} hint="可优先试音/群内发单" />
             <LobbyMetric label="三角洲行动" value={String(deltaForceCount)} hint="首期重点游戏" />
           </div>
         </div>
@@ -129,7 +129,7 @@ export default function CompanionsPage() {
         {games.slice(0, 8).map((game) => (
           <Link
               key={game.code}
-              href={`/order?game=${game.code}`}
+              href="/order"
               className={`maycat-game-tile ${game.code === "DELTA_FORCE" ? "maycat-game-tile-hot" : ""}`}
             >
               <div className="flex items-center justify-between gap-3">
@@ -215,8 +215,8 @@ function toCardCompanion(companion: ApiCompanion, publicConfig: PublicConfig) {
     voice: toVoice(companion.voicePreference),
     voiceStyle: companion.voicePreference === "TEXT_ONLY" ? "文字沟通" : "支持语音沟通",
     trial: companion.voicePreference === "TEXT_ONLY" ? "暂不支持试音" : "支持进语音频道试音",
-    tags: companion.onlineStatus === "ONLINE" ? ["在线", "可下单"] : ["已上架"],
-    intro: companion.bio || "该陪玩资料已通过后台上架，具体服务内容以下单沟通为准。",
+    tags: companion.onlineStatus === "ONLINE" ? ["在线", "可接待"] : ["已上架"],
+    intro: companion.bio || "该陪玩资料已通过后台上架，具体服务内容以群内沟通和后台记录为准。",
     rating: "新陪玩",
     orders: 0,
     accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue",

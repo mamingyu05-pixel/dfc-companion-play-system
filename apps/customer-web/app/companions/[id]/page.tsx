@@ -90,7 +90,6 @@ export default function CompanionDetailPage() {
   const isOnline = companion.onlineStatus === "ONLINE";
   const canVoice = companion.voicePreference !== "TEXT_ONLY";
   const companionGames = getCompanionGames(companion);
-  const primaryGame = companionGames[0] ?? companion.game;
   const trialHref = companionTrialHref(companion, publicConfig);
   const trialIsExternal = /^https?:\/\//.test(trialHref);
 
@@ -107,7 +106,7 @@ export default function CompanionDetailPage() {
               {companion.nickname}
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
-              {companion.bio || "该陪玩资料来自后台真实上架信息。你可以先试音确认沟通体验，再提交订单。"}
+              {companion.bio || "该陪玩资料来自后台真实上架信息。你可以先试音确认沟通体验，再到群里按格式发单。"}
             </p>
             {companion.voiceIntroUrl ? (
               <div className="mt-5 max-w-xl rounded-dfc-control border border-cyan-300/25 bg-[#050711]/70 p-3">
@@ -143,8 +142,8 @@ export default function CompanionDetailPage() {
               <DetailMetric label="语音" value={canVoice ? "支持" : "文字"} />
               <DetailMetric label="状态" value={toOnlineStatus(companion.onlineStatus)} />
             </div>
-            <Link href={`/order?companion=${companion.id}&game=${primaryGame}`} className="maycat-button mt-5 block px-4 py-3 text-center text-sm font-black">
-              立即下单
+            <Link href="/order" className="maycat-button mt-5 block px-4 py-3 text-center text-sm font-black">
+              查看群下单方式
             </Link>
             <Link
               href={trialHref}
@@ -187,24 +186,24 @@ export default function CompanionDetailPage() {
           <section className="maycat-card p-4">
             <h2 className="text-lg font-black text-white">适合你吗</h2>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <TrustPoint title="先试音再决定" desc={canVoice ? "可申请进入临时语音频道，确认声音、沟通和节奏。" : "该陪玩偏文字沟通，下单前请在备注里写清楚需求。"} />
+              <TrustPoint title="先试音再决定" desc={canVoice ? "可申请进入临时语音频道，确认声音、沟通和节奏。" : "该陪玩偏文字沟通，群内发单前请把需求写清楚。"} />
               <TrustPoint title="后台真实上架" desc="只有管理员审核上架后的陪玩会出现在客户列表。" />
-              <TrustPoint title="金额后端计算" desc="前端只展示单价，最终订单金额以后端冻结为准。" />
+              <TrustPoint title="客服后台扣费" desc="前端只展示资料和单价，最终金额由客服确认后从钱包余额扣费。" />
               <TrustPoint title="异常可找客服" desc="接单前后如需改时间、沟通异常，可走客服处理。" />
             </div>
           </section>
         </div>
 
         <aside className="maycat-price-console p-4 lg:sticky lg:top-24 lg:self-start">
-          <h2 className="text-base font-black text-white">下单说明</h2>
+          <h2 className="text-base font-black text-white">群下单说明</h2>
           <div className="mt-4 space-y-3 text-sm leading-6 text-dfc-subtext">
             <RuleLine text="选择试音时，管理员可创建临时 Discord/KOOK 语音房。" />
             <RuleLine text="试音只确认沟通体验，不代表订单开始或收益结算。" />
-            <RuleLine text="陪玩接单后，订单开始前仍可联系客服处理异常。" />
-            <RuleLine text="订单金额按单价和时长由后端计算并冻结余额。" />
+            <RuleLine text="客户在群内发单后，客服会按余额、预算和陪玩状态确认派单。" />
+            <RuleLine text="订单金额由客服后台确认并从钱包余额扣费。" />
           </div>
           <div className={`mt-4 rounded-dfc-control border px-3 py-2 text-xs leading-5 ${isOnline ? "border-dfc-success/40 bg-dfc-success/10 text-dfc-success" : "border-dfc-warning/40 bg-dfc-warning/10 text-dfc-warning"}`}>
-            {isOnline ? "当前显示在线，适合优先试音或下单。" : "当前不是在线状态，下单后可能需要管理员协调时间。"}
+            {isOnline ? "当前显示在线，适合优先试音或群内发单。" : "当前不是在线状态，群内发单后可能需要管理员协调时间。"}
           </div>
         </aside>
       </section>

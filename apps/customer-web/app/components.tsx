@@ -49,7 +49,6 @@ export function CustomerShell({ children }: { children: ReactNode }) {
           <nav className="hidden items-center gap-1 md:flex">
             <NavLink href="/home">首页</NavLink>
             <NavLink href="/companions">陪玩</NavLink>
-            <NavLink href="/order">下单</NavLink>
             <NavLink href="/recharge">充值</NavLink>
             <NavLink href="/support">客服</NavLink>
             <NavLink href="/settings">设置</NavLink>
@@ -71,10 +70,9 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <CustomerAuthGate>{children}</CustomerAuthGate>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-cyan-300/15 bg-[#050711]/95 md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-cyan-300/15 bg-[#050711]/95 md:hidden">
         <MobileNavLink href="/home">首页</MobileNavLink>
         <MobileNavLink href="/companions">陪玩</MobileNavLink>
-        <MobileNavLink href="/order">下单</MobileNavLink>
         <MobileNavLink href="/recharge">充值</MobileNavLink>
         <MobileNavLink href="/support">客服</MobileNavLink>
         <MobileNavLink href="/settings">设置</MobileNavLink>
@@ -172,8 +170,8 @@ export function CompanionCard({ companion }: { companion: Companion }) {
         <Link href={trialHref} target={trialIsExternal ? "_blank" : undefined} rel={trialIsExternal ? "noreferrer" : undefined} className="maycat-button-secondary px-3 py-2 text-center text-sm font-semibold">
           试音
         </Link>
-        <Link href={`/order?companion=${companion.id}`} className="maycat-button px-3 py-2 text-center text-sm font-black">
-          下单
+        <Link href="/order" className="maycat-button px-3 py-2 text-center text-sm font-black">
+          群下单
         </Link>
       </div>
     </article>
@@ -210,24 +208,6 @@ export function SafeMediaImage({ src, alt, className, fallbackText }: { src?: st
   }
 
   return <img src={mediaUrl(src)} alt={alt} className={className} onError={() => setFailed(true)} />;
-}
-
-export function PriceSummary() {
-  return (
-    <aside className="maycat-card p-4">
-      <h2 className="text-base font-black text-white">价格确认</h2>
-      <div className="mt-4 space-y-3 text-sm">
-        <Line label="陪玩单价" value="¥68 / 小时" />
-        <Line label="选择时长" value="2 小时" />
-        <Line label="订单总价" value="¥136.00" strong />
-        <Line label="当前余额" value="¥164.00" />
-        <Line label="下单后余额" value="¥28.00" />
-      </div>
-      <div className="mt-4 rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-xs text-dfc-success">
-        最终金额以后端计算为准。
-      </div>
-    </aside>
-  );
 }
 
 export function Badge({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "gold" }) {
@@ -269,14 +249,5 @@ function MobileNavLink({ href, children }: { href: string; children: ReactNode }
     <Link href={href} className="py-3 text-center text-xs font-semibold text-dfc-subtext transition hover:text-cyan-200">
       {children}
     </Link>
-  );
-}
-
-function Line({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-dfc-subtext">{label}</span>
-      <span className={strong ? "text-lg font-black text-cyan-300" : "font-medium text-dfc-text"}>{value}</span>
-    </div>
   );
 }
