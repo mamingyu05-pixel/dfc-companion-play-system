@@ -10,13 +10,24 @@ type AdminOrder = {
   game: string;
   mode: string;
   hours: string;
+  originalUnitPrice?: string | null;
   unitPrice: string;
+  discountPerHour?: string;
+  originalAmount?: string | null;
   totalAmount: string;
   status: string;
   notes?: string | null;
   voiceTrialRequested: boolean;
   customer?: { email: string; displayName: string };
   companion?: { email: string; displayName: string } | null;
+  orderGroup?: {
+    id: string;
+    groupNo: string;
+    companionCount: number;
+    originalAmount: string;
+    discountAmount: string;
+    totalAmount: string;
+  } | null;
   createdAt: string;
 };
 
@@ -57,6 +68,7 @@ export default function OrdersPage() {
   const [drafts, setDrafts] = useState<OrderDraft[]>([]);
   const [error, setError] = useState("");
   const [actioningDraftId, setActioningDraftId] = useState("");
+  const [actioningOrderId, setActioningOrderId] = useState("");
 
   async function loadOrders() {
     const token = localStorage.getItem("dfc_admin_token");
@@ -105,6 +117,41 @@ export default function OrdersPage() {
       setError(err instanceof Error ? err.message : "标记流单失败");
     } finally {
       setActioningDraftId("");
+    }
+  }
+
+  async function cancelOrder(order: AdminOrder) {
+    if (!canCancelOrder(order)) return;
+    const message = order.orderGroup
+      ? `确认取消并退款 ${order.orderNo}？如果订单组人数降到折扣门槛以下，系统会自动取消剩余订单折扣并重算钱包冻结金额。`
+      : `确认取消并退款 ${order.orderNo}？`;
+    if (!window.confirm(message)) return;
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) {
+      setError("请先登录管理员账号");
+      return;
+    }
+    try {
+      setActioningOrderId(order.id);
+      setError("");
+      const response = await fetch(`/api/admin/orders/${order.id}/cancel`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ note: "管理员取消未开始订单" })
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+        const detail = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        throw new Error(detail || "取消订单失败");
+      }
+      await loadOrders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "取消订单失败");
+    } finally {
+      setActioningOrderId("");
     }
   }
 
@@ -165,19 +212,31 @@ export default function OrdersPage() {
       </div>
 
       <DataTable
-        columns={["订单号", "客户", "陪玩", "游戏", "模式", "备注", "时长", "金额", "试音", "状态", "创建时间"]}
+        columns={["订单号", "订单组", "客户", "陪玩", "游戏", "模式", "备注", "时长", "金额", "试音", "状态", "创建时间", "操作"]}
         rows={orders.map((order) => [
           <span key={`${order.id}-no`} className="font-black text-white">{order.orderNo}</span>,
+          <OrderGroupBadge key={`${order.id}-group`} order={order} />,
           order.customer ? <Person key={`${order.id}-customer`} name={order.customer.displayName} email={order.customer.email} /> : "-",
           order.companion ? <Person key={`${order.id}-companion`} name={order.companion.displayName} email={order.companion.email} /> : <span className="text-dfc-gold">平台待匹配</span>,
           gameName(order.game),
           order.mode,
           <span key={`${order.id}-notes`} className="line-clamp-2 text-xs text-dfc-subtext">{order.notes || "-"}</span>,
           `${formatMoney(order.hours)}h`,
-          <span key={`${order.id}-amount`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(order.totalAmount)}</span>,
+          <OrderAmount key={`${order.id}-amount`} order={order} />,
           order.voiceTrialRequested ? <StatusBadge key={`${order.id}-voice`} tone="warning">需要</StatusBadge> : <span className="text-dfc-muted">不需要</span>,
           <StatusBadge key={`${order.id}-status`} tone={statusTone(order.status)}>{toOrderStatus(order.status)}</StatusBadge>,
-          formatDateTime(order.createdAt)
+          formatDateTime(order.createdAt),
+          canCancelOrder(order) ? (
+            <button
+              key={`${order.id}-cancel`}
+              type="button"
+              disabled={actioningOrderId === order.id}
+              onClick={() => void cancelOrder(order)}
+              className="rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-xs font-black text-dfc-danger transition hover:bg-dfc-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {actioningOrderId === order.id ? "处理中" : "取消退款"}
+            </button>
+          ) : <span key={`${order.id}-no-action`} className="text-dfc-muted">-</span>
         ])}
       />
     </AdminShell>
@@ -189,6 +248,32 @@ function Person({ name, email }: { name: string; email: string }) {
     <div>
       <div className="font-semibold text-white">{name}</div>
       <div className="mt-1 text-xs text-dfc-muted">{email}</div>
+    </div>
+  );
+}
+
+function OrderGroupBadge({ order }: { order: AdminOrder }) {
+  if (!order.orderGroup) return <span className="text-dfc-muted">单人</span>;
+  return (
+    <div>
+      <div className="font-black text-cyan-100">{order.orderGroup.groupNo}</div>
+      <div className="mt-1 text-xs text-dfc-muted">{order.orderGroup.companionCount} 人 / 折扣 ¥{formatMoney(order.orderGroup.discountAmount)}</div>
+    </div>
+  );
+}
+
+function OrderAmount({ order }: { order: AdminOrder }) {
+  const originalAmount = Number(order.originalAmount ?? order.totalAmount);
+  const totalAmount = Number(order.totalAmount || 0);
+  const discount = Math.max(0, originalAmount - totalAmount);
+  if (discount <= 0) {
+    return <span className="font-black tabular-nums text-dfc-gold">¥{formatMoney(order.totalAmount)}</span>;
+  }
+  return (
+    <div className="text-right">
+      <div className="text-xs text-dfc-muted line-through">原价 ¥{formatMoney(String(originalAmount))}</div>
+      <div className="mt-1 text-xs text-cyan-200">多陪玩折扣 -¥{formatMoney(String(discount))}</div>
+      <div className="mt-1 font-black tabular-nums text-dfc-gold">¥{formatMoney(order.totalAmount)}</div>
     </div>
   );
 }
@@ -289,10 +374,15 @@ function toOrderStatus(status: string) {
     IN_PROGRESS: "进行中",
     COMPLETED: "已完成",
     CANCELLED: "已取消",
+    REFUND_REQUESTED: "退款申请",
     REFUNDED: "已退款",
     DISPUTED: "争议中"
   };
   return map[status] ?? status;
+}
+
+function canCancelOrder(order: AdminOrder) {
+  return ["PAID", "ASSIGNED", "ACCEPTED"].includes(order.status);
 }
 
 function toDraftStatus(status: string) {

@@ -1293,7 +1293,11 @@ export class PlatformSupportService {
     const gameName = gameCode ? `${this.getGameName(gameCode)} ` : "";
     const onlineCount = profiles.filter((profile) => profile.onlineStatus === "ONLINE").length;
     const onlineText = profiles.length ? `当前该方向在线 ${onlineCount}/${profiles.length} 位。` : "";
-    return `${gameName}统一价：语音/排位 ¥128/小时，娱乐陪玩 ¥108/小时；全部可语音，不设静音价，不做代练。${onlineText}最终以后台订单和客服确认为准。`;
+    const priceText =
+      gameCode === GameCode.CALL_OF_DUTY
+        ? "常规 ¥118/时，硬核深处 ¥138/时"
+        : "黄金以下 ¥98/时起，高段位按价目卡递增";
+    return `${gameName}${priceText}；全部可语音，新客首单试音免费 15 分钟，不做代练，不设静音价。点 2 个及以上陪玩，每人 -¥10/时。${onlineText}最终以价目卡、后台订单和客服确认为准。`;
   }
 
   private buildAiBusinessContextHint(message: string) {

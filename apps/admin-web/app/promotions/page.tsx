@@ -46,6 +46,22 @@ const labels: Record<string, { label: string; hint: string }> = {
   COMPANION_REFERRAL_COMMISSION_RATE: {
     label: "陪玩持续推广分成",
     hint: "客户通过陪玩邀请码注册后，每次订单完成给该陪玩多少比例收益。填 0.01 表示 1%。"
+  },
+  MULTI_COMPANION_DISCOUNT_ENABLED: {
+    label: "多陪玩折扣开关",
+    hint: "填 1 表示开启，填 0 表示关闭。当前订单模型仍是一单一陪玩，结算接入订单组后生效。"
+  },
+  MULTI_COMPANION_DISCOUNT_MIN_COUNT: {
+    label: "多陪玩起算人数",
+    hint: "同一客户一次点多少个陪玩起享受折扣，默认 2。"
+  },
+  MULTI_COMPANION_DISCOUNT_AMOUNT: {
+    label: "多陪玩每人每小时减免",
+    hint: "例如填 10，表示满足人数后每个陪玩每小时减 10 元。"
+  },
+  MULTI_COMPANION_DISCOUNT_FLOOR_PRICE: {
+    label: "多陪玩折扣地板价",
+    hint: "折后单价最低不能低于该金额，默认 68。"
   }
 };
 

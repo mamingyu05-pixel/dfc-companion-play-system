@@ -86,6 +86,7 @@ export class OrdersService {
       orderBy: { createdAt: "desc" },
       include: {
         companion: { select: { id: true, email: true, displayName: true } },
+        orderGroup: { select: { id: true, groupNo: true, companionCount: true, originalAmount: true, discountAmount: true, totalAmount: true } },
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
       }
     });
@@ -99,6 +100,7 @@ export class OrdersService {
       include: {
         customer: { select: { id: true, email: true, displayName: true } },
         companion: { select: { id: true, email: true, displayName: true } },
+        orderGroup: { select: { id: true, groupNo: true, companionCount: true, originalAmount: true, discountAmount: true, totalAmount: true } },
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
       }
     });
@@ -124,6 +126,7 @@ export class OrdersService {
       include: {
         customer: { select: { id: true, email: true, displayName: true } },
         companion: { select: { id: true, email: true, displayName: true } },
+        orderGroup: { select: { id: true, groupNo: true, companionCount: true, originalAmount: true, discountAmount: true, totalAmount: true } },
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
       }
     });
@@ -166,6 +169,7 @@ export class OrdersService {
         customer: { select: { id: true, email: true, displayName: true } },
         companion: { select: { id: true, email: true, displayName: true } },
         assignedBy: { select: { id: true, email: true, displayName: true } },
+        orderGroup: { select: { id: true, groupNo: true, companionCount: true, originalAmount: true, discountAmount: true, totalAmount: true } },
         sourceDraft: { select: { id: true, draftNo: true, sourcePlatform: true, voiceRoomId: true, status: true } },
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
       }
@@ -274,6 +278,192 @@ export class OrdersService {
 
       return order;
     });
+  }
+
+  async createOrderGroup(
+    customerId: string,
+    body: {
+      mode: string;
+      game?: GameCode;
+      hours: string;
+      companionIds: string[];
+      notes?: string;
+      voiceTrialRequested?: boolean;
+      priceTier?: ServicePriceTier;
+      sourcePlatform?: OrderSourcePlatform;
+      sourceDraftId?: string;
+      sourceChannelId?: string;
+      sourceMessageId?: string;
+      assignedById?: string;
+    }
+  ) {
+    if (!body.mode) throw new BadRequestException("mode is required");
+    const companionIds = [...new Set(body.companionIds.map((id) => id.trim()).filter(Boolean))];
+    if (!companionIds.length) throw new BadRequestException("companionIds is required");
+
+    const game = body.game ?? GameCode.DELTA_FORCE;
+    const hours = this.positiveDecimal(body.hours, "hours");
+    const maxHours = this.positiveDecimal(process.env.ORDER_MAX_HOURS ?? "8", "ORDER_MAX_HOURS");
+    if (hours.gt(maxHours)) throw new BadRequestException(`hours cannot be greater than ${maxHours.toString()}`);
+
+    const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
+    const priceTier = this.normalizePriceTier(body.priceTier, body.mode);
+    const discountConfig = await this.resolveMultiCompanionDiscountConfig();
+    const discountEnabled = discountConfig.enabled && companionIds.length >= discountConfig.minCount && discountConfig.discountPerHour.gt(0);
+
+    const items = await Promise.all(
+      companionIds.map(async (companionId, index) => {
+        const pricing = await this.resolvePricing(companionId, game, sourcePlatform, priceTier);
+        const originalUnitPrice = pricing.unitPrice;
+        const unitPrice = discountEnabled
+          ? this.applyUnitDiscount(originalUnitPrice, discountConfig.discountPerHour, discountConfig.floorPrice)
+          : originalUnitPrice;
+        const discountPerHour = originalUnitPrice.sub(unitPrice);
+        const originalAmount = originalUnitPrice.mul(hours);
+        const totalAmount = unitPrice.mul(hours);
+        return {
+          companionId,
+          index: index + 1,
+          unitPrice,
+          originalUnitPrice,
+          discountPerHour,
+          originalAmount,
+          totalAmount,
+          commissionRate: pricing.commissionRate
+        };
+      })
+    );
+
+    const zero = new Prisma.Decimal(0);
+    const originalAmount = items.reduce((sum, item) => sum.add(item.originalAmount), zero);
+    const totalAmount = items.reduce((sum, item) => sum.add(item.totalAmount), zero);
+    const discountAmount = originalAmount.sub(totalAmount);
+    const groupNo = this.generateOrderGroupNo();
+    const discountNote =
+      discountAmount.gt(0) ? `多陪玩折扣：${items.length} 人，每人每小时减 ${discountConfig.discountPerHour.toString()}，共减 ${discountAmount.toString()}` : null;
+    const notes = [body.notes, discountNote].filter(Boolean).join("\n") || undefined;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const customer = await tx.user.findFirst({
+        where: { id: customerId, role: UserRole.CUSTOMER, status: UserStatus.ACTIVE },
+        include: { wallet: true }
+      });
+      if (!customer?.wallet) throw new BadRequestException("Customer wallet does not exist");
+
+      const debit = await tx.wallet.updateMany({
+        where: {
+          id: customer.wallet.id,
+          userId: customerId,
+          availableBalance: { gte: totalAmount }
+        },
+        data: {
+          availableBalance: { decrement: totalAmount },
+          frozenBalance: { increment: totalAmount }
+        }
+      });
+      if (debit.count !== 1) throw new BadRequestException("Insufficient balance");
+
+      const walletAfter = await tx.wallet.findUniqueOrThrow({ where: { id: customer.wallet.id } });
+      const orderGroup = await tx.orderGroup.create({
+        data: {
+          groupNo,
+          customerId,
+          sourceDraftId: body.sourceDraftId,
+          sourcePlatform,
+          sourceChannelId: body.sourceChannelId,
+          sourceMessageId: body.sourceMessageId,
+          companionCount: items.length,
+          originalAmount,
+          discountAmount,
+          totalAmount,
+          note: notes
+        }
+      });
+
+      const orders = [];
+      for (const item of items) {
+        const initialStatus = body.assignedById ? OrderStatus.ASSIGNED : OrderStatus.PAID;
+        const order = await tx.order.create({
+          data: {
+            orderNo: this.generateOrderNo(),
+            orderGroupId: orderGroup.id,
+            groupItemIndex: item.index,
+            customerId,
+            companionId: item.companionId,
+            assignedById: body.assignedById,
+            assignmentType: OrderAssignmentType.DIRECT_COMPANION,
+            game,
+            mode: body.mode,
+            hours,
+            priceTier,
+            originalUnitPrice: item.originalUnitPrice,
+            unitPrice: item.unitPrice,
+            discountPerHour: item.discountPerHour,
+            originalAmount: item.originalAmount,
+            totalAmount: item.totalAmount,
+            commissionRateSnapshot: item.commissionRate,
+            status: initialStatus,
+            notes,
+            voiceTrialRequested: body.voiceTrialRequested ?? false,
+            sourcePlatform,
+            sourceChannelId: body.sourceChannelId,
+            sourceMessageId: body.sourceMessageId
+          }
+        });
+        await tx.orderStatusLog.create({
+          data: {
+            orderId: order.id,
+            fromStatus: OrderStatus.PENDING_PAYMENT,
+            toStatus: OrderStatus.PAID,
+            actorId: customerId,
+            reason: "CUSTOMER_CREATE_ORDER_GROUP"
+          }
+        });
+        if (body.assignedById) {
+          await tx.orderStatusLog.create({
+            data: {
+              orderId: order.id,
+              fromStatus: OrderStatus.PAID,
+              toStatus: OrderStatus.ASSIGNED,
+              actorId: body.assignedById,
+              reason: "ADMIN_ASSIGN_ORDER_GROUP"
+            }
+          });
+          await tx.adminLog.create({
+            data: {
+              actorId: body.assignedById,
+              targetUserId: item.companionId,
+              action: "ASSIGN_ORDER",
+              entityType: "ORDER",
+              entityId: order.id,
+              detail: { companionId: item.companionId, orderGroupId: orderGroup.id, groupNo }
+            }
+          });
+        }
+        orders.push(order);
+      }
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: customer.wallet.id,
+          userId: customerId,
+          type: WalletTransactionType.ORDER_PAYMENT,
+          direction: TransactionDirection.DEBIT,
+          amount: totalAmount,
+          balanceAfter: walletAfter.availableBalance,
+          referenceType: "ORDER_GROUP",
+          referenceId: orderGroup.id,
+          note: `Customer multi-companion order payment frozen; original ${originalAmount.toString()}, discount ${discountAmount.toString()}`
+        }
+      });
+
+      return { orderGroup, orders };
+    });
+
+    const notifications = body.assignedById
+      ? await Promise.all(result.orders.map((order) => this.botNotifications.sendOrderAssignedNotifications(order.id).catch((error) => ({ error }))))
+      : [];
+    return { ...result, notifications };
   }
 
   async assignOrder(orderId: string, companionId: string, assignedById?: string) {
@@ -728,6 +918,210 @@ export class OrdersService {
     return result;
   }
 
+  async cancelOrderByAdmin(adminId: string, orderId: string, body: { note?: string } = {}) {
+    const discountConfig = await this.resolveMultiCompanionDiscountConfig();
+    const cancellableStatuses: OrderStatus[] = [OrderStatus.PAID, OrderStatus.ASSIGNED, OrderStatus.ACCEPTED];
+    const unsafeGroupStatuses: OrderStatus[] = [OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, OrderStatus.DISPUTED];
+
+    return this.prisma.$transaction(async (tx) => {
+      const actor = await tx.user.findUnique({ where: { id: adminId }, select: { role: true } });
+      if (!actor || (actor.role !== UserRole.ADMIN && actor.role !== UserRole.SUPER_ADMIN)) {
+        throw new BadRequestException("Only admin can cancel orders");
+      }
+
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          customer: { include: { wallet: true } },
+          orderGroup: true
+        }
+      });
+      if (!order) throw new NotFoundException("Order not found");
+      if (!cancellableStatuses.includes(order.status)) {
+        throw new BadRequestException(`Only unstarted paid orders can be cancelled. Current status: ${order.status}`);
+      }
+      if (!order.customer.wallet) throw new BadRequestException("Customer wallet does not exist");
+
+      const now = new Date();
+      const reason = body.note?.trim() || "Admin cancelled unstarted order";
+      let walletMove = order.totalAmount;
+      const walletNoteParts = [`Refund cancelled order ${order.orderNo}`];
+
+      if (order.orderGroupId) {
+        const groupOrders = await tx.order.findMany({
+          where: { orderGroupId: order.orderGroupId },
+          orderBy: { groupItemIndex: "asc" }
+        });
+        const unsafeSibling = groupOrders.find((item) => item.id !== order.id && unsafeGroupStatuses.includes(item.status));
+        if (unsafeSibling) {
+          throw new BadRequestException("Order group has started or settled orders; please use manual finance review");
+        }
+
+        const closedStatuses: OrderStatus[] = [OrderStatus.CANCELLED, OrderStatus.REFUNDED];
+        const remainingOrders = groupOrders.filter((item) => item.id !== order.id && !closedStatuses.includes(item.status));
+        const shouldRemoveDiscount = remainingOrders.length > 0 && remainingOrders.length < discountConfig.minCount;
+        const repricedRemaining = remainingOrders.map((item) => {
+          const originalUnitPrice = item.originalUnitPrice ?? item.unitPrice.add(item.discountPerHour);
+          const originalAmount = item.originalAmount ?? originalUnitPrice.mul(item.hours);
+          const nextTotalAmount = shouldRemoveDiscount ? originalAmount : item.totalAmount;
+          return {
+            id: item.id,
+            originalUnitPrice,
+            originalAmount,
+            unitPrice: shouldRemoveDiscount ? originalUnitPrice : item.unitPrice,
+            discountPerHour: shouldRemoveDiscount ? new Prisma.Decimal(0) : item.discountPerHour,
+            totalAmount: nextTotalAmount,
+            adjustment: nextTotalAmount.sub(item.totalAmount)
+          };
+        });
+
+        const zero = new Prisma.Decimal(0);
+        const adjustmentAmount = repricedRemaining.reduce((sum, item) => sum.add(item.adjustment.gt(0) ? item.adjustment : zero), zero);
+        walletMove = order.totalAmount.sub(adjustmentAmount);
+        if (adjustmentAmount.gt(0)) {
+          walletNoteParts.push(`Multi-companion discount rollback ${adjustmentAmount.toString()}`);
+        }
+
+        for (const item of repricedRemaining) {
+          await tx.order.update({
+            where: { id: item.id },
+            data: {
+              originalUnitPrice: item.originalUnitPrice,
+              originalAmount: item.originalAmount,
+              unitPrice: item.unitPrice,
+              discountPerHour: item.discountPerHour,
+              totalAmount: item.totalAmount
+            }
+          });
+        }
+
+        const nextOriginalAmount = repricedRemaining.reduce((sum, item) => sum.add(item.originalAmount), zero);
+        const nextTotalAmount = repricedRemaining.reduce((sum, item) => sum.add(item.totalAmount), zero);
+        await tx.orderGroup.update({
+          where: { id: order.orderGroupId },
+          data: {
+            companionCount: repricedRemaining.length,
+            originalAmount: nextOriginalAmount,
+            discountAmount: nextOriginalAmount.sub(nextTotalAmount),
+            totalAmount: nextTotalAmount,
+            note: [order.orderGroup?.note, `Cancelled ${order.orderNo}: ${reason}`].filter(Boolean).join("\n")
+          }
+        });
+      }
+
+      if (walletMove.gte(0)) {
+        const refund = await tx.wallet.updateMany({
+          where: {
+            userId: order.customerId,
+            frozenBalance: { gte: walletMove }
+          },
+          data: {
+            frozenBalance: { decrement: walletMove },
+            availableBalance: { increment: walletMove }
+          }
+        });
+        if (refund.count !== 1) throw new BadRequestException("Customer frozen balance is insufficient for refund");
+      } else {
+        const topUp = walletMove.abs();
+        const topUpResult = await tx.wallet.updateMany({
+          where: {
+            userId: order.customerId,
+            availableBalance: { gte: topUp }
+          },
+          data: {
+            availableBalance: { decrement: topUp },
+            frozenBalance: { increment: topUp }
+          }
+        });
+        if (topUpResult.count !== 1) {
+          throw new BadRequestException("Customer available balance is insufficient after discount rollback");
+        }
+      }
+
+      const walletAfter = await tx.wallet.findUniqueOrThrow({ where: { userId: order.customerId } });
+      if (walletMove.gt(0)) {
+        await tx.walletTransaction.create({
+          data: {
+            walletId: walletAfter.id,
+            userId: order.customerId,
+            operatorId: adminId,
+            type: WalletTransactionType.ORDER_REFUND,
+            direction: TransactionDirection.CREDIT,
+            amount: walletMove,
+            balanceAfter: walletAfter.availableBalance,
+            referenceType: order.orderGroupId ? "ORDER_GROUP" : "ORDER",
+            referenceId: order.orderGroupId ?? order.id,
+            note: walletNoteParts.join("; ")
+          }
+        });
+      } else if (walletMove.lt(0)) {
+        await tx.walletTransaction.create({
+          data: {
+            walletId: walletAfter.id,
+            userId: order.customerId,
+            operatorId: adminId,
+            type: WalletTransactionType.ORDER_PAYMENT,
+            direction: TransactionDirection.DEBIT,
+            amount: walletMove.abs(),
+            balanceAfter: walletAfter.availableBalance,
+            referenceType: "ORDER_GROUP",
+            referenceId: order.orderGroupId ?? order.id,
+            note: walletNoteParts.join("; ")
+          }
+        });
+      }
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: OrderStatus.REFUNDED,
+          cancelledAt: now,
+          notes: [order.notes, `取消/退款：${reason}`].filter(Boolean).join("\n")
+        }
+      });
+
+      await tx.orderStatusLog.create({
+        data: {
+          orderId: order.id,
+          fromStatus: order.status,
+          toStatus: OrderStatus.REFUNDED,
+          actorId: adminId,
+          reason: "ADMIN_CANCEL_ORDER_REFUND"
+        }
+      });
+
+      await tx.adminLog.create({
+        data: {
+          actorId: adminId,
+          targetUserId: order.customerId,
+          action: "CANCEL_ORDER_REFUND",
+          entityType: "ORDER",
+          entityId: order.id,
+          detail: {
+            orderNo: order.orderNo,
+            orderGroupId: order.orderGroupId,
+            walletMove: walletMove.toString(),
+            note: body.note
+          }
+        }
+      });
+
+      const updated = await tx.order.findUniqueOrThrow({
+        where: { id: order.id },
+        include: {
+          customer: { select: { id: true, email: true, displayName: true } },
+          companion: { select: { id: true, email: true, displayName: true } },
+          assignedBy: { select: { id: true, email: true, displayName: true } },
+          orderGroup: { select: { id: true, groupNo: true, companionCount: true, originalAmount: true, discountAmount: true, totalAmount: true } },
+          sourceDraft: { select: { id: true, draftNo: true, sourcePlatform: true, voiceRoomId: true, status: true } },
+          statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
+        }
+      });
+
+      return this.serializeOrder(updated);
+    });
+  }
+
   private async settleReferralReward(tx: Prisma.TransactionClient, customerId: string, orderId: string, operatorId: string) {
     const completedOrderCount = await tx.order.count({
       where: {
@@ -972,17 +1366,41 @@ export class OrdersService {
   }
 
   private async readPositivePlatformPrice(key: string) {
+    const configured = await this.readPlatformSettingValue(key);
+    return configured ? this.positiveDecimal(configured, key) : null;
+  }
+
+  private async readPlatformSettingValue(key: string) {
     const setting = await this.prisma.platformSetting.findUnique({
       where: { key },
       select: { value: true }
     });
-    const configured = setting?.value ?? process.env[key];
-    return configured ? this.positiveDecimal(configured, key) : null;
+    return setting?.value ?? process.env[key];
   }
 
-  private defaultPlatformMatchUnitPrice(priceTier: ServicePriceTier) {
-    if (priceTier === ServicePriceTier.ENTERTAINMENT) return "108";
-    return "128";
+  private async resolveMultiCompanionDiscountConfig() {
+    const enabledRaw = (await this.readPlatformSettingValue("MULTI_COMPANION_DISCOUNT_ENABLED")) ?? "1";
+    const minCountRaw = (await this.readPlatformSettingValue("MULTI_COMPANION_DISCOUNT_MIN_COUNT")) ?? "2";
+    const discountRaw = (await this.readPlatformSettingValue("MULTI_COMPANION_DISCOUNT_AMOUNT")) ?? "10";
+    const floorRaw = (await this.readPlatformSettingValue("MULTI_COMPANION_DISCOUNT_FLOOR_PRICE")) ?? "68";
+    const minCount = Number.parseInt(minCountRaw, 10);
+    if (!Number.isInteger(minCount) || minCount < 1) throw new BadRequestException("MULTI_COMPANION_DISCOUNT_MIN_COUNT must be a positive integer");
+    return {
+      enabled: !["0", "false", "off", "disabled"].includes(enabledRaw.trim().toLowerCase()),
+      minCount: Math.max(2, minCount),
+      discountPerHour: this.nonNegativeDecimal(discountRaw, "MULTI_COMPANION_DISCOUNT_AMOUNT"),
+      floorPrice: this.nonNegativeDecimal(floorRaw, "MULTI_COMPANION_DISCOUNT_FLOOR_PRICE")
+    };
+  }
+
+  private applyUnitDiscount(unitPrice: Prisma.Decimal, discountPerHour: Prisma.Decimal, floorPrice: Prisma.Decimal) {
+    const discounted = unitPrice.sub(discountPerHour);
+    if (discounted.gte(floorPrice)) return discounted;
+    return unitPrice.lt(floorPrice) ? unitPrice : floorPrice;
+  }
+
+  private defaultPlatformMatchUnitPrice(_priceTier: ServicePriceTier) {
+    return "98";
   }
   private pickCompanionPriceForTier(
     companion: {
@@ -1037,6 +1455,17 @@ export class OrdersService {
     return decimal;
   }
 
+  private nonNegativeDecimal(value: string, fieldName: string) {
+    let decimal: Prisma.Decimal;
+    try {
+      decimal = new Prisma.Decimal(value);
+    } catch {
+      throw new BadRequestException(`${fieldName} must be a valid amount`);
+    }
+    if (decimal.lt(0)) throw new BadRequestException(`${fieldName} cannot be negative`);
+    return decimal;
+  }
+
   private serializeOrder(order: {
     id: string;
     orderNo: string;
@@ -1048,7 +1477,10 @@ export class OrdersService {
     mode: string;
     hours: Prisma.Decimal;
     priceTier: ServicePriceTier;
+    originalUnitPrice?: Prisma.Decimal | null;
     unitPrice: Prisma.Decimal;
+    discountPerHour?: Prisma.Decimal;
+    originalAmount?: Prisma.Decimal | null;
     totalAmount: Prisma.Decimal;
     commissionRateSnapshot?: Prisma.Decimal;
     platformFee: Prisma.Decimal;
@@ -1064,9 +1496,11 @@ export class OrdersService {
     acceptedAt: Date | null;
     startedAt: Date | null;
     completedAt: Date | null;
+    cancelledAt?: Date | null;
     customer?: { id: string; email: string; displayName: string };
     companion?: { id: string; email: string; displayName: string } | null;
     assignedBy?: { id: string; email: string; displayName: string } | null;
+    orderGroup?: { id: string; groupNo: string; companionCount: number; originalAmount: Prisma.Decimal; discountAmount: Prisma.Decimal; totalAmount: Prisma.Decimal } | null;
     sourceDraft?: { id: string; draftNo: string; sourcePlatform: OrderSourcePlatform; voiceRoomId: string | null; status: string } | null;
     statusLogs?: Array<{ id: string; fromStatus: OrderStatus | null; toStatus: OrderStatus; reason: string | null; createdAt: Date }>;
   }) {
@@ -1080,7 +1514,10 @@ export class OrdersService {
       mode: order.mode,
       hours: order.hours.toString(),
       priceTier: order.priceTier,
+      originalUnitPrice: order.originalUnitPrice?.toString() ?? null,
       unitPrice: order.unitPrice.toString(),
+      discountPerHour: order.discountPerHour?.toString() ?? "0",
+      originalAmount: order.originalAmount?.toString() ?? null,
       totalAmount: order.totalAmount.toString(),
       commissionRateSnapshot: order.commissionRateSnapshot?.toString() ?? null,
       platformFee: order.platformFee.toString(),
@@ -1096,9 +1533,18 @@ export class OrdersService {
       acceptedAt: order.acceptedAt,
       startedAt: order.startedAt,
       completedAt: order.completedAt,
+      cancelledAt: order.cancelledAt ?? null,
       customer: order.customer,
       companion: order.companion,
       assignedBy: order.assignedBy,
+      orderGroup: order.orderGroup
+        ? {
+            ...order.orderGroup,
+            originalAmount: order.orderGroup.originalAmount.toString(),
+            discountAmount: order.orderGroup.discountAmount.toString(),
+            totalAmount: order.orderGroup.totalAmount.toString()
+          }
+        : null,
       sourceDraft: order.sourceDraft,
       statusLogs: order.statusLogs ?? []
     };
@@ -1109,5 +1555,12 @@ export class OrdersService {
     const stamp = now.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
     const random = Math.random().toString(36).slice(2, 8).toUpperCase();
     return `MAY${stamp}${random}`;
+  }
+
+  private generateOrderGroupNo() {
+    const now = new Date();
+    const stamp = now.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+    const random = Math.random().toString(36).slice(2, 7).toUpperCase();
+    return `MAYG${stamp}${random}`;
   }
 }

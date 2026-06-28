@@ -16,7 +16,7 @@ export const companions = [
     game: "三角洲行动",
     rank: "高分段",
     modes: ["烽火地带", "全面战场"],
-    price: 128,
+    price: 118,
     onlineStatus: "ONLINE",
     voice: "可语音",
     voiceStyle: "教学型 / 路线讲解",
@@ -33,7 +33,7 @@ export const companions = [
     game: "无畏契约",
     rank: "高分段",
     modes: ["排位", "教学"],
-    price: 128,
+    price: 118,
     onlineStatus: "BUSY",
     voice: "可语音",
     voiceStyle: "指挥型 / 快节奏",
@@ -50,9 +50,9 @@ export const companions = [
     game: "英雄联盟",
     rank: "钻石+",
     modes: ["双排", "教学"],
-    price: 108,
+    price: 98,
     onlineStatus: "ONLINE",
-    voice: "文字/语音",
+    voice: "可语音",
     voiceStyle: "耐心型 / 新手友好",
     trial: "支持进语音频道试音",
     tags: ["耐心", "教学", "上分"],
@@ -64,11 +64,11 @@ export const companions = [
 ];
 
 export const recentOrders = [
-  { id: "MAY-240601", companion: "Nova", mode: "烽火地带", status: "待派单", amount: 256 },
-  { id: "MAY-240528", companion: "Echo", mode: "娱乐双排", status: "已完成", amount: 216 }
+  { id: "MAY-240601", companion: "Nova", mode: "烽火地带", status: "待派单", amount: 236 },
+  { id: "MAY-240528", companion: "Echo", mode: "娱乐双排", status: "已完成", amount: 196 }
 ];
 
 export const walletTransactions = [
   { id: "W-001", type: "充值审核通过", amount: "+300.00", status: "已入账" },
-  { id: "W-002", type: "订单支付", amount: "-216.00", status: "已完成" }
+  { id: "W-002", type: "订单支付", amount: "-196.00", status: "已完成" }
 ];

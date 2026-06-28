@@ -653,6 +653,15 @@ export class AdminController {
     return this.orders.listAdminOrders();
   }
 
+  @Patch("orders/:id/cancel")
+  cancelOrder(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { note?: string }
+  ) {
+    return this.orders.cancelOrderByAdmin(user.id, id, body);
+  }
+
   @Get("order-drafts")
   listOrderDrafts() {
     return this.orderDrafts.listAdminDrafts();
@@ -723,7 +732,7 @@ export class AdminController {
   selectOrderDraftCompanion(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
-    @Body() body: { companionId: string; note?: string }
+    @Body() body: { companionId?: string; companionIds?: string[]; note?: string }
   ) {
     return this.orderDrafts.selectCompanion(user.id, id, body);
   }
@@ -764,7 +773,7 @@ export class AdminController {
   convertOrderDraft(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
-    @Body() body: { companionId?: string; note?: string }
+    @Body() body: { companionId?: string; companionIds?: string[]; note?: string }
   ) {
     return this.orderDrafts.convertDraftToOrder(user.id, id, body);
   }
@@ -1529,7 +1538,11 @@ function promotionSettingDefaults(): Record<string, string> {
     CUSTOMER_REFERRER_REWARD_AMOUNT: "老客户邀请新客户奖励金额，需要邀请码/邀请绑定后自动发放。",
     CUSTOMER_INVITEE_BONUS_AMOUNT: "被邀请新客户奖励金额，需要邀请码/邀请绑定后自动发放。",
     COMPANION_REFERRAL_REWARD_AMOUNT: "陪玩带来新客户的首单固定奖励金额，需要邀请绑定后自动发放。",
-    COMPANION_REFERRAL_COMMISSION_RATE: "陪玩邀请码客户每次完成订单的持续推广分成比例，0.01 表示订单金额 1%。"
+    COMPANION_REFERRAL_COMMISSION_RATE: "陪玩邀请码客户每次完成订单的持续推广分成比例，0.01 表示订单金额 1%。",
+    MULTI_COMPANION_DISCOUNT_ENABLED: "多陪玩折扣开关，1 表示开启，0 表示关闭。",
+    MULTI_COMPANION_DISCOUNT_MIN_COUNT: "同一客户点多少个陪玩起享受多陪玩折扣，默认 2。",
+    MULTI_COMPANION_DISCOUNT_AMOUNT: "同一客户点 2 个及以上陪玩时，每个陪玩每小时减免金额，默认 10。",
+    MULTI_COMPANION_DISCOUNT_FLOOR_PRICE: "多陪玩折扣后的单价地板价，默认 68。"
   };
 }
 
@@ -1540,7 +1553,11 @@ function defaultPromotionSettingValue(key: string) {
     CUSTOMER_REFERRER_REWARD_AMOUNT: "10",
     CUSTOMER_INVITEE_BONUS_AMOUNT: "10",
     COMPANION_REFERRAL_REWARD_AMOUNT: "20",
-    COMPANION_REFERRAL_COMMISSION_RATE: "0.01"
+    COMPANION_REFERRAL_COMMISSION_RATE: "0.01",
+    MULTI_COMPANION_DISCOUNT_ENABLED: "1",
+    MULTI_COMPANION_DISCOUNT_MIN_COUNT: "2",
+    MULTI_COMPANION_DISCOUNT_AMOUNT: "10",
+    MULTI_COMPANION_DISCOUNT_FLOOR_PRICE: "68"
   };
   return defaults[key] ?? "0";
 }

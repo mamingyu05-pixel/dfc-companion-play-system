@@ -475,8 +475,8 @@ function CompanionPricingEditor({
         <PriceInput label="KOOK" value={kook} onChange={setKook} placeholder="沿用默认" />
         <PriceInput label="DC" value={discord} onChange={setDiscord} placeholder="沿用默认" />
         <PriceInput label="娱乐" value={entertainment} onChange={setEntertainment} placeholder="可不填" />
-        <PriceInput label="排位" value={ranked} onChange={setRanked} placeholder="例如 128" />
-        <PriceInput label="高排" value={highRanked} onChange={setHighRanked} placeholder="例如 128" />
+        <PriceInput label="排位" value={ranked} onChange={setRanked} placeholder="例如 98" />
+        <PriceInput label="高排" value={highRanked} onChange={setHighRanked} placeholder="例如 118" />
       </div>
       <button type="button" onClick={() => onSave(base, kook, discord, entertainment, ranked, highRanked)} className="mt-2 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-2 py-1 font-black text-slate-950">
         保存价格

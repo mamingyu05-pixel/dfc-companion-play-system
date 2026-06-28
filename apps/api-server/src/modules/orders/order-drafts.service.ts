@@ -71,6 +71,17 @@ export class OrderDraftsService {
         serviceAdmin: { select: { id: true, email: true, displayName: true } },
         selectedCompanion: { select: { id: true, email: true, displayName: true } },
         convertedOrder: { select: { id: true, orderNo: true, status: true, totalAmount: true } },
+        convertedOrderGroup: {
+          select: {
+            id: true,
+            groupNo: true,
+            companionCount: true,
+            originalAmount: true,
+            discountAmount: true,
+            totalAmount: true,
+            orders: { select: { id: true, orderNo: true, status: true, totalAmount: true } }
+          }
+        },
         candidates: {
           orderBy: { createdAt: "asc" },
           include: {
@@ -714,34 +725,42 @@ export class OrderDraftsService {
     };
   }
 
-  async selectCompanion(adminId: string, draftId: string, body: { companionId: string; note?: string }) {
-    if (!body.companionId) throw new BadRequestException("companionId is required");
+  async selectCompanion(adminId: string, draftId: string, body: { companionId?: string; companionIds?: string[]; note?: string }) {
+    const companionIds = this.normalizeCompanionIds(body);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const draft = await this.assertEditableDraft(tx, draftId);
-      await this.assertListedCompanion(tx, body.companionId, draft.game);
+      for (const companionId of companionIds) {
+        await this.assertListedCompanion(tx, companionId, draft.game);
+      }
 
       const previousCompanionId = draft.selectedCompanionId;
-      await tx.orderDraftCandidate.upsert({
-        where: { draftId_companionId: { draftId, companionId: body.companionId } },
-        create: {
-          draftId,
-          companionId: body.companionId,
-          recommendedById: adminId,
-          status: OrderDraftCandidateStatus.SELECTED,
-          note: body.note
-        },
-        update: { status: OrderDraftCandidateStatus.SELECTED, note: body.note }
+      const previousSelected = await tx.orderDraftCandidate.findMany({
+        where: { draftId, status: OrderDraftCandidateStatus.SELECTED },
+        select: { companionId: true }
       });
+      for (const companionId of companionIds) {
+        await tx.orderDraftCandidate.upsert({
+          where: { draftId_companionId: { draftId, companionId } },
+          create: {
+            draftId,
+            companionId,
+            recommendedById: adminId,
+            status: OrderDraftCandidateStatus.SELECTED,
+            note: body.note
+          },
+          update: { status: OrderDraftCandidateStatus.SELECTED, note: body.note }
+        });
+      }
       await tx.orderDraftCandidate.updateMany({
-        where: { draftId, companionId: { not: body.companionId }, status: OrderDraftCandidateStatus.SELECTED },
+        where: { draftId, companionId: { notIn: companionIds }, status: OrderDraftCandidateStatus.SELECTED },
         data: { status: OrderDraftCandidateStatus.RECOMMENDED }
       });
 
       const updated = await tx.orderDraft.update({
         where: { id: draftId },
         data: {
-          selectedCompanionId: body.companionId,
+          selectedCompanionId: companionIds[0],
           status: OrderDraftStatus.SELECTED
         }
       });
@@ -754,17 +773,25 @@ export class OrderDraftsService {
         platformUserId: draft.customerPlatformUserId,
         eventType: previousCompanionId ? OrderDraftEventType.CUSTOMER_CHANGED_COMPANION : OrderDraftEventType.CUSTOMER_SELECTED_COMPANION,
         content: body.note,
-        metadata: { previousCompanionId, companionId: body.companionId }
+        metadata: {
+          previousCompanionId,
+          previousCompanionIds: previousSelected.map((item) => item.companionId),
+          companionId: companionIds[0],
+          companionIds,
+          companionCount: companionIds.length
+        }
       });
 
       await this.writeAdminLog(tx, adminId, draft.customerId, "SELECT_ORDER_DRAFT_COMPANION", draftId, {
         previousCompanionId,
-        companionId: body.companionId
+        companionId: companionIds[0],
+        companionIds,
+        companionCount: companionIds.length
       });
       return updated;
     });
 
-    await this.botNotifications.sendOrderDraftSelectedCompanionNotification(draftId, body.companionId).catch(() => undefined);
+    await Promise.all(companionIds.map((companionId) => this.botNotifications.sendOrderDraftSelectedCompanionNotification(draftId, companionId).catch(() => undefined)));
     return updated;
   }
 
@@ -834,18 +861,25 @@ export class OrderDraftsService {
     });
   }
 
-  async convertDraftToOrder(adminId: string, draftId: string, body: { companionId?: string; note?: string } = {}) {
-    const requestedCompanionId = body.companionId?.trim();
-    if (requestedCompanionId) {
-      await this.selectCompanion(adminId, draftId, { companionId: requestedCompanionId, note: body.note });
+  async convertDraftToOrder(adminId: string, draftId: string, body: { companionId?: string; companionIds?: string[]; note?: string } = {}) {
+    const requestedCompanionIds = this.normalizeCompanionIds(body, false);
+    if (requestedCompanionIds.length) {
+      await this.selectCompanion(adminId, draftId, { companionIds: requestedCompanionIds, note: body.note });
     }
     const draft = await this.prisma.orderDraft.findUnique({
       where: { id: draftId },
-      include: { convertedOrder: true }
+      include: {
+        convertedOrder: true,
+        convertedOrderGroup: true,
+        candidates: {
+          where: { status: OrderDraftCandidateStatus.SELECTED },
+          select: { companionId: true }
+        }
+      }
     });
 
     if (!draft) throw new NotFoundException("Order draft not found");
-    if (draft.status === OrderDraftStatus.CONVERTED || draft.convertedOrder) {
+    if (draft.status === OrderDraftStatus.CONVERTED || draft.convertedOrder || draft.convertedOrderGroup) {
       throw new BadRequestException("Order draft was already converted");
     }
     if (draft.status === OrderDraftStatus.CANCELLED) {
@@ -854,12 +888,67 @@ export class OrderDraftsService {
     if (!draft.customerId) throw new BadRequestException("Order draft must be linked to a customer before conversion");
     if (!draft.hours) throw new BadRequestException("Order draft hours is required before conversion");
 
+    const selectedCompanionIds = [...new Set(draft.candidates.map((candidate) => candidate.companionId))];
+    if (!selectedCompanionIds.length && draft.selectedCompanionId) selectedCompanionIds.push(draft.selectedCompanionId);
+    if (selectedCompanionIds.length > 1) {
+      const groupResult = await this.orders.createOrderGroup(draft.customerId, {
+        game: draft.game,
+        mode: draft.mode,
+        hours: draft.hours.toString(),
+        priceTier: draft.priceTier,
+        companionIds: selectedCompanionIds,
+        notes: draft.note ? `客服试音单 ${draft.draftNo}：${draft.note}` : `客服试音单 ${draft.draftNo}`,
+        voiceTrialRequested: true,
+        sourcePlatform: draft.sourcePlatform,
+        sourceDraftId: draft.id,
+        sourceChannelId: draft.sourceChannelId ?? undefined,
+        sourceMessageId: draft.sourceMessageId ?? undefined,
+        assignedById: adminId
+      });
+
+      const updatedDraft = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.orderDraft.update({
+          where: { id: draftId },
+          data: {
+            status: OrderDraftStatus.CONVERTED,
+            convertedById: adminId
+          }
+        });
+        await this.writeDraftEvent(tx, {
+          draftId,
+          actorUserId: adminId,
+          actorType: OrderDraftActorType.ADMIN,
+          platform: draft.sourcePlatform,
+          platformUserId: draft.customerPlatformUserId,
+          eventType: OrderDraftEventType.DRAFT_CONVERTED_TO_ORDER,
+          metadata: {
+            orderGroupId: groupResult.orderGroup.id,
+            groupNo: groupResult.orderGroup.groupNo,
+            companionIds: selectedCompanionIds,
+            orderIds: groupResult.orders.map((order) => order.id),
+            orderNos: groupResult.orders.map((order) => order.orderNo)
+          }
+        });
+        await this.writeAdminLog(tx, adminId, draft.customerId, "CONVERT_ORDER_DRAFT_GROUP", draftId, {
+          orderGroupId: groupResult.orderGroup.id,
+          groupNo: groupResult.orderGroup.groupNo,
+          companionIds: selectedCompanionIds,
+          orderIds: groupResult.orders.map((order) => order.id),
+          orderNos: groupResult.orders.map((order) => order.orderNo)
+        });
+        return updated;
+      });
+
+      return { draft: updatedDraft, orderGroup: groupResult.orderGroup, orders: groupResult.orders, notifications: groupResult.notifications };
+    }
+
+    const selectedCompanionId = selectedCompanionIds[0];
     const order = await this.orders.createOrder(draft.customerId, {
       game: draft.game,
       mode: draft.mode,
       hours: draft.hours.toString(),
       priceTier: draft.priceTier,
-      companionId: draft.selectedCompanionId ?? undefined,
+      companionId: selectedCompanionId,
       notes: draft.note ? `客服试音单 ${draft.draftNo}：${draft.note}` : `客服试音单 ${draft.draftNo}`,
       voiceTrialRequested: true,
       sourcePlatform: draft.sourcePlatform,
@@ -868,7 +957,7 @@ export class OrderDraftsService {
       sourceMessageId: draft.sourceMessageId ?? undefined
     });
 
-    const assignment = draft.selectedCompanionId ? await this.orders.assignOrder(order.id, draft.selectedCompanionId, adminId) : null;
+    const assignment = selectedCompanionId ? await this.orders.assignOrder(order.id, selectedCompanionId, adminId) : null;
 
     const updatedDraft = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.orderDraft.update({
@@ -892,6 +981,15 @@ export class OrderDraftsService {
     });
 
     return { draft: updatedDraft, order, assignment };
+  }
+
+  private normalizeCompanionIds(body: { companionId?: string; companionIds?: string[] }, required = true) {
+    const ids = [...(body.companionIds ?? []), body.companionId]
+      .map((id) => id?.trim())
+      .filter((id): id is string => Boolean(id));
+    const uniqueIds = [...new Set(ids)];
+    if (required && !uniqueIds.length) throw new BadRequestException("companionId or companionIds is required");
+    return uniqueIds;
   }
 
   private async assertActiveCustomer(tx: Prisma.TransactionClient, customerId: string) {

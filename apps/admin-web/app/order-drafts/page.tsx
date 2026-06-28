@@ -50,6 +50,15 @@ type OrderDraft = {
   customer?: { id: string; email: string; displayName: string } | null;
   selectedCompanion?: { id: string; email: string; displayName: string } | null;
   convertedOrder?: { id: string; orderNo: string; status: string; totalAmount: string } | null;
+  convertedOrderGroup?: {
+    id: string;
+    groupNo: string;
+    companionCount: number;
+    originalAmount: string;
+    discountAmount: string;
+    totalAmount: string;
+    orders: Array<{ id: string; orderNo: string; status: string; totalAmount: string }>;
+  } | null;
   candidates: Array<{
     id: string;
     status: string;
@@ -99,6 +108,26 @@ type DispatchNotification = {
   error?: string;
 };
 
+type PromotionSetting = {
+  key: string;
+  value: string;
+};
+
+type MultiCompanionDiscountConfig = {
+  enabled: boolean;
+  minCount: number;
+  discountPerHour: number;
+  floorPrice: number;
+};
+
+type DraftBill = {
+  count: number;
+  hours: number;
+  originalAmount: number;
+  discountAmount: number;
+  totalAmount: number;
+};
+
 const gameOptions = [
   ["DELTA_FORCE", "三角洲行动"],
   ["LEAGUE_OF_LEGENDS", "英雄联盟"],
@@ -123,9 +152,11 @@ export default function OrderDraftsPage() {
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [candidateId, setCandidateId] = useState("");
   const [selectedCompanionId, setSelectedCompanionId] = useState("");
+  const [selectedCompanionIds, setSelectedCompanionIds] = useState<string[]>([]);
   const [companionQuery, setCompanionQuery] = useState("");
   const [customerMessage, setCustomerMessage] = useState("");
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [promotionSettings, setPromotionSettings] = useState<PromotionSetting[]>([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [form, setForm] = useState({
@@ -147,16 +178,18 @@ export default function OrderDraftsPage() {
   async function loadData() {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
-    const [draftsResponse, usersResponse, companionsResponse] = await Promise.all([
+    const [draftsResponse, usersResponse, companionsResponse, promotionSettingsResponse] = await Promise.all([
       fetch("/api/admin/order-drafts", { headers: { Authorization: `Bearer ${token}` } }),
       fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } }),
-      fetch("/api/admin/companions", { headers: { Authorization: `Bearer ${token}` } })
+      fetch("/api/admin/companions", { headers: { Authorization: `Bearer ${token}` } }),
+      fetch("/api/admin/promotion-settings", { headers: { Authorization: `Bearer ${token}` } })
     ]);
-    if (!draftsResponse.ok || !usersResponse.ok || !companionsResponse.ok) throw new Error("load failed");
+    if (!draftsResponse.ok || !usersResponse.ok || !companionsResponse.ok || !promotionSettingsResponse.ok) throw new Error("load failed");
     const nextDrafts = (await draftsResponse.json()) as OrderDraft[];
     setDrafts(nextDrafts);
     setUsers((await usersResponse.json()) as AdminUser[]);
     setCompanions((await companionsResponse.json()) as Companion[]);
+    setPromotionSettings((await promotionSettingsResponse.json()) as PromotionSetting[]);
     setSelectedDraftId((current) => {
       const currentDraft = nextDrafts.find((draft) => draft.id === current);
       if (currentDraft && !isClosedDraft(currentDraft)) return current;
@@ -172,6 +205,12 @@ export default function OrderDraftsPage() {
   const activeDrafts = useMemo(() => drafts.filter((draft) => !isClosedDraft(draft)), [drafts]);
   const hiddenClosedDraftCount = drafts.length - activeDrafts.length;
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
+  const selectedDraftCompanionIds = useMemo(() => selectedDraft?.candidates.filter((candidate) => candidate.status === "SELECTED").map((candidate) => candidate.companion.id) ?? [], [selectedDraft]);
+  const discountConfig = useMemo(() => buildDiscountConfig(promotionSettings), [promotionSettings]);
+  const selectedDraftBill = useMemo(
+    () => buildDraftBill(selectedDraft, selectedCompanionIds, discountConfig),
+    [selectedDraft, selectedCompanionIds.join("|"), discountConfig]
+  );
   const listedCompanions = useMemo(
     () => {
       const keyword = companionQuery.trim().toLowerCase();
@@ -190,6 +229,10 @@ export default function OrderDraftsPage() {
     const candidates = activeDrafts.reduce((sum, draft) => sum + draft.candidates.length, 0);
     return { open, converted, candidates };
   }, [activeDrafts, drafts]);
+
+  useEffect(() => {
+    setSelectedCompanionIds(selectedDraftCompanionIds);
+  }, [selectedDraftId, selectedDraftCompanionIds.join("|")]);
 
   async function callApi<T>(path: string, options: RequestInit) {
     const token = localStorage.getItem("dfc_admin_token");
@@ -295,17 +338,17 @@ export default function OrderDraftsPage() {
   }
 
   async function selectCompanion() {
-    const companionToSelect = selectedCompanionId || candidateId;
-    if (!selectedDraftId || !companionToSelect) {
+    const companionIds = selectedCompanionIdsForAction();
+    if (!selectedDraftId || !companionIds.length) {
       setError("请先选择草稿和最终陪玩");
       return;
     }
     try {
       await callApi(`/api/admin/order-drafts/${selectedDraftId}/select-companion`, {
         method: "PATCH",
-        body: JSON.stringify({ companionId: companionToSelect })
+        body: JSON.stringify(companionIds.length > 1 ? { companionIds } : { companionId: companionIds[0] })
       });
-      setStatus("已记录客户最终选择。");
+      setStatus(`已记录客户最终选择：${companionIds.length} 个陪玩。`);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "记录选择失败");
@@ -325,17 +368,32 @@ export default function OrderDraftsPage() {
 
   async function convertDraft() {
     if (!selectedDraftId) return;
-    const companionToSelect = selectedCompanionId || candidateId || selectedDraft?.selectedCompanion?.id || "";
+    const companionIds = selectedCompanionIdsForAction();
     try {
       await callApi(`/api/admin/order-drafts/${selectedDraftId}/convert`, {
         method: "POST",
-        body: JSON.stringify({ companionId: companionToSelect || undefined })
+        body: JSON.stringify(companionIds.length > 1 ? { companionIds } : { companionId: companionIds[0] || undefined })
       });
-      setStatus(companionToSelect ? "\u5df2\u6307\u5b9a\u966a\u73a9\u5e76\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002" : "\u5df2\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002");
+      setStatus(companionIds.length > 1 ? `已转为订单组：${companionIds.length} 个陪玩子订单。` : companionIds.length === 1 ? "\u5df2\u6307\u5b9a\u966a\u73a9\u5e76\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002" : "\u5df2\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002");
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "\u8f6c\u8ba2\u5355\u5931\u8d25");
     }
+  }
+
+  function selectedCompanionIdsForAction() {
+    return [
+      ...selectedCompanionIds,
+      selectedCompanionId,
+      candidateId,
+      selectedDraft?.selectedCompanion?.id
+    ].filter((id): id is string => Boolean(id)).filter((id, index, array) => array.indexOf(id) === index);
+  }
+
+  function toggleSelectedCompanion(companionId: string) {
+    setSelectedCompanionIds((current) =>
+      current.includes(companionId) ? current.filter((id) => id !== companionId) : [...current, companionId]
+    );
   }
   async function cancelDraft() {
     if (!selectedDraftId) return;
@@ -474,7 +532,7 @@ export default function OrderDraftsPage() {
               <div className="text-sm font-black text-white">AI 推荐排序</div>
               <div className="mt-3 space-y-2">
                 {recommendations.map((item) => (
-                  <button key={item.companionId} type="button" onClick={() => setSelectedCompanionId(item.companionId)} className="w-full rounded-dfc-control border border-cyan-300/15 bg-[#101827] p-3 text-left text-sm hover:border-cyan-300/45">
+                  <button key={item.companionId} type="button" onClick={() => toggleSelectedCompanion(item.companionId)} className={`w-full rounded-dfc-control border p-3 text-left text-sm hover:border-cyan-300/45 ${selectedCompanionIds.includes(item.companionId) ? "border-cyan-300/70 bg-cyan-300/10" : "border-cyan-300/15 bg-[#101827]"}`}>
                     <div className="font-black text-white">{item.nickname} / 分数 {item.score}</div>
                     <div className="mt-1 text-xs text-dfc-muted">{priceTierLabel(selectedDraft?.priceTier ?? "CUSTOM")} ¥{formatMoney(item.pricePerHour)}/h / {toOnlineStatus(item.onlineStatus)}</div>
                     <div className="mt-1 text-xs text-dfc-subtext">{item.reasons.join(" / ")}</div>
@@ -486,7 +544,7 @@ export default function OrderDraftsPage() {
                   <option value="">客户最终选择</option>
                   {recommendations.map((item) => <option key={item.companionId} value={item.companionId}>{item.nickname}</option>)}
                 </select>
-                <ActionButton onClick={() => void selectCompanion()}>记录选择</ActionButton>
+                <ActionButton onClick={() => void selectCompanion()}>记录选择{selectedCompanionIds.length > 1 ? `(${selectedCompanionIds.length})` : ""}</ActionButton>
               </div>
             </div>
             <div className="admin-queue-item">
@@ -509,9 +567,11 @@ export default function OrderDraftsPage() {
             <Person key={`${draft.id}-source`} name={draft.sourcePlatform} sub={`语音：${draft.voiceRoomId || "-"}`} />,
             `${gameName(draft.game)} / ${draft.mode || "-"} / ${priceTierLabel(draft.priceTier)}`,
             `${draft.candidates.length} 人`,
-            <Person key={`selected-${draft.id}`} name={draft.selectedCompanion?.displayName ?? "-"} sub={draft.selectedCompanion?.email ?? ""} />,
+            <span key={`selected-${draft.id}`} className="text-xs leading-5 text-dfc-subtext">{selectedCompanionNames(draft)}</span>,
             <StatusBadge key={`${draft.id}-status`} tone={statusTone(draft.status)}>{toDraftStatus(draft.status, draft.note)}</StatusBadge>,
-            draft.convertedOrder ? `${draft.convertedOrder.orderNo} / ${draft.convertedOrder.status}` : "-"
+            draft.convertedOrderGroup
+              ? `${draft.convertedOrderGroup.groupNo} / ${draft.convertedOrderGroup.orders.length} 单 / ¥${formatMoney(draft.convertedOrderGroup.totalAmount)}`
+              : draft.convertedOrder ? `${draft.convertedOrder.orderNo} / ${draft.convertedOrder.status}` : "-"
           ])}
           />
           {hiddenClosedDraftCount > 0 ? (
@@ -533,13 +593,26 @@ export default function OrderDraftsPage() {
               <DetailBlock title="候选陪玩">
                 {selectedDraft.candidates.length ? selectedDraft.candidates.map((candidate) => (
                   <div key={candidate.id} className="admin-queue-item mb-2">
-                    <div className="font-semibold text-white">{candidate.companion.companionProfile?.nickname ?? candidate.companion.displayName}</div>
-                    <div className="text-xs text-dfc-muted">
-                      {candidate.status} / {priceTierLabel(selectedDraft.priceTier)} ¥{candidate.companion.companionProfile ? formatMoney(candidate.companion.companionProfile.pricePerHour) : "-"}/h
-                    </div>
+                    <label className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedCompanionIds.includes(candidate.companion.id)}
+                        onChange={() => toggleSelectedCompanion(candidate.companion.id)}
+                        className="mt-1 h-4 w-4 accent-cyan-300"
+                      />
+                      <span>
+                        <span className="block font-semibold text-white">{candidate.companion.companionProfile?.nickname ?? candidate.companion.displayName}</span>
+                        <span className="block text-xs text-dfc-muted">
+                          {candidate.status} / {priceTierLabel(selectedDraft.priceTier)} ¥{candidate.companion.companionProfile ? formatMoney(candidate.companion.companionProfile.pricePerHour) : "-"}/h
+                        </span>
+                      </span>
+                    </label>
                     {candidate.note ? <div className="mt-1 text-xs">{candidate.note}</div> : null}
                   </div>
                 )) : <div className="text-dfc-muted">暂无候选</div>}
+              </DetailBlock>
+              <DetailBlock title="实时账单估算">
+                <DraftBillView bill={selectedDraftBill} config={discountConfig} />
               </DetailBlock>
               <DetailBlock title="最近事件">
                 {selectedDraft.events.slice(0, 5).map((event) => (
@@ -590,6 +663,40 @@ function DetailBlock({ title, children }: { title: string; children: ReactNode }
   );
 }
 
+function DraftBillView({ bill, config }: { bill: DraftBill | null; config: MultiCompanionDiscountConfig }) {
+  if (!bill || bill.count === 0 || bill.hours <= 0) {
+    return <div className="rounded-dfc-control border border-cyan-300/15 bg-[#07111f] p-3 text-xs text-dfc-muted">勾选候选陪玩并填写时长后显示估算账单。</div>;
+  }
+
+  return (
+    <div className="rounded-dfc-control border border-cyan-300/15 bg-[#07111f] p-3">
+      <div className="grid gap-3 text-sm sm:grid-cols-4">
+        <InfoCell label="人数" value={`${bill.count} 人`} />
+        <InfoCell label="时长" value={`${formatMoney(String(bill.hours))} 小时`} />
+        <InfoCell label="原价" value={`¥${formatMoney(String(bill.originalAmount))}`} />
+        <InfoCell label="折后总价" value={`¥${formatMoney(String(bill.totalAmount))}`} />
+      </div>
+      <div className="mt-3 text-xs leading-5 text-dfc-subtext">
+        {bill.discountAmount > 0
+          ? `多陪玩折扣：${bill.count} 人，每人每小时 -¥${formatMoney(String(config.discountPerHour))}，本单共减 ¥${formatMoney(String(bill.discountAmount))}。`
+          : config.enabled
+            ? `当前未达到 ${config.minCount} 人起算门槛，暂不减免。`
+            : "多陪玩折扣开关当前关闭，按原价估算。"}
+      </div>
+      <div className="mt-2 text-xs text-dfc-muted">最终扣款以后端转正式订单时的配置和钱包事务为准。</div>
+    </div>
+  );
+}
+
+function InfoCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-dfc-muted">{label}</div>
+      <div className="mt-1 font-black text-white">{value}</div>
+    </div>
+  );
+}
+
 function Person({ name, sub }: { name: string; sub: string }) {
   return (
     <div>
@@ -597,6 +704,14 @@ function Person({ name, sub }: { name: string; sub: string }) {
       <div className="mt-1 text-xs text-dfc-muted">{sub}</div>
     </div>
   );
+}
+
+function selectedCompanionNames(draft: OrderDraft) {
+  const selected = draft.candidates.filter((candidate) => candidate.status === "SELECTED");
+  if (selected.length) {
+    return selected.map((candidate) => candidate.companion.companionProfile?.nickname ?? candidate.companion.displayName).join("、");
+  }
+  return draft.selectedCompanion?.displayName ?? "-";
 }
 
 function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" }) {
@@ -659,6 +774,62 @@ function companionPriceForTier(companion: Companion, priceTier: ServicePriceTier
   if (priceTier === "RANKED") return companion.rankedPricePerHour || platformPrice;
   if (priceTier === "HIGH_RANKED") return companion.highRankedPricePerHour || companion.rankedPricePerHour || platformPrice;
   return platformPrice;
+}
+
+function companionProfilePriceForTier(profile: NonNullable<OrderDraft["candidates"][number]["companion"]["companionProfile"]>, priceTier: ServicePriceTier, platform: "WEB" | "DISCORD" | "KOOK") {
+  const platformPrice =
+    platform === "DISCORD"
+      ? profile.discordPricePerHour || profile.pricePerHour
+      : platform === "KOOK"
+        ? profile.kookPricePerHour || profile.pricePerHour
+        : profile.pricePerHour;
+
+  if (priceTier === "ENTERTAINMENT") return profile.entertainmentPricePerHour || platformPrice;
+  if (priceTier === "RANKED") return profile.rankedPricePerHour || platformPrice;
+  if (priceTier === "HIGH_RANKED") return profile.highRankedPricePerHour || profile.rankedPricePerHour || platformPrice;
+  return platformPrice;
+}
+
+function buildDiscountConfig(settings: PromotionSetting[]): MultiCompanionDiscountConfig {
+  const values = Object.fromEntries(settings.map((item) => [item.key, item.value]));
+  const enabledRaw = values.MULTI_COMPANION_DISCOUNT_ENABLED ?? "1";
+  const minCount = Number.parseInt(values.MULTI_COMPANION_DISCOUNT_MIN_COUNT ?? "2", 10);
+  return {
+    enabled: !["0", "false", "off", "disabled"].includes(enabledRaw.trim().toLowerCase()),
+    minCount: Number.isFinite(minCount) ? Math.max(2, minCount) : 2,
+    discountPerHour: Math.max(0, Number(values.MULTI_COMPANION_DISCOUNT_AMOUNT ?? "10") || 0),
+    floorPrice: Math.max(0, Number(values.MULTI_COMPANION_DISCOUNT_FLOOR_PRICE ?? "68") || 68)
+  };
+}
+
+function buildDraftBill(draft: OrderDraft | undefined, selectedIds: string[], config: MultiCompanionDiscountConfig): DraftBill | null {
+  if (!draft) return null;
+  const hours = Number(draft.hours || 0);
+  if (!Number.isFinite(hours) || hours <= 0) return null;
+  const selected = draft.candidates.filter((candidate) => selectedIds.includes(candidate.companion.id) && candidate.companion.companionProfile);
+  if (!selected.length) return null;
+
+  const unitPrices = selected.map((candidate) => Number(companionProfilePriceForTier(candidate.companion.companionProfile!, draft.priceTier, draft.sourcePlatform)) || 0);
+  const discountEnabled = config.enabled && unitPrices.length >= config.minCount && config.discountPerHour > 0;
+  const originalAmount = unitPrices.reduce((sum, unitPrice) => sum + unitPrice * hours, 0);
+  const totalAmount = unitPrices.reduce((sum, unitPrice) => {
+    const discountedUnit = discountEnabled ? applyUnitDiscount(unitPrice, config.discountPerHour, config.floorPrice) : unitPrice;
+    return sum + discountedUnit * hours;
+  }, 0);
+
+  return {
+    count: unitPrices.length,
+    hours,
+    originalAmount,
+    discountAmount: Math.max(0, originalAmount - totalAmount),
+    totalAmount
+  };
+}
+
+function applyUnitDiscount(unitPrice: number, discountPerHour: number, floorPrice: number) {
+  const discounted = unitPrice - discountPerHour;
+  if (discounted >= floorPrice) return discounted;
+  return unitPrice < floorPrice ? unitPrice : floorPrice;
 }
 
 function formatMoney(value: string) {

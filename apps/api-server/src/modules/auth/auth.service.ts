@@ -955,7 +955,10 @@ export class AuthService {
             orderNo: true,
             mode: true,
             status: true,
+            originalAmount: true,
+            discountPerHour: true,
             totalAmount: true,
+            orderGroup: { select: { groupNo: true, companionCount: true, discountAmount: true } },
             companion: { select: { displayName: true } },
             createdAt: true
           }
@@ -1037,7 +1040,16 @@ export class AuthService {
         orderNo: order.orderNo,
         mode: order.mode,
         status: order.status,
+        originalAmount: order.originalAmount?.toString() ?? null,
+        discountPerHour: order.discountPerHour.toString(),
         totalAmount: order.totalAmount.toString(),
+        orderGroup: order.orderGroup
+          ? {
+              groupNo: order.orderGroup.groupNo,
+              companionCount: order.orderGroup.companionCount,
+              discountAmount: order.orderGroup.discountAmount.toString()
+            }
+          : null,
         companionName: order.companion?.displayName ?? "平台待匹配",
         createdAt: order.createdAt
       })),
@@ -1394,9 +1406,9 @@ function buildPendingOAuthCompanionProfile(profile: OAuthProfile) {
     deltaForceRank: DeltaForceRank.UNRANKED,
     skillModes: [],
     pricePerHour: defaultCompanionPricePerHour(),
-    entertainmentPricePerHour: new Prisma.Decimal("108"),
-    rankedPricePerHour: new Prisma.Decimal("128"),
-    highRankedPricePerHour: new Prisma.Decimal("128"),
+    entertainmentPricePerHour: new Prisma.Decimal("98"),
+    rankedPricePerHour: new Prisma.Decimal("98"),
+    highRankedPricePerHour: new Prisma.Decimal("98"),
     commissionRate: defaultCompanionCommissionRate(),
     onlineStatus: OnlineStatus.OFFLINE,
     voicePreference: VoicePreference.OPTIONAL,
@@ -1405,12 +1417,12 @@ function buildPendingOAuthCompanionProfile(profile: OAuthProfile) {
 }
 
 function defaultCompanionPricePerHour() {
-  const configured = process.env.DEFAULT_COMPANION_PRICE_PER_HOUR || process.env.PLATFORM_MATCH_UNIT_PRICE || "128";
+  const configured = process.env.DEFAULT_COMPANION_PRICE_PER_HOUR || process.env.PLATFORM_MATCH_UNIT_PRICE || "98";
   try {
     const price = new Prisma.Decimal(configured);
-    return price.gt(0) ? price : new Prisma.Decimal("128");
+    return price.gt(0) ? price : new Prisma.Decimal("98");
   } catch {
-    return new Prisma.Decimal("128");
+    return new Prisma.Decimal("98");
   }
 }
 

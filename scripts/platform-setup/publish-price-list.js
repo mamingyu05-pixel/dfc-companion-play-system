@@ -91,7 +91,7 @@ async function publishDiscord(env) {
       name: DISCORD_PRICE_FORUM_NAME,
       type: 15,
       parent_id: serviceChannel?.parent_id ?? undefined,
-      topic: "May猫饼统一价目卡：游戏价格与充值福利"
+      topic: "May猫饼价目表：游戏价格与充值福利"
     });
     console.log(`✓ 已创建论坛频道：${forum.name}`);
   } else {

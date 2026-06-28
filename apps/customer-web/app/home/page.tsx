@@ -39,7 +39,10 @@ type CustomerProfile = {
     orderNo: string;
     mode: string;
     status: string;
+    originalAmount?: string | null;
+    discountPerHour?: string;
     totalAmount: string;
+    orderGroup?: { groupNo: string; companionCount: number; discountAmount: string } | null;
     companionName: string;
     createdAt: string;
   }>;
@@ -281,7 +284,7 @@ export default function CustomerHomePage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-semibold">¥{formatMoney(order.totalAmount)}</div>
+                    <CustomerOrderAmount order={order} />
                     <div className="mt-1 text-xs text-dfc-blue">{order.status}</div>
                   </div>
                 </div>
@@ -325,6 +328,21 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-dfc border border-cyan-300/20 bg-[#07111f]/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur">
       <div className="text-xs text-dfc-muted">{label}</div>
       <div className="mt-2 text-2xl font-black tabular-nums text-white">{value}</div>
+    </div>
+  );
+}
+
+function CustomerOrderAmount({ order }: { order: CustomerProfile["recentOrders"][number] }) {
+  const originalAmount = Number(order.originalAmount ?? order.totalAmount);
+  const totalAmount = Number(order.totalAmount || 0);
+  const discount = Math.max(0, originalAmount - totalAmount);
+  if (discount <= 0) return <div className="text-sm font-semibold">¥{formatMoney(order.totalAmount)}</div>;
+
+  return (
+    <div>
+      <div className="text-xs text-dfc-muted line-through">原价 ¥{formatMoney(String(originalAmount))}</div>
+      <div className="mt-1 text-xs text-cyan-200">多陪玩折扣 -¥{formatMoney(String(discount))}</div>
+      <div className="mt-1 text-sm font-semibold text-dfc-gold">实付 ¥{formatMoney(order.totalAmount)}</div>
     </div>
   );
 }
