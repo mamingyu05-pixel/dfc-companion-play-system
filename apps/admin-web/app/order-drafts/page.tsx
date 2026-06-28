@@ -208,8 +208,8 @@ export default function OrderDraftsPage() {
   const selectedDraftCompanionIds = useMemo(() => selectedDraft?.candidates.filter((candidate) => candidate.status === "SELECTED").map((candidate) => candidate.companion.id) ?? [], [selectedDraft]);
   const discountConfig = useMemo(() => buildDiscountConfig(promotionSettings), [promotionSettings]);
   const selectedDraftBill = useMemo(
-    () => buildDraftBill(selectedDraft, selectedCompanionIds, discountConfig),
-    [selectedDraft, selectedCompanionIds.join("|"), discountConfig]
+    () => buildDraftBill(selectedDraft, selectedCompanionIds, discountConfig, companions),
+    [selectedDraft, selectedCompanionIds.join("|"), discountConfig, companions]
   );
   const listedCompanions = useMemo(
     () => {
@@ -223,6 +223,25 @@ export default function OrderDraftsPage() {
     },
     [companions, selectedDraft, companionQuery]
   );
+  const multiPickerCompanions = useMemo(() => {
+    const selectedFirst = selectedCompanionIds
+      .map((id) => companions.find((companion) => companion.userId === id))
+      .filter((companion): companion is Companion => Boolean(companion));
+    const seen = new Set<string>();
+    return [...selectedFirst, ...listedCompanions]
+      .filter((companion) => {
+        if (seen.has(companion.userId)) return false;
+        seen.add(companion.userId);
+        return true;
+      })
+      .slice(0, 18);
+  }, [companions, listedCompanions, selectedCompanionIds.join("|")]);
+  const selectedCompanionSummary = useMemo(() => {
+    if (!selectedCompanionIds.length) return "尚未选择陪玩";
+    return selectedCompanionIds
+      .map((id) => companions.find((companion) => companion.userId === id)?.nickname ?? selectedDraft?.candidates.find((candidate) => candidate.companion.id === id)?.companion.companionProfile?.nickname ?? id)
+      .join(" / ");
+  }, [companions, selectedDraft, selectedCompanionIds.join("|")]);
   const stats = useMemo(() => {
     const open = activeDrafts.length;
     const converted = drafts.filter((draft) => draft.status === "CONVERTED").length;
@@ -435,19 +454,19 @@ export default function OrderDraftsPage() {
 
   return (
     <AdminShell>
-      <SectionHeader eyebrow="Support Dispatch Desk" title="客服派单台" desc="AI 收集 KOOK / Discord 客户需求，客服可在这里确认、发布到派单频道、记录报名、推荐候选，客户确认后再转正式订单。" />
+      <SectionHeader eyebrow="Group Order Desk" title="群下单草稿台" desc="Discord / KOOK 的客户需求统一先进入草稿，客服确认陪玩、价格和余额后再转正式订单。" />
 
       <section className="mb-5 grid gap-4 md:grid-cols-3">
-        <Signal label="开放草稿" value={String(stats.open)} hint="等待候选或客户确认" tone="cyan" />
-        <Signal label="候选记录" value={String(stats.candidates)} hint="所有草稿累计候选" tone="gold" />
-        <Signal label="已转订单" value={String(stats.converted)} hint="进入正式订单流程" tone="green" />
+        <Signal label="待处理草稿" value={String(stats.open)} hint="群消息和手动补录统一进入这里" tone="cyan" />
+        <Signal label="候选池记录" value={String(stats.candidates)} hint="草稿累计候选陪玩" tone="gold" />
+        <Signal label="已成单" value={String(stats.converted)} hint="已转正式订单" tone="green" />
       </section>
 
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
       <section className="mb-6 grid gap-4 xl:grid-cols-2">
-        <Panel title="AI 客服派单" hint="粘贴客户原话或频道对话，系统会解析需求并发布到 KOOK / Discord 派单频道。">
+        <Panel title="从群消息建草稿" hint="客户在 KOOK / Discord 发需求后，粘贴原话，AI 只负责解析草稿和发派单消息。">
           <div className="grid gap-3 md:grid-cols-2">
             <CustomerSelect value={form.customerId} customers={customers} onChange={(value) => setForm({ ...form, customerId: value })} />
             <select value={form.sourcePlatform} onChange={(event) => setForm({ ...form, sourcePlatform: event.target.value as "WEB" | "DISCORD" | "KOOK" })} className="input">
@@ -473,11 +492,11 @@ export default function OrderDraftsPage() {
             ))}
           </div>
           <button type="button" onClick={() => void createDraftFromDemand()} className="mt-4 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">
-            AI 解析并发布派单
+            解析为草稿并发派单
           </button>
         </Panel>
 
-        <Panel title="手动创建草稿" hint="用于客服已经整理好需求的场景。">
+        <Panel title="手动补录草稿" hint="备用入口：客户需求已整理好时使用，后续仍进入同一个草稿处理台。">
           <div className="grid gap-3 md:grid-cols-2">
             <select value={form.game} onChange={(event) => setForm({ ...form, game: event.target.value })} className="input">
               {gameOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -493,38 +512,101 @@ export default function OrderDraftsPage() {
             <input value={form.budgetAmount} onChange={(event) => setForm({ ...form, budgetAmount: event.target.value })} className="input" placeholder="预算金额，可选" inputMode="decimal" />
           </div>
           <textarea value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} className="input mt-3 min-h-20" placeholder="客服备注" />
-          <ActionButton tone="secondary" onClick={() => void createDraft()}>只创建草稿</ActionButton>
+          <ActionButton tone="secondary" onClick={() => void createDraft()}>保存为草稿</ActionButton>
         </Panel>
       </section>
 
       <section className="admin-panel mb-6">
-        <h2 className="text-base font-black text-white">派单操作台</h2>
+        <h2 className="text-base font-black text-white">草稿处理</h2>
+        <p className="mt-1 text-xs leading-5 text-dfc-muted">AI 草稿和手动草稿都在这里选陪玩、确认客户意向，最后统一转正式订单。</p>
         <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr_1fr_auto]">
           <select value={selectedDraftId} onChange={(event) => setSelectedDraftId(event.target.value)} className="input">
-            <option value="">选择试音草稿</option>
+            <option value="">选择待处理草稿</option>
             {activeDrafts.map((draft) => (
               <option key={draft.id} value={draft.id}>{draft.draftNo} / {draft.customer?.displayName ?? draft.customerDisplayName ?? "未绑定客户"} / {toDraftStatus(draft.status)}</option>
             ))}
           </select>
           <input value={companionQuery} onChange={(event) => setCompanionQuery(event.target.value)} className="input" placeholder="搜索陪玩昵称/邮箱" />
           <select value={candidateId} onChange={(event) => setCandidateId(event.target.value)} className="input">
-            <option value="">选择候选陪玩</option>
+            <option value="">补充候选陪玩</option>
             {listedCompanions.map((companion) => (
               <option key={companion.userId} value={companion.userId}>
                 {companion.nickname} / {priceTierLabel(selectedDraft?.priceTier ?? form.priceTier)} ¥{formatMoney(companionPriceForTier(companion, selectedDraft?.priceTier ?? form.priceTier, selectedDraft?.sourcePlatform ?? form.sourcePlatform))}/h / {toOnlineStatus(companion.onlineStatus)}
               </option>
             ))}
           </select>
-          <ActionButton onClick={() => void addCandidate()}>手动加入候选</ActionButton>
+          <ActionButton onClick={() => void addCandidate()}>加入候选池</ActionButton>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <ActionButton tone="secondary" onClick={() => void recommendCandidates()}>AI 推荐候选</ActionButton>
-          <ActionButton tone="secondary" onClick={() => void confirmDraft()}>客户确认</ActionButton>
-          <ActionButton onClick={() => void convertDraft()}>{"\u786e\u8ba4\u5e76\u8f6c\u6b63\u5f0f\u8ba2\u5355"}</ActionButton>
+          <ActionButton tone="secondary" onClick={() => void recommendCandidates()}>AI 推荐陪玩</ActionButton>
+          <ActionButton tone="secondary" onClick={() => void confirmDraft()}>记录客户确认</ActionButton>
+          <ActionButton onClick={() => void convertDraft()}>
+            {selectedCompanionIds.length > 1 ? `确认并转正式订单（${selectedCompanionIds.length} 人）` : "确认并转正式订单"}
+          </ActionButton>
           <ActionButton tone="danger" onClick={() => void failDraft()}>标记流单</ActionButton>
           <ActionButton tone="danger" onClick={() => void cancelDraft()}>取消草稿</ActionButton>
           <ActionButton tone="secondary" onClick={() => void expireStaleDrafts()}>处理超时流单</ActionButton>
         </div>
+
+        {selectedDraft ? (
+          <div className="mt-4 rounded-dfc-control border border-cyan-300/15 bg-[#07111f] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-black text-white">最终陪玩（可多选）</div>
+                <div className="mt-1 text-xs leading-5 text-dfc-muted">
+                  这里是转订单前的最终选择；可选 1 个或多个，点确认转正式订单后才会扣余额并生成订单。
+                </div>
+              </div>
+              <div className="rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100">
+                已选 {selectedCompanionIds.length} 人
+              </div>
+            </div>
+            {selectedCompanionIds.length ? (
+              <div className="mt-3 rounded-dfc-control border border-cyan-300/10 bg-black/20 px-3 py-2 text-xs leading-5 text-cyan-100">
+                {selectedCompanionSummary}
+              </div>
+            ) : null}
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {multiPickerCompanions.map((companion) => {
+                const selected = selectedCompanionIds.includes(companion.userId);
+                const price = companionPriceForTier(companion, selectedDraft.priceTier, selectedDraft.sourcePlatform);
+                return (
+                  <button
+                    key={companion.userId}
+                    type="button"
+                    onClick={() => toggleSelectedCompanion(companion.userId)}
+                    className={`min-h-20 rounded-dfc-control border p-3 text-left transition hover:border-cyan-300/50 ${
+                      selected ? "border-cyan-300/70 bg-cyan-300/10" : "border-cyan-300/15 bg-[#101827]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="min-w-0 truncate text-sm font-black text-white">{companion.nickname}</span>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-black ${selected ? "bg-cyan-300 text-slate-950" : "bg-slate-700/70 text-dfc-muted"}`}>
+                        {selected ? "已选" : "选择"}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-xs leading-5 text-dfc-muted">
+                      {priceTierLabel(selectedDraft.priceTier)} ¥{formatMoney(price)}/h / {toOnlineStatus(companion.onlineStatus)}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {multiPickerCompanions.length === 0 ? (
+              <div className="mt-3 rounded-dfc-control border border-cyan-300/10 bg-black/20 px-3 py-2 text-xs text-dfc-muted">
+                当前游戏和搜索条件下没有可上架陪玩。
+              </div>
+            ) : null}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-dfc-muted">
+              {listedCompanions.length > multiPickerCompanions.length ? <span>已按当前搜索显示前 {multiPickerCompanions.length} 个，可用搜索框缩小范围。</span> : null}
+              {selectedCompanionIds.length ? (
+                <button type="button" onClick={() => setSelectedCompanionIds([])} className="rounded-dfc-control border border-cyan-300/20 px-3 py-1.5 font-semibold text-cyan-100 hover:border-cyan-300/50">
+                  清空选择
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {recommendations.length ? (
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -802,14 +884,19 @@ function buildDiscountConfig(settings: PromotionSetting[]): MultiCompanionDiscou
   };
 }
 
-function buildDraftBill(draft: OrderDraft | undefined, selectedIds: string[], config: MultiCompanionDiscountConfig): DraftBill | null {
+function buildDraftBill(draft: OrderDraft | undefined, selectedIds: string[], config: MultiCompanionDiscountConfig, companions: Companion[] = []): DraftBill | null {
   if (!draft) return null;
   const hours = Number(draft.hours || 0);
   if (!Number.isFinite(hours) || hours <= 0) return null;
-  const selected = draft.candidates.filter((candidate) => selectedIds.includes(candidate.companion.id) && candidate.companion.companionProfile);
-  if (!selected.length) return null;
+  const selectedCandidates = draft.candidates.filter((candidate) => selectedIds.includes(candidate.companion.id) && candidate.companion.companionProfile);
+  const candidateIds = new Set(selectedCandidates.map((candidate) => candidate.companion.id));
+  const selectedDirectCompanions = companions.filter((companion) => selectedIds.includes(companion.userId) && !candidateIds.has(companion.userId));
+  if (!selectedCandidates.length && !selectedDirectCompanions.length) return null;
 
-  const unitPrices = selected.map((candidate) => Number(companionProfilePriceForTier(candidate.companion.companionProfile!, draft.priceTier, draft.sourcePlatform)) || 0);
+  const unitPrices = [
+    ...selectedCandidates.map((candidate) => Number(companionProfilePriceForTier(candidate.companion.companionProfile!, draft.priceTier, draft.sourcePlatform)) || 0),
+    ...selectedDirectCompanions.map((companion) => Number(companionPriceForTier(companion, draft.priceTier, draft.sourcePlatform)) || 0)
+  ];
   const discountEnabled = config.enabled && unitPrices.length >= config.minCount && config.discountPerHour > 0;
   const originalAmount = unitPrices.reduce((sum, unitPrice) => sum + unitPrice * hours, 0);
   const totalAmount = unitPrices.reduce((sum, unitPrice) => {
@@ -880,6 +967,6 @@ function toFriendlyError(message?: string) {
   if (message.includes("already converted")) return "这个草稿已经转过正式订单";
   if (message.includes("hours is required")) return "转正式订单前必须填写时长";
   if (message.includes("must be linked to a customer")) return "转正式订单前必须绑定已注册客户";
-  if (message.includes("No candidates")) return "还没有候选陪玩，先让陪玩报名或手动加入候选";
+  if (message.includes("No candidates")) return "还没有候选陪玩，先让陪玩报名或加入候选池";
   return message;
 }
