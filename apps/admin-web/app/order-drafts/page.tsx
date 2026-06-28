@@ -46,6 +46,8 @@ type OrderDraft = {
   mode: string;
   hours?: string | null;
   priceTier: ServicePriceTier;
+  rankTierKey?: string | null;
+  rankTierNameSnapshot?: string | null;
   budgetAmount?: string | null;
   status: string;
   note?: string | null;
@@ -100,6 +102,16 @@ type PromotionSetting = {
   value: string;
 };
 
+type GameRankPrice = {
+  id: string;
+  game: string;
+  tierKey: string;
+  tierName: string;
+  unitPrice: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
 type MultiCompanionDiscountConfig = {
   enabled: boolean;
   minCount: number;
@@ -142,6 +154,9 @@ export default function OrderDraftsPage() {
   const [companionQuery, setCompanionQuery] = useState("");
   const [directCompanionQuery, setDirectCompanionQuery] = useState("");
   const [promotionSettings, setPromotionSettings] = useState<PromotionSetting[]>([]);
+  const [rankPrices, setRankPrices] = useState<GameRankPrice[]>([]);
+  const [selectedDraftRankTierKey, setSelectedDraftRankTierKey] = useState("");
+  const [selectedDraftCustomUnitPrice, setSelectedDraftCustomUnitPrice] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [form, setForm] = useState({
@@ -152,24 +167,28 @@ export default function OrderDraftsPage() {
     mode: "",
     hours: "",
     priceTier: "CUSTOM" as ServicePriceTier,
+    rankTierKey: "",
+    customUnitPrice: "",
     note: ""
   });
 
   async function loadData() {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
-    const [draftsResponse, usersResponse, companionsResponse, promotionSettingsResponse] = await Promise.all([
+    const [draftsResponse, usersResponse, companionsResponse, promotionSettingsResponse, rankPricesResponse] = await Promise.all([
       fetch("/api/admin/order-drafts", { headers: { Authorization: `Bearer ${token}` } }),
       fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } }),
       fetch("/api/admin/companions", { headers: { Authorization: `Bearer ${token}` } }),
-      fetch("/api/admin/promotion-settings", { headers: { Authorization: `Bearer ${token}` } })
+      fetch("/api/admin/promotion-settings", { headers: { Authorization: `Bearer ${token}` } }),
+      fetch("/api/admin/game-rank-prices", { headers: { Authorization: `Bearer ${token}` } })
     ]);
-    if (!draftsResponse.ok || !usersResponse.ok || !companionsResponse.ok || !promotionSettingsResponse.ok) throw new Error("load failed");
+    if (!draftsResponse.ok || !usersResponse.ok || !companionsResponse.ok || !promotionSettingsResponse.ok || !rankPricesResponse.ok) throw new Error("load failed");
     const nextDrafts = (await draftsResponse.json()) as OrderDraft[];
     setDrafts(nextDrafts);
     setUsers((await usersResponse.json()) as AdminUser[]);
     setCompanions((await companionsResponse.json()) as Companion[]);
     setPromotionSettings((await promotionSettingsResponse.json()) as PromotionSetting[]);
+    setRankPrices((await rankPricesResponse.json()) as GameRankPrice[]);
     setSelectedDraftId((current) => {
       const currentDraft = nextDrafts.find((draft) => draft.id === current);
       if (currentDraft && !isClosedDraft(currentDraft)) return current;
@@ -187,9 +206,11 @@ export default function OrderDraftsPage() {
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
   const selectedDraftCompanionIds = useMemo(() => selectedDraft?.candidates.filter((candidate) => candidate.status === "SELECTED").map((candidate) => candidate.companion.id) ?? [], [selectedDraft]);
   const discountConfig = useMemo(() => buildDiscountConfig(promotionSettings), [promotionSettings]);
+  const directRankOptions = useMemo(() => rankPricesForGame(rankPrices, form.game), [rankPrices, form.game]);
+  const selectedDraftRankOptions = useMemo(() => rankPricesForGame(rankPrices, selectedDraft?.game), [rankPrices, selectedDraft?.game]);
   const selectedDraftBill = useMemo(
-    () => buildDraftBill(selectedDraft, selectedCompanionIds, discountConfig, companions),
-    [selectedDraft, selectedCompanionIds.join("|"), discountConfig, companions]
+    () => buildDraftBill(selectedDraft, selectedCompanionIds, discountConfig, companions, rankPrices, selectedDraftRankTierKey, selectedDraftCustomUnitPrice),
+    [selectedDraft, selectedCompanionIds.join("|"), discountConfig, companions, rankPrices, selectedDraftRankTierKey, selectedDraftCustomUnitPrice]
   );
   const directListedCompanions = useMemo(() => {
     const keyword = directCompanionQuery.trim().toLowerCase();
@@ -218,8 +239,8 @@ export default function OrderDraftsPage() {
     return directCompanionIds.map((id) => companions.find((companion) => companion.userId === id)?.nickname ?? id).join(" / ");
   }, [companions, directCompanionIds.join("|")]);
   const directBill = useMemo(
-    () => buildDirectBill({ hours: form.hours, priceTier: form.priceTier, sourcePlatform: form.sourcePlatform }, directCompanionIds, discountConfig, companions),
-    [form.hours, form.priceTier, form.sourcePlatform, directCompanionIds.join("|"), discountConfig, companions]
+    () => buildDirectBill({ hours: form.hours, priceTier: form.priceTier, sourcePlatform: form.sourcePlatform, game: form.game, rankTierKey: form.rankTierKey, customUnitPrice: form.customUnitPrice }, directCompanionIds, discountConfig, companions, rankPrices),
+    [form.hours, form.priceTier, form.sourcePlatform, form.game, form.rankTierKey, form.customUnitPrice, directCompanionIds.join("|"), discountConfig, companions, rankPrices]
   );
   const listedCompanions = useMemo(
     () => {
@@ -289,6 +310,26 @@ export default function OrderDraftsPage() {
     );
   }, [companions, form.game]);
 
+  useEffect(() => {
+    setForm((current) => {
+      if (current.rankTierKey === "CUSTOM") return current;
+      const options = rankPricesForGame(rankPrices, current.game);
+      if (options.some((option) => option.tierKey === current.rankTierKey)) return current;
+      return { ...current, rankTierKey: options[0]?.tierKey ?? "CUSTOM" };
+    });
+  }, [rankPrices, form.game]);
+
+  useEffect(() => {
+    if (!selectedDraft) {
+      setSelectedDraftRankTierKey("");
+      setSelectedDraftCustomUnitPrice("");
+      return;
+    }
+    const options = rankPricesForGame(rankPrices, selectedDraft.game);
+    setSelectedDraftRankTierKey(selectedDraft.rankTierKey || options[0]?.tierKey || "CUSTOM");
+    setSelectedDraftCustomUnitPrice("");
+  }, [selectedDraftId, selectedDraft?.game, selectedDraft?.rankTierKey, rankPrices]);
+
   async function callApi<T>(path: string, options: RequestInit) {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) throw new Error("请先登录管理员账号");
@@ -340,6 +381,8 @@ export default function OrderDraftsPage() {
           mode: form.mode,
           hours: form.hours,
           priceTier: form.priceTier,
+          rankTierKey: form.rankTierKey === "CUSTOM" ? undefined : form.rankTierKey,
+          customUnitPrice: form.rankTierKey === "CUSTOM" ? form.customUnitPrice || undefined : undefined,
           notes: form.note || undefined,
           voiceTrialRequested: false
         })
@@ -379,7 +422,11 @@ export default function OrderDraftsPage() {
     try {
       await callApi(`/api/admin/order-drafts/${selectedDraftId}/convert`, {
         method: "POST",
-        body: JSON.stringify(companionIds.length > 1 ? { companionIds } : { companionId: companionIds[0] || undefined })
+        body: JSON.stringify({
+          ...(companionIds.length > 1 ? { companionIds } : { companionId: companionIds[0] || undefined }),
+          rankTierKey: selectedDraftRankTierKey === "CUSTOM" ? undefined : selectedDraftRankTierKey,
+          customUnitPrice: selectedDraftRankTierKey === "CUSTOM" ? selectedDraftCustomUnitPrice || undefined : undefined
+        })
       });
       setStatus(companionIds.length > 1 ? `已转为订单组：${companionIds.length} 个陪玩子订单。` : companionIds.length === 1 ? "\u5df2\u6307\u5b9a\u966a\u73a9\u5e76\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002" : "\u5df2\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002");
       await loadData();
@@ -471,12 +518,14 @@ export default function OrderDraftsPage() {
               {gameOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
             <input value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value })} className="input" placeholder="模式，例如 烽火/排位/娱乐" />
-            <select value={form.priceTier} onChange={(event) => setForm({ ...form, priceTier: event.target.value as ServicePriceTier })} className="input">
-              <option value="CUSTOM">按默认/平台单价</option>
-              <option value="ENTERTAINMENT">娱乐陪玩价</option>
-              <option value="RANKED">排位单价</option>
-              <option value="HIGH_RANKED">高等级排位价</option>
-            </select>
+            <RankPriceControl
+              game={form.game}
+              value={form.rankTierKey}
+              customUnitPrice={form.customUnitPrice}
+              rankPrices={directRankOptions}
+              onChange={(value) => setForm({ ...form, rankTierKey: value })}
+              onCustomUnitPriceChange={(value) => setForm({ ...form, customUnitPrice: value })}
+            />
             <input value={form.hours} onChange={(event) => setForm({ ...form, hours: event.target.value })} className="input" placeholder="预计时长，例如 2" inputMode="decimal" />
             <input value={form.sourceChannelId} onChange={(event) => setForm({ ...form, sourceChannelId: event.target.value })} className="input" placeholder="来源频道 ID，可选" />
           </div>
@@ -494,7 +543,14 @@ export default function OrderDraftsPage() {
             <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {directPickerCompanions.map((companion) => {
                 const selected = directCompanionIds.includes(companion.userId);
-                const price = companionPriceForTier(companion, form.priceTier, form.sourcePlatform);
+                const price = companionPriceForOrder(companion, {
+                  priceTier: form.priceTier,
+                  sourcePlatform: form.sourcePlatform,
+                  game: form.game,
+                  rankTierKey: form.rankTierKey,
+                  customUnitPrice: form.customUnitPrice,
+                  rankPrices
+                });
                 return (
                   <button
                     key={companion.userId}
@@ -511,7 +567,7 @@ export default function OrderDraftsPage() {
                       </span>
                     </div>
                     <div className="mt-2 text-xs leading-5 text-dfc-muted">
-                      {priceTierLabel(form.priceTier)} ¥{formatMoney(price)}/h / {toOnlineStatus(companion.onlineStatus)}
+                      {orderUnitPriceLabel(form.game, form.rankTierKey, form.customUnitPrice, price, rankPrices)} / {toOnlineStatus(companion.onlineStatus)}
                     </div>
                   </button>
                 );
@@ -545,13 +601,22 @@ export default function OrderDraftsPage() {
       <section className="admin-panel mb-6">
         <h2 className="text-base font-black text-white">平台报名处理</h2>
         <p className="mt-1 text-xs leading-5 text-dfc-muted">这里不做后台招募，只处理 DC / KOOK 报名回流和客户最终选择，最后转正式订单。</p>
-        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
           <select value={selectedDraftId} onChange={(event) => setSelectedDraftId(event.target.value)} className="input">
             <option value="">选择待处理草稿</option>
             {activeDrafts.map((draft) => (
               <option key={draft.id} value={draft.id}>{draft.draftNo} / {draft.customer?.displayName ?? draft.customerDisplayName ?? "未绑定客户"} / {toDraftStatus(draft.status)}</option>
             ))}
           </select>
+          <RankPriceControl
+            game={selectedDraft?.game ?? form.game}
+            value={selectedDraftRankTierKey}
+            customUnitPrice={selectedDraftCustomUnitPrice}
+            rankPrices={selectedDraftRankOptions}
+            onChange={setSelectedDraftRankTierKey}
+            onCustomUnitPriceChange={setSelectedDraftCustomUnitPrice}
+            disabled={!selectedDraft}
+          />
           <input value={companionQuery} onChange={(event) => setCompanionQuery(event.target.value)} className="input" placeholder="搜索平台报名陪玩昵称/邮箱" />
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -588,7 +653,17 @@ export default function OrderDraftsPage() {
                 const selected = selectedCompanionIds.includes(companion.userId);
                 const priceTier = selectedDraft?.priceTier ?? form.priceTier;
                 const sourcePlatform = selectedDraft?.sourcePlatform ?? form.sourcePlatform;
-                const price = companionPriceForTier(companion, priceTier, sourcePlatform);
+                const game = selectedDraft?.game ?? form.game;
+                const rankTierKey = selectedDraft ? selectedDraftRankTierKey : form.rankTierKey;
+                const customUnitPrice = selectedDraft ? selectedDraftCustomUnitPrice : form.customUnitPrice;
+                const price = companionPriceForOrder(companion, {
+                  priceTier,
+                  sourcePlatform,
+                  game,
+                  rankTierKey,
+                  customUnitPrice,
+                  rankPrices
+                });
                 return (
                   <button
                     key={companion.userId}
@@ -606,7 +681,7 @@ export default function OrderDraftsPage() {
                       </span>
                     </div>
                     <div className="mt-2 text-xs leading-5 text-dfc-muted">
-                      {priceTierLabel(priceTier)} ¥{formatMoney(price)}/h / {toOnlineStatus(companion.onlineStatus)}
+                      {orderUnitPriceLabel(game, rankTierKey, customUnitPrice, price, rankPrices)} / {toOnlineStatus(companion.onlineStatus)}
                     </div>
                   </button>
                 );
@@ -638,7 +713,7 @@ export default function OrderDraftsPage() {
             <Person key={`${draft.id}-customer`} name={draft.customer?.displayName ?? draft.customerDisplayName ?? "未绑定"} sub={draft.customer?.email ?? draft.customerPlatformUserId ?? "-"} />,
             <span key={`note-${draft.id}`} className="line-clamp-2 text-xs text-dfc-subtext">{draft.note || "-"}</span>,
             <Person key={`${draft.id}-source`} name={draft.sourcePlatform} sub={`语音：${draft.voiceRoomId || "-"}`} />,
-            `${gameName(draft.game)} / ${draft.mode || "-"} / ${priceTierLabel(draft.priceTier)}`,
+            `${gameName(draft.game)} / ${draft.mode || "-"} / ${draftRankLabel(draft, rankPrices)}`,
             `${draft.candidates.length} 人`,
             <span key={`selected-${draft.id}`} className="text-xs leading-5 text-dfc-subtext">{selectedCompanionNames(draft)}</span>,
             <StatusBadge key={`${draft.id}-status`} tone={statusTone(draft.status)}>{toDraftStatus(draft.status, draft.note)}</StatusBadge>,
@@ -676,7 +751,14 @@ export default function OrderDraftsPage() {
                       <span>
                         <span className="block font-semibold text-white">{candidate.companion.companionProfile?.nickname ?? candidate.companion.displayName}</span>
                         <span className="block text-xs text-dfc-muted">
-                          {candidate.status} / {priceTierLabel(selectedDraft.priceTier)} ¥{candidate.companion.companionProfile ? formatMoney(candidate.companion.companionProfile.pricePerHour) : "-"}/h
+                          {candidate.status} / {orderUnitPriceLabel(selectedDraft.game, selectedDraftRankTierKey, selectedDraftCustomUnitPrice, candidate.companion.companionProfile ? companionProfilePriceForOrder(candidate.companion.companionProfile, {
+                            priceTier: selectedDraft.priceTier,
+                            sourcePlatform: selectedDraft.sourcePlatform,
+                            game: selectedDraft.game,
+                            rankTierKey: selectedDraftRankTierKey,
+                            customUnitPrice: selectedDraftCustomUnitPrice,
+                            rankPrices
+                          }) : "0", rankPrices)}
                         </span>
                       </span>
                     </label>
@@ -814,6 +896,70 @@ function Alert({ children, tone }: { children: string; tone: "danger" | "success
   return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
 }
 
+function RankPriceControl({
+  game,
+  value,
+  customUnitPrice,
+  rankPrices,
+  disabled = false,
+  onChange,
+  onCustomUnitPriceChange
+}: {
+  game: string;
+  value: string;
+  customUnitPrice: string;
+  rankPrices: GameRankPrice[];
+  disabled?: boolean;
+  onChange: (value: string) => void;
+  onCustomUnitPriceChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
+      <select value={value || rankPrices[0]?.tierKey || "CUSTOM"} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="input">
+        {rankPrices.map((price) => (
+          <option key={price.id} value={price.tierKey}>
+            {price.tierName} / ¥{formatMoney(price.unitPrice)}/h
+          </option>
+        ))}
+        <option value="CUSTOM">CUSTOM / 手动价兜底</option>
+      </select>
+      <input
+        value={customUnitPrice}
+        disabled={disabled || value !== "CUSTOM"}
+        onChange={(event) => onCustomUnitPriceChange(event.target.value)}
+        className="input"
+        placeholder={value === "CUSTOM" ? "手动价" : gameName(game)}
+        inputMode="decimal"
+      />
+    </div>
+  );
+}
+
+function rankPricesForGame(prices: GameRankPrice[], game?: string | null) {
+  return prices
+    .filter((price) => price.game === game && price.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.tierName.localeCompare(b.tierName, "zh-CN"));
+}
+
+function findRankPrice(prices: GameRankPrice[], game: string, rankTierKey?: string | null) {
+  if (!rankTierKey || rankTierKey === "CUSTOM") return undefined;
+  return prices.find((price) => price.game === game && price.tierKey === rankTierKey && price.isActive);
+}
+
+function orderUnitPriceLabel(game: string, rankTierKey: string | null | undefined, customUnitPrice: string | null | undefined, fallbackPrice: string | number, rankPrices: GameRankPrice[]) {
+  const rankPrice = findRankPrice(rankPrices, game, rankTierKey);
+  if (rankPrice) return `${rankPrice.tierName} ¥${formatMoney(rankPrice.unitPrice)}/h`;
+  if (rankTierKey === "CUSTOM" && Number(customUnitPrice || 0) > 0) return `手动价 ¥${formatMoney(customUnitPrice || "0")}/h`;
+  return `兜底价 ¥${formatMoney(String(fallbackPrice))}/h`;
+}
+
+function draftRankLabel(draft: OrderDraft, rankPrices: GameRankPrice[]) {
+  const rankPrice = findRankPrice(rankPrices, draft.game, draft.rankTierKey);
+  if (rankPrice) return `${rankPrice.tierName} ¥${formatMoney(rankPrice.unitPrice)}/h`;
+  if (draft.rankTierNameSnapshot) return draft.rankTierNameSnapshot;
+  return "待选段位价";
+}
+
 function priceTierLabel(priceTier?: ServicePriceTier | string | null) {
   if (priceTier === "ENTERTAINMENT") return "娱乐";
   if (priceTier === "RANKED") return "排位";
@@ -849,6 +995,40 @@ function companionProfilePriceForTier(profile: NonNullable<OrderDraft["candidate
   return platformPrice;
 }
 
+function companionPriceForOrder(
+  companion: Companion,
+  order: {
+    priceTier: ServicePriceTier;
+    sourcePlatform: "WEB" | "DISCORD" | "KOOK";
+    game: string;
+    rankTierKey?: string | null;
+    customUnitPrice?: string | null;
+    rankPrices: GameRankPrice[];
+  }
+) {
+  const rankPrice = findRankPrice(order.rankPrices, order.game, order.rankTierKey);
+  if (rankPrice) return rankPrice.unitPrice;
+  if (order.rankTierKey === "CUSTOM" && Number(order.customUnitPrice || 0) > 0) return order.customUnitPrice || "0";
+  return companionPriceForTier(companion, order.priceTier, order.sourcePlatform);
+}
+
+function companionProfilePriceForOrder(
+  profile: NonNullable<OrderDraft["candidates"][number]["companion"]["companionProfile"]>,
+  order: {
+    priceTier: ServicePriceTier;
+    sourcePlatform: "WEB" | "DISCORD" | "KOOK";
+    game: string;
+    rankTierKey?: string | null;
+    customUnitPrice?: string | null;
+    rankPrices: GameRankPrice[];
+  }
+) {
+  const rankPrice = findRankPrice(order.rankPrices, order.game, order.rankTierKey);
+  if (rankPrice) return rankPrice.unitPrice;
+  if (order.rankTierKey === "CUSTOM" && Number(order.customUnitPrice || 0) > 0) return order.customUnitPrice || "0";
+  return companionProfilePriceForTier(profile, order.priceTier, order.sourcePlatform);
+}
+
 function buildDiscountConfig(settings: PromotionSetting[]): MultiCompanionDiscountConfig {
   const values = Object.fromEntries(settings.map((item) => [item.key, item.value]));
   const enabledRaw = values.MULTI_COMPANION_DISCOUNT_ENABLED ?? "1";
@@ -861,7 +1041,15 @@ function buildDiscountConfig(settings: PromotionSetting[]): MultiCompanionDiscou
   };
 }
 
-function buildDraftBill(draft: OrderDraft | undefined, selectedIds: string[], config: MultiCompanionDiscountConfig, companions: Companion[] = []): DraftBill | null {
+function buildDraftBill(
+  draft: OrderDraft | undefined,
+  selectedIds: string[],
+  config: MultiCompanionDiscountConfig,
+  companions: Companion[] = [],
+  rankPrices: GameRankPrice[] = [],
+  rankTierKey?: string,
+  customUnitPrice?: string
+): DraftBill | null {
   if (!draft) return null;
   const hours = Number(draft.hours || 0);
   if (!Number.isFinite(hours) || hours <= 0) return null;
@@ -871,8 +1059,22 @@ function buildDraftBill(draft: OrderDraft | undefined, selectedIds: string[], co
   if (!selectedCandidates.length && !selectedDirectCompanions.length) return null;
 
   const unitPrices = [
-    ...selectedCandidates.map((candidate) => Number(companionProfilePriceForTier(candidate.companion.companionProfile!, draft.priceTier, draft.sourcePlatform)) || 0),
-    ...selectedDirectCompanions.map((companion) => Number(companionPriceForTier(companion, draft.priceTier, draft.sourcePlatform)) || 0)
+    ...selectedCandidates.map((candidate) => Number(companionProfilePriceForOrder(candidate.companion.companionProfile!, {
+      priceTier: draft.priceTier,
+      sourcePlatform: draft.sourcePlatform,
+      game: draft.game,
+      rankTierKey,
+      customUnitPrice,
+      rankPrices
+    })) || 0),
+    ...selectedDirectCompanions.map((companion) => Number(companionPriceForOrder(companion, {
+      priceTier: draft.priceTier,
+      sourcePlatform: draft.sourcePlatform,
+      game: draft.game,
+      rankTierKey,
+      customUnitPrice,
+      rankPrices
+    })) || 0)
   ];
   const discountEnabled = config.enabled && unitPrices.length >= config.minCount && config.discountPerHour > 0;
   const originalAmount = unitPrices.reduce((sum, unitPrice) => sum + unitPrice * hours, 0);
@@ -891,16 +1093,24 @@ function buildDraftBill(draft: OrderDraft | undefined, selectedIds: string[], co
 }
 
 function buildDirectBill(
-  order: { hours: string; priceTier: ServicePriceTier; sourcePlatform: "WEB" | "DISCORD" | "KOOK" },
+  order: {
+    hours: string;
+    priceTier: ServicePriceTier;
+    sourcePlatform: "WEB" | "DISCORD" | "KOOK";
+    game: string;
+    rankTierKey?: string | null;
+    customUnitPrice?: string | null;
+  },
   selectedIds: string[],
   config: MultiCompanionDiscountConfig,
-  companions: Companion[]
+  companions: Companion[],
+  rankPrices: GameRankPrice[]
 ): DraftBill | null {
   const hours = Number(order.hours || 0);
   if (!Number.isFinite(hours) || hours <= 0) return null;
   const unitPrices = companions
     .filter((companion) => selectedIds.includes(companion.userId))
-    .map((companion) => Number(companionPriceForTier(companion, order.priceTier, order.sourcePlatform)) || 0);
+    .map((companion) => Number(companionPriceForOrder(companion, { ...order, rankPrices })) || 0);
   if (!unitPrices.length) return null;
 
   const discountEnabled = config.enabled && unitPrices.length >= config.minCount && config.discountPerHour > 0;

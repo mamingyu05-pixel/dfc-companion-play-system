@@ -9,6 +9,10 @@ type AdminOrder = {
   game: string;
   mode: string;
   hours: string;
+  unitPrice: string;
+  originalUnitPrice?: string | null;
+  rankTierKey?: string | null;
+  rankTierNameSnapshot?: string | null;
   totalAmount: string;
   status: string;
   customer?: { email: string; displayName: string };
@@ -128,7 +132,7 @@ export default function DispatchPage() {
               <option value="">选择待派单订单</option>
               {pending.map((order) => (
                 <option key={order.id} value={order.id}>
-                  {order.orderNo} / {gameName(order.game)} / {order.customer?.displayName ?? "-"} / ¥{formatMoney(order.totalAmount)}
+                  {order.orderNo} / {gameName(order.game)} / {order.customer?.displayName ?? "-"} / {orderRankLabel(order)} / ¥{formatMoney(order.totalAmount)}
                 </option>
               ))}
             </select>
@@ -143,7 +147,7 @@ export default function DispatchPage() {
               <option value="">选择陪玩</option>
               {listedCompanions.map((companion) => (
                 <option key={companion.userId} value={companion.userId}>
-                  {companion.nickname} / {toOnlineStatus(companion.onlineStatus)} / ¥{formatMoney(companion.pricePerHour)}/h
+                  {companion.nickname} / {toOnlineStatus(companion.onlineStatus)}
                 </option>
               ))}
             </select>
@@ -156,8 +160,8 @@ export default function DispatchPage() {
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <Preview title="当前订单" lines={selectedOrder ? [selectedOrder.orderNo, `${gameName(selectedOrder.game)} / ${selectedOrder.mode}`, `客户：${selectedOrder.customer?.displayName ?? "-"}`, `金额：¥${formatMoney(selectedOrder.totalAmount)}`] : ["未选择订单"]} />
-          <Preview title="当前陪玩" lines={selectedCompanion ? [selectedCompanion.nickname, `状态：${toOnlineStatus(selectedCompanion.onlineStatus)}`, `价格：¥${formatMoney(selectedCompanion.pricePerHour)}/h`, selectedCompanion.email] : ["未选择陪玩"]} />
+          <Preview title="当前订单" lines={selectedOrder ? [selectedOrder.orderNo, `${gameName(selectedOrder.game)} / ${selectedOrder.mode}`, orderRankLabel(selectedOrder), `客户：${selectedOrder.customer?.displayName ?? "-"}`, `金额：¥${formatMoney(selectedOrder.totalAmount)}`] : ["未选择订单"]} />
+          <Preview title="当前陪玩" lines={selectedCompanion ? [selectedCompanion.nickname, `状态：${toOnlineStatus(selectedCompanion.onlineStatus)}`, selectedCompanion.email] : ["未选择陪玩"]} />
         </div>
         <label className="mt-4 flex items-start gap-3 rounded-dfc-control border border-cyan-300/15 bg-[#07111f]/70 p-3 text-sm text-dfc-subtext">
           <input type="checkbox" checked={autoStart} onChange={(event) => setAutoStart(event.target.checked)} className="mt-1 accent-cyan-300" />
@@ -184,11 +188,10 @@ export default function DispatchPage() {
 
         <Panel title="已上架陪玩" hint="优先选择在线且资料完整的陪玩">
           <DataTable
-            columns={["昵称", "在线", "价格", "邮箱", "操作"]}
+            columns={["昵称", "在线", "邮箱", "操作"]}
             rows={listedCompanions.map((companion) => [
               <span key={`${companion.userId}-name`} className="font-semibold text-white">{companion.nickname}</span>,
               <StatusBadge key={`${companion.userId}-online`} tone={companion.onlineStatus === "ONLINE" ? "success" : "default"}>{toOnlineStatus(companion.onlineStatus)}</StatusBadge>,
-              <span key={`${companion.userId}-price`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(companion.pricePerHour)}/h</span>,
               companion.email,
               <ActionButton key={companion.userId} onClick={() => setSelectedCompanionId(companion.userId)}>选择</ActionButton>
             ])}
@@ -256,6 +259,11 @@ function toFriendlyError(message?: string) {
   if (message.includes("Companion is not listed")) return "陪玩未上架或账号不可用";
   if (message.includes("already been assigned")) return "订单已被派单或状态已变化";
   return message;
+}
+
+function orderRankLabel(order: Pick<AdminOrder, "rankTierNameSnapshot" | "originalUnitPrice" | "unitPrice">) {
+  const unitPrice = order.originalUnitPrice || order.unitPrice;
+  return `${order.rankTierNameSnapshot || "平台单价"} ¥${formatMoney(unitPrice)}/h`;
 }
 
 function toOnlineStatus(status: string) {

@@ -668,6 +668,8 @@ export class AdminController {
       mode?: string;
       hours?: string;
       priceTier?: ServicePriceTier;
+      rankTierKey?: string;
+      customUnitPrice?: string;
       notes?: string;
       voiceTrialRequested?: boolean;
     }
@@ -692,6 +694,8 @@ export class AdminController {
       mode: body.mode.trim(),
       hours: body.hours.trim(),
       priceTier,
+      rankTierKey: body.rankTierKey?.trim() || undefined,
+      customUnitPrice: body.customUnitPrice?.trim() || undefined,
       companionIds,
       notes: body.notes?.trim() || undefined,
       voiceTrialRequested: body.voiceTrialRequested ?? false,
@@ -822,7 +826,7 @@ export class AdminController {
   convertOrderDraft(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
-    @Body() body: { companionId?: string; companionIds?: string[]; note?: string }
+    @Body() body: { companionId?: string; companionIds?: string[]; note?: string; rankTierKey?: string; customUnitPrice?: string }
   ) {
     return this.orderDrafts.convertDraftToOrder(user.id, id, body);
   }
@@ -888,6 +892,63 @@ export class AdminController {
       value: setting.value,
       description: setting.description
     }));
+  }
+
+  @Get("game-rank-prices")
+  async listGameRankPrices() {
+    const prices = await this.prisma.gameRankPrice.findMany({
+      orderBy: [{ game: "asc" }, { sortOrder: "asc" }, { tierName: "asc" }]
+    });
+    return prices.map((price) => serializeGameRankPrice(price));
+  }
+
+  @Patch("game-rank-prices/:id")
+  async updateGameRankPrice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { tierName?: string; unitPrice?: string; sortOrder?: number; isActive?: boolean }
+  ) {
+    const current = await this.prisma.gameRankPrice.findUnique({ where: { id } });
+    if (!current) throw new BadRequestException("Rank price tier not found");
+
+    const data: Prisma.GameRankPriceUpdateInput = {};
+    if (body.tierName !== undefined) {
+      const tierName = body.tierName.trim().slice(0, 40);
+      if (!tierName) throw new BadRequestException("tierName is required");
+      data.tierName = tierName;
+    }
+    if (body.unitPrice !== undefined) data.unitPrice = parsePositiveDecimal(body.unitPrice, "unitPrice");
+    if (body.sortOrder !== undefined) {
+      if (!Number.isInteger(body.sortOrder)) throw new BadRequestException("sortOrder must be an integer");
+      data.sortOrder = body.sortOrder;
+    }
+    if (body.isActive !== undefined) data.isActive = Boolean(body.isActive);
+    if (!Object.keys(data).length) throw new BadRequestException("No valid rank price update provided");
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const price = await tx.gameRankPrice.update({ where: { id }, data });
+      await tx.adminLog.create({
+        data: {
+          actorId: user.id,
+          action: "UPDATE_GAME_RANK_PRICE",
+          entityType: "GAME_RANK_PRICE",
+          entityId: id,
+          detail: {
+            game: current.game,
+            tierKey: current.tierKey,
+            before: {
+              tierName: current.tierName,
+              unitPrice: current.unitPrice.toString(),
+              sortOrder: current.sortOrder,
+              isActive: current.isActive
+            },
+            after: body
+          }
+        }
+      });
+      return price;
+    });
+    return serializeGameRankPrice(updated);
   }
 
   @Patch("promotion-settings")
@@ -1578,6 +1639,30 @@ function isUniqueErrorTarget(error: Prisma.PrismaClientKnownRequestError, field:
 
 function displayUser(user: { email: string; displayName: string }) {
   return user.displayName || user.email;
+}
+
+function serializeGameRankPrice(price: {
+  id: string;
+  game: GameCode;
+  tierKey: string;
+  tierName: string;
+  unitPrice: Prisma.Decimal;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: price.id,
+    game: price.game,
+    tierKey: price.tierKey,
+    tierName: price.tierName,
+    unitPrice: price.unitPrice.toString(),
+    sortOrder: price.sortOrder,
+    isActive: price.isActive,
+    createdAt: price.createdAt,
+    updatedAt: price.updatedAt
+  };
 }
 
 function promotionSettingDefaults(): Record<string, string> {

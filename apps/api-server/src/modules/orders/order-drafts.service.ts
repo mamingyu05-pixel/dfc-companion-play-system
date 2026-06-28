@@ -861,7 +861,11 @@ export class OrderDraftsService {
     });
   }
 
-  async convertDraftToOrder(adminId: string, draftId: string, body: { companionId?: string; companionIds?: string[]; note?: string } = {}) {
+  async convertDraftToOrder(
+    adminId: string,
+    draftId: string,
+    body: { companionId?: string; companionIds?: string[]; note?: string; rankTierKey?: string; customUnitPrice?: string } = {}
+  ) {
     const requestedCompanionIds = this.normalizeCompanionIds(body, false);
     if (requestedCompanionIds.length) {
       await this.selectCompanion(adminId, draftId, { companionIds: requestedCompanionIds, note: body.note });
@@ -890,12 +894,15 @@ export class OrderDraftsService {
 
     const selectedCompanionIds = [...new Set(draft.candidates.map((candidate) => candidate.companionId))];
     if (!selectedCompanionIds.length && draft.selectedCompanionId) selectedCompanionIds.push(draft.selectedCompanionId);
+    const rankTierKey = body.rankTierKey ?? draft.rankTierKey ?? undefined;
     if (selectedCompanionIds.length > 1) {
       const groupResult = await this.orders.createOrderGroup(draft.customerId, {
         game: draft.game,
         mode: draft.mode,
         hours: draft.hours.toString(),
         priceTier: draft.priceTier,
+        rankTierKey,
+        customUnitPrice: body.customUnitPrice,
         companionIds: selectedCompanionIds,
         notes: draft.note ? `客服试音单 ${draft.draftNo}：${draft.note}` : `客服试音单 ${draft.draftNo}`,
         voiceTrialRequested: true,
@@ -948,6 +955,8 @@ export class OrderDraftsService {
       mode: draft.mode,
       hours: draft.hours.toString(),
       priceTier: draft.priceTier,
+      rankTierKey,
+      customUnitPrice: body.customUnitPrice,
       companionId: selectedCompanionId,
       notes: draft.note ? `客服试音单 ${draft.draftNo}：${draft.note}` : `客服试音单 ${draft.draftNo}`,
       voiceTrialRequested: true,
@@ -1074,6 +1083,8 @@ export class OrderDraftsService {
     mode: string;
     hours: Prisma.Decimal | null;
     priceTier: ServicePriceTier;
+    rankTierKey?: string | null;
+    rankTierNameSnapshot?: string | null;
     budgetAmount: Prisma.Decimal | null;
     status: OrderDraftStatus;
     note: string | null;
@@ -1129,6 +1140,8 @@ export class OrderDraftsService {
       ...draft,
       hours: draft.hours?.toString() ?? null,
       priceTier: draft.priceTier,
+      rankTierKey: draft.rankTierKey ?? null,
+      rankTierNameSnapshot: draft.rankTierNameSnapshot ?? null,
       budgetAmount: draft.budgetAmount?.toString() ?? null,
       convertedOrder: draft.convertedOrder
         ? { ...draft.convertedOrder, totalAmount: draft.convertedOrder.totalAmount.toString() }
