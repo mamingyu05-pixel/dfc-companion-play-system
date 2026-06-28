@@ -96,7 +96,7 @@ export default function DispatchPage() {
 
   return (
     <AdminShell>
-      <SectionHeader eyebrow="Dispatch Desk" title="派单控制台" desc="将已支付订单分配给已上架陪玩。客户选择平台人工挑人的订单，也会进入这里等待管理员确认。" />
+      <SectionHeader eyebrow="Dispatch Desk" title="单人订单派单" desc="这里只处理已经扣款的单人待派订单；客户点 2 个及以上陪玩时，走草稿台多选后转订单组。" />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
@@ -104,6 +104,20 @@ export default function DispatchPage() {
         <Signal label="待派单订单" value={String(pending.length)} hint={`待派金额 ¥${formatMoney(String(pendingAmount))}`} tone="gold" />
         <Signal label="上架陪玩" value={String(listedCompanions.length)} hint={`${onlineCount} 位在线`} tone="cyan" />
         <Signal label="当前模式" value="人工确认" hint="不自动支付、不自动提现" tone="green" />
+      </section>
+
+      <section className="admin-panel mb-6">
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div>
+            <h2 className="text-base font-black text-white">多人陪玩订单组</h2>
+            <p className="mt-1 text-xs leading-5 text-dfc-muted">
+              多人单需要在扣款前确定人数、陪玩和折扣。请从群消息建草稿，在草稿台勾选多个陪玩后，统一转正式订单。
+            </p>
+          </div>
+          <a href="/order-drafts" className="rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-center text-sm font-black text-slate-950 transition hover:bg-cyan-200">
+            多人派单入口
+          </a>
+        </div>
       </section>
 
       <section className="admin-panel mb-6">

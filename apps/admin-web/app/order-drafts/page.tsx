@@ -386,7 +386,10 @@ export default function OrderDraftsPage() {
   }
 
   async function convertDraft() {
-    if (!selectedDraftId) return;
+    if (!selectedDraftId) {
+      setError("请先选择待处理草稿");
+      return;
+    }
     const companionIds = selectedCompanionIdsForAction();
     try {
       await callApi(`/api/admin/order-drafts/${selectedDraftId}/convert`, {
@@ -548,13 +551,14 @@ export default function OrderDraftsPage() {
           <ActionButton tone="secondary" onClick={() => void expireStaleDrafts()}>处理超时流单</ActionButton>
         </div>
 
-        {selectedDraft ? (
-          <div className="mt-4 rounded-dfc-control border border-cyan-300/15 bg-[#07111f] p-3">
+        <div className="mt-4 rounded-dfc-control border border-cyan-300/15 bg-[#07111f] p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-black text-white">最终陪玩（可多选）</div>
                 <div className="mt-1 text-xs leading-5 text-dfc-muted">
-                  这里是转订单前的最终选择；可选 1 个或多个，点确认转正式订单后才会扣余额并生成订单。
+                  {selectedDraft
+                    ? "这里是转订单前的最终选择；可选 1 个或多个，点确认转正式订单后才会扣余额并生成订单。"
+                    : "先选择或创建一个待处理草稿，随后可在这里勾选 1 个或多个陪玩。"}
                 </div>
               </div>
               <div className="rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100">
@@ -569,15 +573,18 @@ export default function OrderDraftsPage() {
             <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {multiPickerCompanions.map((companion) => {
                 const selected = selectedCompanionIds.includes(companion.userId);
-                const price = companionPriceForTier(companion, selectedDraft.priceTier, selectedDraft.sourcePlatform);
+                const priceTier = selectedDraft?.priceTier ?? form.priceTier;
+                const sourcePlatform = selectedDraft?.sourcePlatform ?? form.sourcePlatform;
+                const price = companionPriceForTier(companion, priceTier, sourcePlatform);
                 return (
                   <button
                     key={companion.userId}
                     type="button"
-                    onClick={() => toggleSelectedCompanion(companion.userId)}
+                    disabled={!selectedDraft}
+                    onClick={() => selectedDraft && toggleSelectedCompanion(companion.userId)}
                     className={`min-h-20 rounded-dfc-control border p-3 text-left transition hover:border-cyan-300/50 ${
                       selected ? "border-cyan-300/70 bg-cyan-300/10" : "border-cyan-300/15 bg-[#101827]"
-                    }`}
+                    } ${selectedDraft ? "" : "cursor-not-allowed opacity-60"}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <span className="min-w-0 truncate text-sm font-black text-white">{companion.nickname}</span>
@@ -586,7 +593,7 @@ export default function OrderDraftsPage() {
                       </span>
                     </div>
                     <div className="mt-2 text-xs leading-5 text-dfc-muted">
-                      {priceTierLabel(selectedDraft.priceTier)} ¥{formatMoney(price)}/h / {toOnlineStatus(companion.onlineStatus)}
+                      {priceTierLabel(priceTier)} ¥{formatMoney(price)}/h / {toOnlineStatus(companion.onlineStatus)}
                     </div>
                   </button>
                 );
@@ -606,7 +613,6 @@ export default function OrderDraftsPage() {
               ) : null}
             </div>
           </div>
-        ) : null}
 
         {recommendations.length ? (
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
