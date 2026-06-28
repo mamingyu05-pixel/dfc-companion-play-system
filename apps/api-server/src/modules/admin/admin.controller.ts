@@ -28,6 +28,17 @@ import { OrdersService } from "../orders/orders.service";
 import { OrderDraftsService } from "../orders/order-drafts.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { WalletService } from "../wallet/wallet.service";
+
+const SUPPORTED_GAME_CODES = new Set<GameCode>([
+  GameCode.DELTA_FORCE,
+  GameCode.LEAGUE_OF_LEGENDS,
+  GameCode.VALORANT,
+  GameCode.COUNTER_STRIKE_2,
+  GameCode.PUBG,
+  GameCode.APEX_LEGENDS,
+  GameCode.NARAKA_BLADEPOINT,
+  GameCode.CALL_OF_DUTY
+]);
 import { CompanionExternalAccountsService } from "./companion-external-accounts.service";
 
 @Controller("admin")
@@ -1579,7 +1590,8 @@ function normalizeMediaUrls(urls?: string[]) {
 }
 
 function normalizeGameCode(value?: string | null) {
-  return Object.values(GameCode).includes(value as GameCode) ? (value as GameCode) : undefined;
+  const game = Object.values(GameCode).includes(value as GameCode) ? (value as GameCode) : undefined;
+  return game && SUPPORTED_GAME_CODES.has(game) ? game : undefined;
 }
 
 function normalizeGameList(values: Array<GameCode | string> | undefined, primaryGame: GameCode) {

@@ -6,20 +6,7 @@ export const games = [
   { code: "PUBG", name: "PUBG 绝地求生", category: "吃鸡", hot: true },
   { code: "APEX_LEGENDS", name: "Apex 英雄", category: "射击", hot: true },
   { code: "NARAKA_BLADEPOINT", name: "永劫无间", category: "动作竞技", hot: true },
-  { code: "HONOR_OF_KINGS", name: "王者荣耀", category: "手游 MOBA", hot: true },
-  { code: "PEACEKEEPER_ELITE", name: "和平精英", category: "手游吃鸡", hot: true },
-  { code: "DOTA_2", name: "Dota 2", category: "MOBA", hot: false },
-  { code: "OVERWATCH_2", name: "守望先锋 2", category: "射击", hot: false },
-  { code: "RAINBOW_SIX_SIEGE", name: "彩虹六号：围攻", category: "战术射击", hot: false },
-  { code: "ROCKET_LEAGUE", name: "火箭联盟", category: "体育竞技", hot: false },
-  { code: "EA_SPORTS_FC", name: "EA Sports FC", category: "体育", hot: false },
-  { code: "STREET_FIGHTER_6", name: "街头霸王 6", category: "格斗", hot: false },
-  { code: "CALL_OF_DUTY", name: "使命召唤", category: "射击", hot: false },
-  { code: "WILD_RIFT", name: "英雄联盟手游", category: "手游 MOBA", hot: false },
-  { code: "MOBILE_LEGENDS", name: "Mobile Legends", category: "手游 MOBA", hot: false },
-  { code: "MINECRAFT", name: "我的世界", category: "沙盒", hot: false },
-  { code: "GENSHIN_IMPACT", name: "原神", category: "开放世界", hot: false },
-  { code: "STEAM", name: "Steam 综合游戏", category: "综合平台", hot: true }
+  { code: "CALL_OF_DUTY", name: "塔科夫 / COD", category: "战术射击", hot: true }
 ];
 
 export const companions = [
@@ -29,7 +16,7 @@ export const companions = [
     game: "三角洲行动",
     rank: "高分段",
     modes: ["烽火地带", "全面战场"],
-    price: 68,
+    price: 128,
     onlineStatus: "ONLINE",
     voice: "可语音",
     voiceStyle: "教学型 / 路线讲解",
@@ -46,7 +33,7 @@ export const companions = [
     game: "无畏契约",
     rank: "高分段",
     modes: ["排位", "教学"],
-    price: 88,
+    price: 128,
     onlineStatus: "BUSY",
     voice: "可语音",
     voiceStyle: "指挥型 / 快节奏",
@@ -63,7 +50,7 @@ export const companions = [
     game: "英雄联盟",
     rank: "钻石+",
     modes: ["双排", "教学"],
-    price: 58,
+    price: 108,
     onlineStatus: "ONLINE",
     voice: "文字/语音",
     voiceStyle: "耐心型 / 新手友好",
@@ -77,11 +64,11 @@ export const companions = [
 ];
 
 export const recentOrders = [
-  { id: "MAY-240601", companion: "Nova", mode: "烽火地带", status: "待派单", amount: 136 },
-  { id: "MAY-240528", companion: "Echo", mode: "双排", status: "已完成", amount: 90 }
+  { id: "MAY-240601", companion: "Nova", mode: "烽火地带", status: "待派单", amount: 256 },
+  { id: "MAY-240528", companion: "Echo", mode: "娱乐双排", status: "已完成", amount: 216 }
 ];
 
 export const walletTransactions = [
   { id: "W-001", type: "充值审核通过", amount: "+300.00", status: "已入账" },
-  { id: "W-002", type: "订单支付", amount: "-136.00", status: "已完成" }
+  { id: "W-002", type: "订单支付", amount: "-216.00", status: "已完成" }
 ];

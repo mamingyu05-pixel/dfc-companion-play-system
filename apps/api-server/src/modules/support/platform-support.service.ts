@@ -159,30 +159,27 @@ const DANGEROUS_AI_PHRASES = [
   "自动到账",
   "自动退款"
 ];
-const GAME_NAME_BY_CODE: Record<GameCode, string> = {
+const GAME_NAME_BY_CODE: Partial<Record<GameCode, string>> = {
   [GameCode.DELTA_FORCE]: "三角洲行动",
   [GameCode.LEAGUE_OF_LEGENDS]: "英雄联盟",
   [GameCode.VALORANT]: "无畏契约",
   [GameCode.COUNTER_STRIKE_2]: "CS2",
   [GameCode.PUBG]: "PUBG 绝地求生",
-  [GameCode.PUBG_MOBILE]: "PUBG Mobile",
   [GameCode.APEX_LEGENDS]: "Apex 英雄",
   [GameCode.NARAKA_BLADEPOINT]: "永劫无间",
-  [GameCode.HONOR_OF_KINGS]: "王者荣耀",
-  [GameCode.PEACEKEEPER_ELITE]: "和平精英",
-  [GameCode.DOTA_2]: "Dota 2",
-  [GameCode.OVERWATCH_2]: "守望先锋 2",
-  [GameCode.RAINBOW_SIX_SIEGE]: "彩虹六号：围攻",
-  [GameCode.ROCKET_LEAGUE]: "火箭联盟",
-  [GameCode.EA_SPORTS_FC]: "EA Sports FC",
-  [GameCode.STREET_FIGHTER_6]: "街头霸王 6",
-  [GameCode.CALL_OF_DUTY]: "使命召唤",
-  [GameCode.WILD_RIFT]: "英雄联盟手游",
-  [GameCode.MOBILE_LEGENDS]: "Mobile Legends",
-  [GameCode.MINECRAFT]: "我的世界",
-  [GameCode.GENSHIN_IMPACT]: "原神",
-  [GameCode.STEAM]: "Steam 综合游戏"
+  [GameCode.CALL_OF_DUTY]: "塔科夫 / COD"
 };
+const SUPPORTED_PRICE_LIST_GAMES = [
+  GameCode.DELTA_FORCE,
+  GameCode.LEAGUE_OF_LEGENDS,
+  GameCode.VALORANT,
+  GameCode.COUNTER_STRIKE_2,
+  GameCode.PUBG,
+  GameCode.APEX_LEGENDS,
+  GameCode.NARAKA_BLADEPOINT,
+  GameCode.CALL_OF_DUTY
+] as const;
+const SUPPORTED_PRICE_LIST_GAME_SET = new Set<GameCode>(SUPPORTED_PRICE_LIST_GAMES);
 
 @Injectable()
 export class PlatformSupportService {
@@ -1152,15 +1149,10 @@ export class PlatformSupportService {
       [/(apex|apex legends|派派)/i, GameCode.APEX_LEGENDS],
       [/(无畏契约|瓦罗兰特|valorant|瓦\b)/i, GameCode.VALORANT],
       [/(英雄联盟|lol|联盟)/i, GameCode.LEAGUE_OF_LEGENDS],
-      [/(王者荣耀|王者)/i, GameCode.HONOR_OF_KINGS],
-      [/(和平精英|pubg mobile)/i, GameCode.PEACEKEEPER_ELITE],
       [/(pubg|绝地求生|吃鸡)/i, GameCode.PUBG],
       [/(永劫无间|永劫)/i, GameCode.NARAKA_BLADEPOINT],
       [/(cs2|counter-strike|反恐精英)/i, GameCode.COUNTER_STRIKE_2],
-      [/(dota2|dota)/i, GameCode.DOTA_2],
-      [/(我的世界|minecraft)/i, GameCode.MINECRAFT],
-      [/(原神|genshin)/i, GameCode.GENSHIN_IMPACT],
-      [/(steam|双人成行|it takes two|森林|the forest|求生之路|left 4 dead|单机|联机游戏)/i, GameCode.STEAM]
+      [/(塔科夫|tarkov|cod|使命召唤|call of duty)/i, GameCode.CALL_OF_DUTY]
     ];
 
     return games.find(([pattern]) => pattern.test(lower))?.[1];
@@ -1254,9 +1246,9 @@ export class PlatformSupportService {
     if (/^(瓦|瓦罗兰特|无畏契约|valorant|val)$/.test(value)) return "无畏契约";
     if (/^(lol|联盟|英雄联盟)$/.test(value)) return "英雄联盟";
     if (/^(三角洲|三角洲行动|delta force|df)$/.test(value)) return "三角洲行动";
-    if (/^(王者|王者荣耀)$/.test(value)) return "王者荣耀";
-    if (/^(吃鸡|和平精英|pubg)$/.test(value)) return "和平精英/PUBG";
+    if (/^(吃鸡|绝地求生|pubg)$/.test(value)) return "PUBG 绝地求生";
     if (/^(永劫|永劫无间)$/.test(value)) return "永劫无间";
+    if (/^(塔科夫|tarkov|cod|使命召唤)$/.test(value)) return "塔科夫 / COD";
     return null;
   }
 
@@ -1270,12 +1262,14 @@ export class PlatformSupportService {
     });
     const listedCodes = new Set<GameCode>();
     for (const profile of profiles) {
-      listedCodes.add(profile.game);
-      for (const game of profile.games) listedCodes.add(game);
+      if (SUPPORTED_PRICE_LIST_GAME_SET.has(profile.game)) listedCodes.add(profile.game);
+      for (const game of profile.games) {
+        if (SUPPORTED_PRICE_LIST_GAME_SET.has(game)) listedCodes.add(game);
+      }
     }
     const listedNames = [...listedCodes].map((code) => this.getGameName(code)).filter(Boolean);
-    const fallbackNames = Object.values(GAME_NAME_BY_CODE).slice(0, 12);
-    const names = (listedNames.length ? listedNames : fallbackNames).slice(0, 10).join("、");
+    const fallbackNames = SUPPORTED_PRICE_LIST_GAMES.map((code) => this.getGameName(code));
+    const names = (listedNames.length ? listedNames : fallbackNames).slice(0, 8).join("、");
     const suffix = listedNames.length ? "这些是当前已上架陪玩可接的方向" : "这些是平台支持登记的方向，具体能不能接看当天陪玩在线情况";
     return `目前有：${names}。${suffix}。你想问哪个游戏的陪玩？`;
   }
@@ -1296,22 +1290,10 @@ export class PlatformSupportService {
       },
       take: 50
     });
-    const prices = profiles
-      .flatMap((profile) => [profile.pricePerHour, profile.kookPricePerHour, profile.discordPricePerHour])
-      .filter((price): price is NonNullable<typeof price> => Boolean(price))
-      .map((price) => Number(price))
-      .filter((price) => Number.isFinite(price) && price > 0);
     const gameName = gameCode ? `${this.getGameName(gameCode)} ` : "";
-
-    if (!profiles.length || !prices.length) {
-      return `${gameName}现在还没有可直接报的固定价格。陪玩按游戏、水平、平台和时长报价，你告诉我想玩的游戏和几小时，我可以帮你发派单让陪玩报价。`;
-    }
-
-    const min = Math.min(...prices);
-    const max = Math.max(...prices);
     const onlineCount = profiles.filter((profile) => profile.onlineStatus === "ONLINE").length;
-    const range = min === max ? `¥${min}/小时` : `¥${min}-${max}/小时`;
-    return `${gameName}当前已上架陪玩参考价约 ${range}，在线 ${onlineCount}/${profiles.length} 位。最终价格按你选的陪玩、平台和订单时长确认。`;
+    const onlineText = profiles.length ? `当前该方向在线 ${onlineCount}/${profiles.length} 位。` : "";
+    return `${gameName}统一价：语音/排位 ¥128/小时，娱乐陪玩 ¥108/小时；全部可语音，不设静音价，不做代练。${onlineText}最终以后台订单和客服确认为准。`;
   }
 
   private buildAiBusinessContextHint(message: string) {

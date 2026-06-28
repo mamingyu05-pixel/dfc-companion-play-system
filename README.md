@@ -104,6 +104,27 @@ node scripts/platform-setup/master-index.js --kook-only
 
 `master-index.js` 会执行频道重命名、权限修正、频道简介横幅图文重置、考核/违规内容、运营内容和 KOOK 同步。频道简介横幅图片放在 `scripts/platform-setup/banners/`。
 
+统一价目卡发布脚本会检查 `scripts/platform-setup/price-cards/` 下的价目图，Discord 创建/复用 `💰｜价格清单` 论坛，KOOK 发布到服务价目频道。默认只演练，不修改频道：
+
+```bash
+node scripts/platform-setup/publish-price-list.js
+```
+
+确认后真实发布：
+
+```bash
+node scripts/platform-setup/publish-price-list.js --apply --confirm-publish
+node scripts/platform-setup/publish-price-list.js --discord-only --apply --confirm-publish
+node scripts/platform-setup/publish-price-list.js --kook-only --apply --confirm-publish
+```
+
+部署后如需把现有陪玩资料里的旧价格同步为统一价，先在 API 容器里审计，再确认更新：
+
+```bash
+docker compose exec api-server node scripts/platform-setup/sync-price-policy.js
+docker compose exec api-server node scripts/platform-setup/sync-price-policy.js --apply --confirm-sync-prices
+```
+
 旧的分步入口仍可单独使用：
 
 ```bash

@@ -145,8 +145,8 @@ const rolePlan = [
   { env: "DISCORD_GAME_COUNTER_STRIKE_2_ROLE_ID", name: "💥 CS2组", color: 0xfbbf24, mentionable: true },
   { env: "DISCORD_GAME_PUBG_ROLE_ID", name: "🪂 PUBG组", color: 0xf97316, mentionable: true },
   { env: "DISCORD_GAME_APEX_LEGENDS_ROLE_ID", name: "⚡ Apex组", color: 0xef4444, mentionable: true },
-  { env: "DISCORD_GAME_HONOR_OF_KINGS_ROLE_ID", name: "👑 王者荣耀组", color: 0xfacc15, mentionable: true },
-  { env: "DISCORD_GAME_PEACEKEEPER_ELITE_ROLE_ID", name: "🕊️ 和平精英组", color: 0x34d399, mentionable: true }
+  { env: "DISCORD_GAME_NARAKA_BLADEPOINT_ROLE_ID", name: "⚔️ 永劫无间组", color: 0xfacc15, mentionable: true },
+  { env: "DISCORD_GAME_CALL_OF_DUTY_ROLE_ID", name: "🎧 塔科夫/COD组", color: 0x34d399, mentionable: true }
 ];
 
 main().catch((error) => {

@@ -1133,7 +1133,7 @@ export class OrderDraftsService {
       return ServicePriceTier.HIGH_RANKED;
     }
     if (/排位|上分|rank|ranked|competitive|天梯/.test(normalizedMode)) return ServicePriceTier.RANKED;
-    if (/娱乐|休闲|陪聊|随便|casual|fun/.test(normalizedMode)) return ServicePriceTier.ENTERTAINMENT;
+    if (/娱乐|休闲|陪聊|随便|随意|不限|都行|无所谓|casual|fun/.test(normalizedMode)) return ServicePriceTier.ENTERTAINMENT;
     return ServicePriceTier.CUSTOM;
   }
 
@@ -1173,9 +1173,8 @@ export class OrderDraftsService {
     if (lower.includes("cs2") || lower.includes("csgo")) return GameCode.COUNTER_STRIKE_2;
     if (lower.includes("pubg") || lower.includes("吃鸡") || lower.includes("绝地求生")) return GameCode.PUBG;
     if (lower.includes("apex")) return GameCode.APEX_LEGENDS;
-    if (lower.includes("王者")) return GameCode.HONOR_OF_KINGS;
-    if (lower.includes("和平")) return GameCode.PEACEKEEPER_ELITE;
-    if (lower.includes("steam") || lower.includes("单机") || lower.includes("双人成行") || lower.includes("森林") || lower.includes("求生之路")) return GameCode.STEAM;
+    if (lower.includes("永劫") || lower.includes("naraka")) return GameCode.NARAKA_BLADEPOINT;
+    if (lower.includes("塔科夫") || lower.includes("tarkov") || lower.includes("cod") || lower.includes("使命召唤")) return GameCode.CALL_OF_DUTY;
     return GameCode.DELTA_FORCE;
   }
 

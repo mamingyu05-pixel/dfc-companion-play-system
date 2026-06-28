@@ -37,8 +37,8 @@ const dispatchRoleTags = [
   { game: "COUNTER_STRIKE_2", label: "CS2组", discordEnv: "DISCORD_GAME_COUNTER_STRIKE_2_ROLE_ID", kookEnv: "KOOK_GAME_COUNTER_STRIKE_2_ROLE_ID" }, // gitleaks:allow env var names only
   { game: "PUBG", label: "PUBG组", discordEnv: "DISCORD_GAME_PUBG_ROLE_ID", kookEnv: "KOOK_GAME_PUBG_ROLE_ID" }, // gitleaks:allow env var names only
   { game: "APEX_LEGENDS", label: "Apex组", discordEnv: "DISCORD_GAME_APEX_LEGENDS_ROLE_ID", kookEnv: "KOOK_GAME_APEX_LEGENDS_ROLE_ID" }, // gitleaks:allow env var names only
-  { game: "HONOR_OF_KINGS", label: "王者荣耀组", discordEnv: "DISCORD_GAME_HONOR_OF_KINGS_ROLE_ID", kookEnv: "KOOK_GAME_HONOR_OF_KINGS_ROLE_ID" }, // gitleaks:allow env var names only
-  { game: "PEACEKEEPER_ELITE", label: "和平精英组", discordEnv: "DISCORD_GAME_PEACEKEEPER_ELITE_ROLE_ID", kookEnv: "KOOK_GAME_PEACEKEEPER_ELITE_ROLE_ID" } // gitleaks:allow env var names only
+  { game: "NARAKA_BLADEPOINT", label: "永劫无间组", discordEnv: "DISCORD_GAME_NARAKA_BLADEPOINT_ROLE_ID", kookEnv: "KOOK_GAME_NARAKA_BLADEPOINT_ROLE_ID" }, // gitleaks:allow env var names only
+  { game: "CALL_OF_DUTY", label: "塔科夫/COD组", discordEnv: "DISCORD_GAME_CALL_OF_DUTY_ROLE_ID", kookEnv: "KOOK_GAME_CALL_OF_DUTY_ROLE_ID" } // gitleaks:allow env var names only
 ] as const;
 
 const voiceRoleTags = [

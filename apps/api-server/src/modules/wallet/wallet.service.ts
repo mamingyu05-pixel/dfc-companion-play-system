@@ -200,7 +200,9 @@ export class WalletService {
     if (!customer) throw new BadRequestException("Customer does not exist or is not active");
 
     const promotion = body.promotionCode ? await this.findApplicablePromotionCode(body.promotionCode, amount) : null;
-    const promotionBonus = promotion ? calculatePromotionBonus(amount, promotion) : new Prisma.Decimal(0);
+    const promotionCodeBonus = promotion ? calculatePromotionBonus(amount, promotion) : new Prisma.Decimal(0);
+    const predepositBonus = calculatePredepositBonus(amount);
+    const promotionBonus = promotionCodeBonus.add(predepositBonus);
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -393,8 +395,8 @@ export class WalletService {
       const firstRechargeBonus = approvedRechargeCount === 0
         ? await this.calculateFirstRechargeBonus(tx, request.amount)
         : new Prisma.Decimal(0);
-      const promotionCodeBonus = request.promotionBonus ?? new Prisma.Decimal(0);
-      const creditAmount = request.amount.add(firstRechargeBonus).add(promotionCodeBonus);
+      const rechargeBonus = request.promotionBonus ?? new Prisma.Decimal(0);
+      const creditAmount = request.amount.add(firstRechargeBonus).add(rechargeBonus);
 
       const wallet = await tx.wallet.update({
         where: { userId: request.customerId },
@@ -433,7 +435,7 @@ export class WalletService {
         });
       }
 
-      if (promotionCodeBonus.gt(0)) {
+      if (rechargeBonus.gt(0)) {
         await tx.walletTransaction.create({
           data: {
             walletId: wallet.id,
@@ -441,11 +443,11 @@ export class WalletService {
             operatorId: reviewerId,
             type: WalletTransactionType.PROMOTION_BONUS,
             direction: TransactionDirection.CREDIT,
-            amount: promotionCodeBonus,
+            amount: rechargeBonus,
             balanceAfter: wallet.availableBalance,
-            referenceType: "RECHARGE_PROMOTION_CODE",
-            referenceId: request.promotionCodeId,
-            note: "Recharge promotion code bonus"
+            referenceType: request.promotionCodeId ? "RECHARGE_PROMOTION_CODE" : "RECHARGE_PREDEPOSIT_BONUS",
+            referenceId: request.promotionCodeId ?? rechargeRequestId,
+            note: request.promotionCodeId ? "Recharge promotion code / predeposit bonus" : "Predeposit recharge bonus"
           }
         });
       }
@@ -460,7 +462,7 @@ export class WalletService {
           detail: {
             amount: request.amount.toString(),
             firstRechargeBonus: firstRechargeBonus.toString(),
-            promotionCodeBonus: promotionCodeBonus.toString(),
+            rechargeBonus: rechargeBonus.toString(),
             promotionCodeId: request.promotionCodeId,
             totalCredit: creditAmount.toString(),
             note: body.note
@@ -856,6 +858,14 @@ function calculatePromotionBonus(
     bonus = promotion.maxBonusAmount;
   }
   return bonus.toDecimalPlaces(2);
+}
+
+function calculatePredepositBonus(rechargeAmount: Prisma.Decimal) {
+  if (rechargeAmount.gte(1000)) return new Prisma.Decimal(100);
+  if (rechargeAmount.gte(500)) return new Prisma.Decimal(40);
+  if (rechargeAmount.gte(300)) return new Prisma.Decimal(20);
+  if (rechargeAmount.gte(100)) return new Prisma.Decimal(5);
+  return new Prisma.Decimal(0);
 }
 
 function buildPayoutAccount(profile?: { payoutMethod: string | null; payoutAccountName: string | null; payoutAccountNo: string | null } | null) {

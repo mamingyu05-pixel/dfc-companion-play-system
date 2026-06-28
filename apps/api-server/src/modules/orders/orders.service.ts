@@ -981,9 +981,8 @@ export class OrdersService {
   }
 
   private defaultPlatformMatchUnitPrice(priceTier: ServicePriceTier) {
-    if (priceTier === ServicePriceTier.HIGH_RANKED) return "140";
-    if (priceTier === ServicePriceTier.RANKED) return "120";
-    return "100";
+    if (priceTier === ServicePriceTier.ENTERTAINMENT) return "108";
+    return "128";
   }
   private pickCompanionPriceForTier(
     companion: {
@@ -1019,7 +1018,7 @@ export class OrdersService {
       return ServicePriceTier.HIGH_RANKED;
     }
     if (/排位|上分|rank|ranked|competitive|天梯/.test(normalizedMode)) return ServicePriceTier.RANKED;
-    if (/娱乐|休闲|陪聊|随便|casual|fun/.test(normalizedMode)) return ServicePriceTier.ENTERTAINMENT;
+    if (/娱乐|休闲|陪聊|随便|随意|不限|都行|无所谓|casual|fun/.test(normalizedMode)) return ServicePriceTier.ENTERTAINMENT;
     return ServicePriceTier.CUSTOM;
   }
 

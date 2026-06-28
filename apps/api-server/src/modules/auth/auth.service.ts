@@ -32,6 +32,16 @@ const DISCORD_OAUTH_USER_URL = "https://discord.com/api/users/@me";
 const KOOK_OAUTH_AUTHORIZE_URL = "https://www.kookapp.cn/app/oauth2/authorize";
 const KOOK_OAUTH_TOKEN_URL = "https://www.kookapp.cn/api/oauth2/token";
 const KOOK_OAUTH_USER_URL = "https://www.kookapp.cn/api/v3/user/me";
+const SUPPORTED_GAME_CODES = new Set<GameCode>([
+  GameCode.DELTA_FORCE,
+  GameCode.LEAGUE_OF_LEGENDS,
+  GameCode.VALORANT,
+  GameCode.COUNTER_STRIKE_2,
+  GameCode.PUBG,
+  GameCode.APEX_LEGENDS,
+  GameCode.NARAKA_BLADEPOINT,
+  GameCode.CALL_OF_DUTY
+]);
 
 @Injectable()
 export class AuthService {
@@ -1384,6 +1394,9 @@ function buildPendingOAuthCompanionProfile(profile: OAuthProfile) {
     deltaForceRank: DeltaForceRank.UNRANKED,
     skillModes: [],
     pricePerHour: defaultCompanionPricePerHour(),
+    entertainmentPricePerHour: new Prisma.Decimal("108"),
+    rankedPricePerHour: new Prisma.Decimal("128"),
+    highRankedPricePerHour: new Prisma.Decimal("128"),
     commissionRate: defaultCompanionCommissionRate(),
     onlineStatus: OnlineStatus.OFFLINE,
     voicePreference: VoicePreference.OPTIONAL,
@@ -1392,12 +1405,12 @@ function buildPendingOAuthCompanionProfile(profile: OAuthProfile) {
 }
 
 function defaultCompanionPricePerHour() {
-  const configured = process.env.DEFAULT_COMPANION_PRICE_PER_HOUR || process.env.PLATFORM_MATCH_UNIT_PRICE || "100";
+  const configured = process.env.DEFAULT_COMPANION_PRICE_PER_HOUR || process.env.PLATFORM_MATCH_UNIT_PRICE || "128";
   try {
     const price = new Prisma.Decimal(configured);
-    return price.gt(0) ? price : new Prisma.Decimal("100");
+    return price.gt(0) ? price : new Prisma.Decimal("128");
   } catch {
-    return new Prisma.Decimal("100");
+    return new Prisma.Decimal("128");
   }
 }
 
@@ -1426,7 +1439,7 @@ function normalizeMediaUrls(urls?: string[]) {
 function normalizeGameList(values?: string[]) {
   const normalized = (values ?? [])
     .map((value) => (Object.values(GameCode).includes(value as GameCode) ? (value as GameCode) : undefined))
-    .filter((value): value is GameCode => Boolean(value));
+    .filter((value): value is GameCode => Boolean(value && SUPPORTED_GAME_CODES.has(value)));
   return Array.from(new Set(normalized)).slice(0, 24);
 }
 

@@ -5,6 +5,12 @@ import type { ChangeEvent, FormEvent } from "react";
 import { CustomerShell } from "../components";
 
 const amountPresets = ["100", "300", "500", "1000"];
+const rechargeBenefits: Record<string, string> = {
+  "100": "到账 ¥105",
+  "300": "到账 ¥320",
+  "500": "到账 ¥540",
+  "1000": "到账 ¥1100"
+};
 
 type RechargeSummary = {
   wallet: {
@@ -203,6 +209,9 @@ export default function RechargePage() {
 
           <div className="mt-4">
             <span className="text-sm font-semibold text-cyan-50/80">充值金额</span>
+            <div className="mt-2 rounded-dfc-control border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs leading-5 text-cyan-50/85">
+              预存福利：充 100 得 105，充 300 得 320，充 500 得 540，充 1000 得 1100。审核通过后自动进入钱包余额。
+            </div>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {amountPresets.map((preset) => (
                 <button
@@ -214,7 +223,8 @@ export default function RechargePage() {
                   }`}
                   aria-pressed={amount === preset}
                 >
-                  ¥{preset}
+                  <span className="block">¥{preset}</span>
+                  <span className="mt-1 block text-[11px] font-semibold text-cyan-100/80">{rechargeBenefits[preset]}</span>
                 </button>
               ))}
             </div>
