@@ -6,8 +6,10 @@ const {
   loadProjectEnv,
   requireAny,
   discordGet,
+  discordDelete,
   discordPost,
   kookGetMessages,
+  kookDeleteMessage,
   kookPost,
   normalizeName,
   findChannel
@@ -36,20 +38,25 @@ async function main() {
 
   console.log("💰 May猫饼价目表发布");
   console.log(options.apply ? "模式：真实发布" : "模式：只演练，不修改 Discord/KOOK");
+  if (options.replaceExisting) console.log("重发策略：先清理旧价目内容，再发布新版");
   console.log(`图片目录：${CARD_DIR}`);
   console.log(`计划发布：${1 + PRICE_POSTS.length} 条`);
 
   if (!options.apply) {
     console.log("\n如需真实发布，运行：node scripts/platform-setup/publish-price-list.js --apply --confirm-publish");
+    console.log("如需清理旧版后重发，运行：node scripts/platform-setup/publish-price-list.js --apply --confirm-publish --replace-existing --confirm-replace-price-list");
     return;
   }
   if (!options.confirmPublish) {
     throw new Error("真实发布需要同时传入 --confirm-publish，避免误发频道");
   }
+  if (options.replaceExisting && !options.confirmReplacePriceList) {
+    throw new Error("清理旧价目内容需要同时传入 --confirm-replace-price-list，避免误删频道内容");
+  }
 
   const env = loadProjectEnv();
-  if (options.discord) await publishDiscord(env);
-  if (options.kook) await publishKook(env);
+  if (options.discord) await publishDiscord(env, options);
+  if (options.kook) await publishKook(env, options);
   console.log("\n✅ 价目表发布完成");
 }
 
@@ -61,6 +68,8 @@ function parseArgs(args) {
   return {
     apply: flags.has("--apply"),
     confirmPublish: flags.has("--confirm-publish"),
+    replaceExisting: flags.has("--replace-existing"),
+    confirmReplacePriceList: flags.has("--confirm-replace-price-list"),
     discord: !kookOnly,
     kook: !discordOnly
   };
@@ -74,7 +83,7 @@ function validateAssets() {
   }
 }
 
-async function publishDiscord(env) {
+async function publishDiscord(env, options) {
   console.log("\n═══ Discord ═══");
   const token = requireAny(env, ["DISCORD_TOKEN"], "DISCORD_TOKEN");
   const guildId = env.DISCORD_GUILD_ID || DEFAULT_DISCORD_GUILD_ID;
@@ -98,7 +107,10 @@ async function publishDiscord(env) {
     console.log(`✓ 价格清单论坛已存在：${forum.name}`);
   }
 
-  const existingThreads = await listDiscordForumThreads(token, forum.id);
+  let existingThreads = await listDiscordForumThreads(token, forum.id);
+  if (options.replaceExisting) {
+    existingThreads = await deleteDiscordPriceThreads(token, existingThreads);
+  }
   await ensureDiscordTextThread(token, forum.id, existingThreads, PRICE_NOTICE.title, PRICE_NOTICE.content);
   for (const post of PRICE_POSTS) {
     await ensureDiscordImageThread(token, forum.id, existingThreads, post.title, post.content, path.join(CARD_DIR, post.file));
@@ -117,6 +129,22 @@ async function listDiscordForumThreads(token, forumId) {
 function hasDiscordThread(existingThreads, title) {
   const target = normalizeName(title);
   return existingThreads.some((thread) => normalizeName(thread.name) === target);
+}
+
+async function deleteDiscordPriceThreads(token, existingThreads) {
+  const priceTitles = [PRICE_NOTICE.title, ...PRICE_POSTS.map((post) => post.title)].map(normalizeName);
+  const matchedThreads = existingThreads.filter((thread) => priceTitles.includes(normalizeName(thread.name)));
+  if (!matchedThreads.length) {
+    console.log("- Discord 没有需要清理的旧价目帖");
+    return existingThreads;
+  }
+  for (const thread of matchedThreads) {
+    await discordDelete(token, `/channels/${thread.id}`);
+    console.log(`✓ Discord 已删除旧价目帖：${thread.name}`);
+    await sleep(300);
+  }
+  const deletedIds = new Set(matchedThreads.map((thread) => thread.id));
+  return existingThreads.filter((thread) => !deletedIds.has(thread.id));
 }
 
 async function ensureDiscordTextThread(token, forumId, existingThreads, title, content) {
@@ -175,13 +203,16 @@ async function discordCreateForumImageThread(token, forumId, title, content, ima
   throw new Error("Discord forum image thread failed after repeated rate limits");
 }
 
-async function publishKook(env) {
+async function publishKook(env, options) {
   console.log("\n═══ KOOK ═══");
   const token = requireAny(env, ["KOOK_TOKEN"], "KOOK_TOKEN");
   const channelId = env.KOOK_SERVICE_PRICE_CHANNEL_ID || env.KOOK_PRICE_LIST_CHANNEL_ID || KOOK_SERVICE_PRICE_CHANNEL_ID;
   console.log(`KOOK channel: ${channelId}`);
 
-  const existingMessages = await kookGetMessages(token, channelId, 100);
+  let existingMessages = await kookGetMessages(token, channelId, 100);
+  if (options.replaceExisting) {
+    existingMessages = await deleteKookPriceMessages(token, existingMessages);
+  }
   await ensureKookTextMessage(token, channelId, existingMessages, PRICE_NOTICE.marker, PRICE_NOTICE.content);
   for (const post of PRICE_POSTS) {
     await ensureKookCardMessage(token, channelId, existingMessages, post);
@@ -190,6 +221,27 @@ async function publishKook(env) {
 
 function hasKookMarker(existingMessages, marker) {
   return existingMessages.some((message) => String(message.content || "").includes(marker));
+}
+
+async function deleteKookPriceMessages(token, existingMessages) {
+  const markers = [PRICE_NOTICE.marker, ...PRICE_POSTS.map((post) => post.marker)];
+  const matchedMessages = existingMessages.filter((message) => markers.some((marker) => String(message.content || "").includes(marker)));
+  if (!matchedMessages.length) {
+    console.log("- KOOK 没有需要清理的旧价目消息");
+    return existingMessages;
+  }
+  for (const message of matchedMessages) {
+    const messageId = message.msg_id || message.id;
+    if (!messageId) {
+      console.log("- KOOK 旧价目消息缺少 msg_id，跳过删除");
+      continue;
+    }
+    await kookDeleteMessage(token, messageId);
+    console.log(`✓ KOOK 已删除旧价目消息：${messageId}`);
+    await sleep(300);
+  }
+  const deletedIds = new Set(matchedMessages.map((message) => message.msg_id || message.id).filter(Boolean));
+  return existingMessages.filter((message) => !deletedIds.has(message.msg_id || message.id));
 }
 
 async function ensureKookTextMessage(token, channelId, existingMessages, marker, content) {

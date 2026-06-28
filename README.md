@@ -118,6 +118,12 @@ node scripts/platform-setup/publish-price-list.js --discord-only --apply --confi
 node scripts/platform-setup/publish-price-list.js --kook-only --apply --confirm-publish
 ```
 
+如需清理旧版价目后重新发布新版：
+
+```bash
+node scripts/platform-setup/publish-price-list.js --apply --confirm-publish --replace-existing --confirm-replace-price-list
+```
+
 新版价目是段位分档价，不再是统一价。部署后如需检查上一版遗留的 `128/108` 扁平价，先在 API 容器里审计；确认后只会把这些旧字段回到 `¥98 起` 基线，不会覆盖后续手动设置的高段位价：
 
 ```bash
