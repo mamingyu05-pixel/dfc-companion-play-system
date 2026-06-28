@@ -7,6 +7,7 @@ const {
   requireAny,
   discordGet,
   discordDelete,
+  discordGetMessages,
   discordPost,
   kookGetMessages,
   kookDeleteMessage,
@@ -109,7 +110,8 @@ async function publishDiscord(env, options) {
 
   let existingThreads = await listDiscordForumThreads(token, forum.id);
   if (options.replaceExisting) {
-    existingThreads = await deleteDiscordPriceThreads(token, existingThreads);
+    existingThreads = await deleteDiscordPriceThreads(token, existingThreads, forum.name);
+    if (serviceChannel?.id) await deleteDiscordLegacyPriceMessages(token, serviceChannel.id);
   }
   await ensureDiscordTextThread(token, forum.id, existingThreads, PRICE_NOTICE.title, PRICE_NOTICE.content);
   for (const post of PRICE_POSTS) {
@@ -121,9 +123,22 @@ async function listDiscordForumThreads(token, forumId) {
   const threads = [];
   const active = await discordGet(token, `/channels/${forumId}/threads/active`).catch(() => null);
   if (Array.isArray(active?.threads)) threads.push(...active.threads);
-  const archived = await discordGet(token, `/channels/${forumId}/threads/archived/public?limit=100`).catch(() => null);
-  if (Array.isArray(archived?.threads)) threads.push(...archived.threads);
-  return threads;
+  let before = "";
+  for (let page = 0; page < 20; page += 1) {
+    const suffix = before ? `&before=${encodeURIComponent(before)}` : "";
+    const archived = await discordGet(token, `/channels/${forumId}/threads/archived/public?limit=100${suffix}`).catch(() => null);
+    if (!Array.isArray(archived?.threads) || archived.threads.length === 0) break;
+    threads.push(...archived.threads);
+    if (!archived.has_more) break;
+    before = archived.threads.at(-1)?.archive_timestamp || "";
+    if (!before) break;
+  }
+  const seen = new Set();
+  return threads.filter((thread) => {
+    if (!thread?.id || seen.has(thread.id)) return false;
+    seen.add(thread.id);
+    return true;
+  });
 }
 
 function hasDiscordThread(existingThreads, title) {
@@ -131,13 +146,13 @@ function hasDiscordThread(existingThreads, title) {
   return existingThreads.some((thread) => normalizeName(thread.name) === target);
 }
 
-async function deleteDiscordPriceThreads(token, existingThreads) {
-  const priceTitles = [PRICE_NOTICE.title, ...PRICE_POSTS.map((post) => post.title)].map(normalizeName);
-  const matchedThreads = existingThreads.filter((thread) => priceTitles.includes(normalizeName(thread.name)));
+async function deleteDiscordPriceThreads(token, existingThreads, forumName) {
+  const matchedThreads = existingThreads.filter((thread) => thread?.id);
   if (!matchedThreads.length) {
     console.log("- Discord 没有需要清理的旧价目帖");
     return existingThreads;
   }
+  console.log(`Discord 将清理 ${matchedThreads.length} 个旧价目帖（论坛：${forumName}）`);
   for (const thread of matchedThreads) {
     await discordDelete(token, `/channels/${thread.id}`);
     console.log(`✓ Discord 已删除旧价目帖：${thread.name}`);
@@ -145,6 +160,23 @@ async function deleteDiscordPriceThreads(token, existingThreads) {
   }
   const deletedIds = new Set(matchedThreads.map((thread) => thread.id));
   return existingThreads.filter((thread) => !deletedIds.has(thread.id));
+}
+
+async function deleteDiscordLegacyPriceMessages(token, serviceChannelId) {
+  const messages = await discordGetMessages(token, serviceChannelId, 100).catch(() => []);
+  const markers = [PRICE_NOTICE.marker, ...PRICE_POSTS.map((post) => post.marker)];
+  const matchedMessages = Array.isArray(messages)
+    ? messages.filter((message) => {
+        const content = String(message.content || "");
+        return markers.some((marker) => content.includes(marker));
+      })
+    : [];
+  if (!matchedMessages.length) return;
+  for (const message of matchedMessages) {
+    await discordDelete(token, `/channels/${serviceChannelId}/messages/${message.id}`);
+    console.log(`✓ Discord 已删除服务价目旧消息：${message.id}`);
+    await sleep(300);
+  }
 }
 
 async function ensureDiscordTextThread(token, forumId, existingThreads, title, content) {

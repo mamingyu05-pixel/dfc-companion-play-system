@@ -124,6 +124,8 @@ node scripts/platform-setup/publish-price-list.js --kook-only --apply --confirm-
 node scripts/platform-setup/publish-price-list.js --apply --confirm-publish --replace-existing --confirm-replace-price-list
 ```
 
+该重发模式会清空 Discord `💰｜价格清单` 论坛内旧帖，并删除 KOOK 服务价目频道内带 `[MayCatPriceList:...]` 标记的旧消息，再发布新版。
+
 新版价目是段位分档价，不再是统一价。部署后如需检查上一版遗留的 `128/108` 扁平价，先在 API 容器里审计；确认后只会把这些旧字段回到 `¥98 起` 基线，不会覆盖后续手动设置的高段位价：
 
 ```bash
