@@ -61,6 +61,11 @@ const CHANNEL_PLACEHOLDERS = {
     patterns: ["点单", "自助下单"],
     type: 0
   },
+  AI_DISPATCH_CHANNEL: {
+    env: ["DISCORD_AI_DISPATCH_CHANNEL_ID"],
+    patterns: ["AI派单", "ai派单", "ai-派单"],
+    type: 0
+  },
   EXAM_CHANNEL: {
     env: ["DISCORD_EXAM_CHANNEL_ID"],
     patterns: ["考核入职须知", "考核"],

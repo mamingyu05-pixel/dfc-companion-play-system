@@ -139,3 +139,24 @@ node scripts/platform-setup/audit-discord-duplicates.js --delete-duplicates --co
 ```
 
 删除频道会永久删除该频道历史消息，脚本不会迁移历史消息。
+
+MayCat Club 频道走查修复第 04 版可清理 Discord / KOOK 重复 Bot 简介、错位内容、测试消息，并补齐入职须知、社区守则、好评展示、预存福利和 tag 登记说明。第 04 版按“预存钱包制、群内下单、网页只读查询”修正文案。默认只审计，不修改频道：
+
+```bash
+node scripts/platform-setup/walkthrough-fix-04.js
+```
+
+确认审计计划后执行清理：
+
+```bash
+node scripts/platform-setup/walkthrough-fix-04.js --apply --confirm-cleanup
+```
+
+如需只跑单端：
+
+```bash
+node scripts/platform-setup/walkthrough-fix-04.js --discord-only
+node scripts/platform-setup/walkthrough-fix-04.js --kook-only
+```
+
+本脚本会按任务卡第 04 版已定方案合并 C07/C08，替换 C19 自助下单文案，并处理 KOOK K02/K03；删除/改名/发消息必须同时传入 `--apply --confirm-cleanup`。

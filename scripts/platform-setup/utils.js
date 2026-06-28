@@ -220,6 +220,12 @@ function kookEditMessage(token, messageId, content) {
   });
 }
 
+function kookDeleteMessage(token, messageId) {
+  return kookPost(token, "/message/delete", {
+    msg_id: messageId
+  });
+}
+
 async function kookGetMessages(token, channelId, limit = 50) {
   const boundedLimit = Math.max(1, Math.min(100, Number(limit) || 50));
   const data = await kookGet(
@@ -285,6 +291,7 @@ module.exports = {
   kookGet,
   kookPost,
   kookEditMessage,
+  kookDeleteMessage,
   kookGetMessages,
   kookCheckMessageExists,
   kookPostIfNotExists,

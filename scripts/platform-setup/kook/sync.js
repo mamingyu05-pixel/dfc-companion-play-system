@@ -74,6 +74,7 @@ function buildKookChannelIds(env, channels) {
     CHAT_CHANNEL: env.KOOK_CHAT_CHANNEL_ID || findChannel(channels, ["聊天大厅", "文字聊天"], 1)?.id,
     SUPPORT_CHANNEL: env.KOOK_SUPPORT_CHANNEL_ID || findChannel(channels, ["客服接待", "客服"], 1)?.id,
     ORDER_CHANNEL: env.KOOK_ORDER_CHANNEL_ID || findChannel(channels, ["自助下单", "点单"], 1)?.id,
+    AI_DISPATCH_CHANNEL: env.KOOK_AI_DISPATCH_CHANNEL_ID || findChannel(channels, ["AI派单", "ai派单"], 1)?.id,
     EXAM_CHANNEL: env.KOOK_EXAM_CHANNEL_ID || findChannel(channels, ["考核入职须知", "考核"], 1)?.id,
     TAG_CHANNEL: env.KOOK_TAG_CHANNEL_ID || findChannel(channels, ["技能登记", "tag登记"], 1)?.id
   };
