@@ -16,6 +16,8 @@ const EXAM_RULES_MARKER = "May猫饼电竞 · 陪玩考核标准";
 const VIOLATION_RULES_MARKER = "May猫饼电竞 · 违规处理制度";
 const NAV_CATEGORY_NAME = "May猫饼｜频道导航";
 const VOICE_CATEGORY_NAME = "May猫饼｜语音服务";
+const NAV_CATEGORY_PATTERNS = [NAV_CATEGORY_NAME, "May猫饼 · 频道导航", "频道导航", "Text Channels"];
+const VOICE_CATEGORY_PATTERNS = [VOICE_CATEGORY_NAME, "May猫饼 · 语音服务", "语音服务", "Voice Channels"];
 
 const NAV_CHANNEL_RENAMES = [
   { target: "🗺️｜频道简介", type: 0, patterns: ["频道简介", "店内导航", "频道导航", "welcome"] },
@@ -258,12 +260,12 @@ async function normalizeLayoutCategories(token, channels) {
   if (findExactChannel(channels, NAV_CATEGORY_NAME, 4)) {
     console.log(`✓ ${NAV_CATEGORY_NAME} 分类已存在`);
   } else {
-    const textChannels = findExactChannel(channels, "Text Channels", 4);
-    if (textChannels) {
-      await discordPatch(token, `/channels/${textChannels.id}`, { name: NAV_CATEGORY_NAME });
-      console.log(`✓ 已重命名分类：Text Channels → ${NAV_CATEGORY_NAME}`);
+    const navCategory = findChannel(channels, NAV_CATEGORY_PATTERNS, 4);
+    if (navCategory) {
+      await discordPatch(token, `/channels/${navCategory.id}`, { name: NAV_CATEGORY_NAME });
+      console.log(`✓ 已重命名分类：${navCategory.name} → ${NAV_CATEGORY_NAME}`);
     } else {
-      console.log("- 未找到 Text Channels 分类，跳过分类重命名");
+      console.log(`- 未找到 ${NAV_CATEGORY_NAME} 分类，跳过分类重命名`);
     }
   }
 
@@ -272,14 +274,14 @@ async function normalizeLayoutCategories(token, channels) {
     return;
   }
 
-  const voiceChannels = findExactChannel(channels, "Voice Channels", 4);
+  const voiceChannels = findChannel(channels, VOICE_CATEGORY_PATTERNS, 4);
   if (!voiceChannels) {
-    console.log("- 未找到 Voice Channels 分类，跳过语音分类重命名");
+    console.log(`- 未找到 ${VOICE_CATEGORY_NAME} 分类，跳过语音分类重命名`);
     return;
   }
 
   await discordPatch(token, `/channels/${voiceChannels.id}`, { name: VOICE_CATEGORY_NAME });
-  console.log(`✓ 已重命名分类：Voice Channels → ${VOICE_CATEGORY_NAME}`);
+  console.log(`✓ 已重命名分类：${voiceChannels.name} → ${VOICE_CATEGORY_NAME}`);
 }
 
 async function normalizeNavigationChannelNames(token, channels) {
@@ -301,12 +303,12 @@ async function reorderDiscordLayout(token, guildId, channels) {
 
 async function reorderCategories(token, guildId, channels) {
   const desiredCategories = [
-    [NAV_CATEGORY_NAME, "Text Channels"],
+    NAV_CATEGORY_PATTERNS,
     ["✦ 欢迎来到 May猫饼 ✦", "欢迎来到May猫饼", "欢迎来到"],
     ["☎ 客服接待大厅 ☎", "客服接待大厅"],
     ["员工守则"],
     ["🧾 考核专区", "考核专区"],
-    [VOICE_CATEGORY_NAME, "Voice Channels", "语音服务"],
+    VOICE_CATEGORY_PATTERNS,
     ["May猫饼｜陪玩派单", "陪玩派单"]
   ];
 
@@ -334,7 +336,7 @@ async function reorderCategories(token, guildId, channels) {
 }
 
 async function reorderNavigationChannels(token, guildId, channels) {
-  const category = findChannel(channels, [NAV_CATEGORY_NAME, "Text Channels"], 4);
+  const category = findChannel(channels, NAV_CATEGORY_PATTERNS, 4);
   if (!category) {
     console.log(`- 未找到 ${NAV_CATEGORY_NAME} 分类，跳过频道排序`);
     return;
