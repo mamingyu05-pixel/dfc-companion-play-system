@@ -17,6 +17,17 @@ const VIOLATION_RULES_MARKER = "May猫饼电竞 · 违规处理制度";
 const NAV_CATEGORY_NAME = "May猫饼｜频道导航";
 const VOICE_CATEGORY_NAME = "May猫饼｜语音服务";
 
+const NAV_CHANNEL_RENAMES = [
+  { target: "🗺️｜频道简介", type: 0, patterns: ["频道简介", "店内导航", "频道导航", "welcome"] },
+  { target: "📣｜公告通知", type: 0, patterns: ["公告通知", "公告"] },
+  { target: "📝｜自助下单", type: 0, patterns: ["自助下单", "点单"] },
+  { target: "📋｜服务价目", type: 0, patterns: ["服务价目", "服务项目", "服务份目"] },
+  { target: "🎮｜陪玩预览", type: 15, patterns: ["陪玩预览", "查看陪玩", "陪玩大厅"] },
+  { target: "⭐｜好评展示", type: 0, patterns: ["好评展示", "好评"] },
+  { target: "🍏｜社区守则", type: 0, patterns: ["社区守则", "社区规则"] },
+  { target: "💰｜价格清单", type: 15, patterns: ["价格清单"] }
+];
+
 const EXAM_RULES_CONTENT = `## 📋 May猫饼电竞 · 陪玩考核标准
 
 ━━━━━━ 基本要求 ━━━━━━
@@ -154,6 +165,7 @@ async function runDiscordOptimize() {
   await renameWelcomeChannel(token, channels);
   await renameSupportTextChannel(token, channels);
   await normalizeLayoutCategories(token, channels);
+  await normalizeNavigationChannelNames(token, channels);
 
   channels = await getGuildChannels(token, guildId);
   await reorderDiscordLayout(token, guildId, channels);
@@ -270,6 +282,16 @@ async function normalizeLayoutCategories(token, channels) {
   console.log(`✓ 已重命名分类：Voice Channels → ${VOICE_CATEGORY_NAME}`);
 }
 
+async function normalizeNavigationChannelNames(token, channels) {
+  for (const mapping of NAV_CHANNEL_RENAMES) {
+    const channel = findChannel(channels, mapping.patterns, mapping.type);
+    if (!channel || channel.name === mapping.target) continue;
+    const oldName = channel.name;
+    await discordPatch(token, `/channels/${channel.id}`, { name: mapping.target });
+    console.log(`✓ 已规范频道名：${oldName} → ${mapping.target}`);
+  }
+}
+
 async function reorderDiscordLayout(token, guildId, channels) {
   await reorderCategories(token, guildId, channels);
   const refreshedChannels = await getGuildChannels(token, guildId);
@@ -321,10 +343,12 @@ async function reorderNavigationChannels(token, guildId, channels) {
   const targets = [
     findChannel(channels, ["频道简介", "welcome"], 0),
     findChannel(channels, ["公告", "公告通知"], 0),
-    findChannel(channels, ["服务价目", "服务项目"], 0),
     findChannel(channels, ["点单", "自助下单"], 0),
+    findChannel(channels, ["服务价目", "服务项目"], 0),
+    findChannel(channels, ["陪玩预览", "查看陪玩", "陪玩大厅"], 15),
     findChannel(channels, ["好评展示", "好评"], 0),
     findChannel(channels, ["社区守则", "社区规则"], 0),
+    findChannel(channels, ["价格清单"], 15),
     findChannel(channels, ["聊天大厅", "文字聊天区"], 0)
   ].filter(Boolean);
 

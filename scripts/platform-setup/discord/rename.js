@@ -9,8 +9,12 @@ const {
 const CHANNEL_RENAMES = [
   { target: "🗺️｜频道简介", type: 0, cores: ["频道简介", "welcome", "店内导航"] },
   { target: "📣｜公告通知", type: 0, cores: ["公告通知", "公告"] },
+  { target: "📝｜自助下单", type: 0, cores: ["自助下单", "点单"], exactOnly: true },
   { target: "📋｜服务价目", type: 0, cores: ["服务价目", "服务项目", "服务份目"] },
+  { target: "🎮｜陪玩预览", type: 15, cores: ["陪玩预览", "查看陪玩", "陪玩大厅"] },
   { target: "⭐｜好评展示", type: 0, cores: ["好评展示", "好评"] },
+  { target: "🍏｜社区守则", type: 0, cores: ["社区守则", "社区规则"] },
+  { target: "💰｜价格清单", type: 15, cores: ["价格清单"] },
   { target: "💬｜聊天大厅", type: 0, cores: ["聊天大厅", "文字聊天区"] },
   { target: "💳｜充值方式", type: 0, cores: ["充值方式", "充值报码"] },
   { target: "🗨️｜客服-文字", type: 0, cores: ["客服-文字", "客服"], exactOnly: true },
@@ -18,7 +22,6 @@ const CHANNEL_RENAMES = [
   { target: "⚠️｜违规处理", type: 0, cores: ["违规处理"] },
   { target: "🟥｜考核入职须知", type: 0, cores: ["考核入职须知"] },
   { target: "🔖｜技能登记", type: 0, cores: ["技能登记", "tag登记"] },
-  { target: "📝｜自助下单", type: 0, cores: ["自助下单", "点单"], exactOnly: true },
   { target: "📣｜人工派单", type: 0, cores: ["人工派单"] },
   { target: "🤖｜AI派单", type: 0, cores: ["AI派单", "ai派单"] },
   { target: "🎧｜试音大厅", type: 0, cores: ["试音大厅"] },
@@ -55,10 +58,12 @@ async function renameDiscord() {
   await reorderChannelsInCategory(token, guildId, refreshedChannels, "🧭 May猫饼 · 频道导航", [
     "频道简介",
     "公告通知",
-    "服务价目",
     "自助下单",
+    "服务价目",
+    "陪玩预览",
     "好评展示",
     "社区守则",
+    "价格清单",
     "聊天大厅"
   ]);
   await reorderChannelsInCategory(token, guildId, refreshedChannels, "🧾 内部 · 考核专区", [
@@ -145,3 +150,10 @@ async function reorderChannelsInCategory(token, guildId, channels, categoryName,
 module.exports = {
   renameDiscord
 };
+
+if (require.main === module) {
+  renameDiscord().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

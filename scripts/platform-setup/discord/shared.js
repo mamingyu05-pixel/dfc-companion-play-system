@@ -140,10 +140,6 @@ async function renameChannelIfNeeded(token, channel, targetName) {
     console.log(`✓ 已正确：${targetName}`);
     return false;
   }
-  if (channel.name.includes(targetName.slice(0, 2)) && hasCore(channel.name, targetName)) {
-    console.log(`✓ 已带前缀，跳过：${channel.name}`);
-    return false;
-  }
 
   const oldName = channel.name;
   await discordPatch(token, `/channels/${channel.id}`, { name: targetName });
