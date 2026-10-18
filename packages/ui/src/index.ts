@@ -10,3 +10,6 @@ export const dfcButtonClassNames = {
 };
 
 export const dfcCardClassName = "rounded-dfc border border-dfc-border bg-dfc-surface";
+
+export { createOrderRecordClient, orderRecordView } from "./order-record-client";
+export type { OrderRecord, OrderRecordState } from "./order-record-client";

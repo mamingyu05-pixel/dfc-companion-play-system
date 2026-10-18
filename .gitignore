@@ -7,3 +7,5 @@ coverage/
 .env
 .env.local
 *.log
+*.baseline.fixture.ts
+uploads/

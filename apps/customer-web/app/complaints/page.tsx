@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CustomerShell } from "../components";
 
@@ -19,28 +19,47 @@ export default function CustomerComplaintsPage() {
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const requestVersion = useRef(0);
+
   async function loadData() {
-    const token = localStorage.getItem("dfc_customer_token");
-    if (!token) return;
-    const [ordersResponse, complaintsResponse] = await Promise.all([
-      fetch("/api/orders/my", { headers: { Authorization: `Bearer ${token}` } }),
-      fetch("/api/complaints/my", { headers: { Authorization: `Bearer ${token}` } })
-    ]);
-    if (!ordersResponse.ok || !complaintsResponse.ok) throw new Error("无法加载投诉数据");
-    const orderData = (await ordersResponse.json()) as Order[];
-    setOrders(orderData);
-    setOrderId((current) => current || orderData[0]?.id || "");
-    setComplaints((await complaintsResponse.json()) as Complaint[]);
+    const version = ++requestVersion.current;
+    setLoadState("loading");
+    setError("");
+    try {
+      const token = localStorage.getItem("dfc_customer_token");
+      if (!token) throw new Error("请先登录后查看投诉记录");
+      const responses = await Promise.all([
+        fetch("/api/orders/my", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/complaints/my", { headers: { Authorization: `Bearer ${token}` } })
+      ]);
+      if (responses.some(response => !response.ok)) throw new Error("无法加载真实投诉数据，请重试");
+      const [orderData, complaintData] = await Promise.all(responses.map(response => response.json()));
+      if (!Array.isArray(orderData) || !Array.isArray(complaintData)) throw new Error("投诉数据格式异常，请重试");
+      if (version !== requestVersion.current) return;
+      const requested = new URLSearchParams(window.location.search).get("orderId");
+      setOrders(orderData as Order[]);
+      setComplaints(complaintData as Complaint[]);
+      setOrderId(current => orderData.some(order => order.id === current) ? current :
+        (orderData.some(order => order.id === requested) ? requested! : orderData[0]?.id) || "");
+      setLoadState("ready");
+    } catch (err) {
+      if (version !== requestVersion.current) return;
+      setLoadState("error");
+      setError(err instanceof Error ? err.message : "无法加载真实投诉数据，请重试");
+    }
   }
 
   useEffect(() => {
-    void loadData().catch(() => setError("无法加载真实投诉数据"));
+    void loadData();
+    return () => { requestVersion.current++; };
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const token = localStorage.getItem("dfc_customer_token");
     if (!token) return;
+    if (loadState !== "ready" || isSubmitting) return;
     if (!orderId) {
       setError("请先选择订单");
       return;
@@ -73,8 +92,8 @@ export default function CustomerComplaintsPage() {
   }
 
   const selectedOrder = orders.find((order) => order.id === orderId);
-  const pendingCount = complaints.filter((complaint) => complaint.status === "PENDING").length;
-  const resolvedCount = complaints.filter((complaint) => complaint.status !== "PENDING").length;
+  const pendingCount = complaints.filter((complaint) => complaint.status === "OPEN" || complaint.status === "IN_REVIEW").length;
+  const resolvedCount = complaints.filter((complaint) => complaint.status === "RESOLVED" || complaint.status === "REJECTED").length;
 
   return (
     <CustomerShell>
@@ -90,13 +109,15 @@ export default function CustomerComplaintsPage() {
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <CaseMetric label="可选订单" value={String(orders.length)} hint="当前账号订单" />
-            <CaseMetric label="处理中" value={String(pendingCount)} hint="等待管理员处理" />
-            <CaseMetric label="已处理" value={String(resolvedCount)} hint="含通过/拒绝/关闭" />
+            <CaseMetric label="可选订单" value={loadState === "ready" ? String(orders.length) : "—"} hint="当前账号订单" />
+            <CaseMetric label="处理中" value={loadState === "ready" ? String(pendingCount) : "—"} hint="等待管理员处理" />
+            <CaseMetric label="已处理" value={loadState === "ready" ? String(resolvedCount) : "—"} hint="已解决或已驳回" />
           </div>
         </div>
       </section>
 
+      {loadState === "loading" ? <Alert tone="success">正在加载投诉数据…</Alert> : null}
+      {loadState === "error" ? <button type="button" onClick={() => void loadData()} className="maycat-button mt-4 px-4 py-2">重试加载</button> : null}
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
@@ -109,9 +130,9 @@ export default function CustomerComplaintsPage() {
 
           <label className="mt-4 block">
             <span className="text-sm font-semibold text-cyan-50/80">关联订单</span>
-            <select value={orderId} onChange={(event) => setOrderId(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm">
+            <select disabled={loadState !== "ready" || isSubmitting} value={orderId} onChange={(event) => setOrderId(event.target.value)} className="maycat-input mt-2 px-3 py-3 text-sm">
               <option value="">选择订单</option>
-              {orders.map((order) => (
+              {(loadState === "ready" ? orders : []).map((order) => (
                 <option key={order.id} value={order.id}>
                   {order.orderNo} / {order.status} / ¥{formatMoney(order.totalAmount)}
                 </option>
@@ -119,7 +140,7 @@ export default function CustomerComplaintsPage() {
             </select>
           </label>
 
-          {selectedOrder ? (
+          {loadState === "ready" && selectedOrder ? (
             <div className="mt-3 rounded-dfc-control border border-cyan-300/20 bg-[#07111f]/70 p-3 text-sm">
               <div className="font-black text-white">{selectedOrder.orderNo}</div>
               <div className="mt-1 text-xs text-dfc-subtext">
@@ -162,7 +183,7 @@ export default function CustomerComplaintsPage() {
             建议先保留语音/聊天截图、付款记录和订单号。当前版本先提交文字工单，证据可通过客服补充。
           </div>
 
-          <button disabled={isSubmitting || !orderId || !reason.trim()} className="maycat-button mt-5 w-full px-4 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60">
+          <button disabled={loadState !== "ready" || isSubmitting || !orderId || !reason.trim()} className="maycat-button mt-5 w-full px-4 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60">
             {isSubmitting ? "提交中..." : "提交投诉"}
           </button>
         </form>
@@ -184,7 +205,9 @@ export default function CustomerComplaintsPage() {
           <section className="maycat-card p-4">
             <h2 className="text-lg font-black text-white">我的投诉记录</h2>
           <div className="mt-4 space-y-3">
-            {complaints.length ? (
+            {loadState !== "ready" ? (
+              <p className="text-sm text-dfc-subtext">{loadState === "loading" ? "正在加载投诉记录…" : "投诉记录尚未加载，请重试。"}</p>
+            ) : complaints.length ? (
               complaints.map((item) => (
                   <article key={item.id} className="maycat-case-record text-sm">
                     <div className="flex items-start justify-between gap-3">
@@ -239,7 +262,8 @@ function RuleLine({ text }: { text: string }) {
 }
 
 function toComplaintStatus(status: string) {
-  if (status === "PENDING") return "处理中";
+  if (status === "OPEN") return "待处理";
+  if (status === "IN_REVIEW") return "处理中";
   if (status === "RESOLVED") return "已处理";
   if (status === "REJECTED") return "已驳回";
   return status;

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { AdminShell, DataTable, MetricCard, SectionHeader, StatusBadge } from "../components";
@@ -17,6 +18,7 @@ type DashboardOrder = {
   companion: string;
   status: string;
   amount: string;
+  acceptanceDeadline?: string | null;
 };
 
 type DashboardReview = {
@@ -47,7 +49,7 @@ const emptyDashboard: DashboardData = {
     { label: "今日订单", value: "0", hint: "0 个待派单" },
     { label: "待充值审核", value: "0", hint: "需要核对客户截图" },
     { label: "待提现审核", value: "0", hint: "待审核或待打款" },
-    { label: "投诉处理中", value: "0", hint: "需要管理员介入" }
+    { label: "未结投诉", value: "0", hint: "含新投诉与处理中" }
   ],
   pendingOrders: [],
   pendingReviews: [],
@@ -57,24 +59,34 @@ const emptyDashboard: DashboardData = {
 export default function AdminDashboardPage() {
   const [dashboard, setDashboard] = useState<DashboardData>(emptyDashboard);
   const [error, setError] = useState("");
+  const [attention, setAttention] = useState<DashboardOrder[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     async function loadDashboard() {
       const token = localStorage.getItem("dfc_admin_token");
       if (!token) return;
 
-      const response = await fetch("/api/admin/dashboard", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error("无法加载真实看板数据");
-      setDashboard((await response.json()) as DashboardData);
+      const headers = { Authorization: `Bearer ${token}` };
+      const [response, ordersResponse] = await Promise.all([
+        fetch("/api/admin/dashboard", { headers, cache: "no-store" }),
+        fetch("/api/admin/orders", { headers, cache: "no-store" })
+      ]);
+      if (!response.ok || !ordersResponse.ok) throw new Error("无法加载真实看板数据");
+      const [next, orders] = await Promise.all([response.json(), ordersResponse.json()]);
+      if (!Array.isArray(orders)) throw new Error("订单列表返回异常");
+      setDashboard(next as DashboardData);
+      setAttention(orders.filter(needsAttention).map(order => ({ ...order,
+        customer: order.customer?.displayName || order.customer?.email || "-",
+        companion: order.companion?.displayName || "待分配", amount: order.totalAmount })));
+      setLoaded(true);
     }
 
     void loadDashboard().catch(() => setError("无法加载真实看板数据，请检查登录状态或 API 服务"));
   }, []);
 
   const pendingReviewCount = dashboard.pendingReviews.length;
-  const pendingOrderCount = dashboard.pendingOrders.length;
+  const pendingOrderCount = attention.length;
   const latestLog = dashboard.recentLogs[0];
 
   return (
@@ -85,14 +97,14 @@ export default function AdminDashboardPage() {
             <div>
               <SectionHeader
                 eyebrow="Maycat Command Center"
-                title="运营看板"
-                desc="集中处理订单派发、充值审核、提现审核和投诉风险。优先看待办，再看日志，所有资金动作都必须留下后台记录。"
+                title="异常与审核待办"
+                desc="先处理待分配、接单超时、投诉和人工资金审核。正常接单与服务无需重复操作；资金确认和处理原因继续保留。"
               />
               {error ? <div className="rounded-dfc border border-dfc-danger/40 bg-dfc-danger/10 p-3 text-sm text-dfc-danger">{error}</div> : null}
             </div>
             <div className="grid gap-3">
-              <QueueSignal label="待处理订单" value={pendingOrderCount} tone="cyan" />
-              <QueueSignal label="待审核事项" value={pendingReviewCount} tone="gold" />
+              <QueueSignal label="近期待处理订单" value={loaded ? pendingOrderCount : undefined} tone="cyan" />
+              <QueueSignal label="审核列表项" value={loaded ? pendingReviewCount : undefined} tone="gold" />
             </div>
           </div>
         </div>
@@ -108,18 +120,22 @@ export default function AdminDashboardPage() {
         </aside>
       </section>
 
+      <nav aria-label="异常处理入口" className="mt-5 flex flex-wrap gap-3 text-sm text-cyan-100">
+        <Link href="/dispatch">待分配 / 接单超时</Link><Link href="/complaints">投诉与争议</Link><Link href="/operations">通知发送异常</Link><Link href="/recharges">人工充值审核</Link><Link href="/withdrawals">提现审核</Link>
+      </nav>
       <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {dashboard.metrics.map((metric) => (
+        {loaded ? dashboard.metrics.map((metric) => (
           <MetricCard key={metric.label} {...metric} />
-        ))}
+        )) : <p className="text-sm text-dfc-subtext">统计尚未核实。</p>}
       </section>
 
       <section className="mt-6 grid gap-5 xl:grid-cols-2">
-        <Panel title="待处理订单" hint="已支付、待派单、服务中订单优先处理">
+        <Panel title="需要介入的订单" hint="当前接口返回最近 100 笔订单；仅列其中待分配、接单超时或期限异常，不代表历史全部待办">
+          {!loaded ? <p role="status">{error ? "待办尚未核实，请通过上方入口查询。" : "正在加载待办…"}</p> : attention.length === 0 ? <p>最近 100 笔订单中暂无需要介入的派单。</p> : null}
           <DataTable
             columns={["订单", "客户", "陪玩", "状态", "金额"]}
-            rows={dashboard.pendingOrders.map((order) => [
-              <span key={`${order.id}-no`} className="font-black text-white">{order.orderNo}</span>,
+            rows={attention.map((order) => [
+              <Link key={`${order.id}-no`} className="font-black text-cyan-100 underline" href={`/dispatch?orderId=${encodeURIComponent(order.id)}`}>{order.orderNo} · 处理</Link>,
               order.customer,
               order.companion || "平台匹配",
               <StatusBadge key={order.id} tone="warning">{formatStatus(order.status)}</StatusBadge>,
@@ -128,11 +144,11 @@ export default function AdminDashboardPage() {
           />
         </Panel>
 
-        <Panel title="待审核事项" hint="充值、提现、投诉等资金和风控事项">
+        <Panel title="待审核事项" hint="近期充值和提现审核；完整列表与投诉通过上方入口查看">
           <DataTable
             columns={["类型", "编号", "对象", "金额", "状态"]}
             rows={dashboard.pendingReviews.map((item) => [
-              formatReviewType(item.type),
+              <Link key={`${item.type}-${item.id}-link`} className="text-cyan-100 underline" href={reviewHref(item.type)}>{formatReviewType(item.type)} · 查看审核</Link>,
               shortId(item.id),
               item.subject,
               <span key={`${item.type}-${item.id}-amount`} className="font-black tabular-nums text-dfc-gold">{formatCurrency(item.amount)}</span>,
@@ -171,12 +187,12 @@ function Panel({ title, hint, wide, children }: { title: string; hint: string; w
   );
 }
 
-function QueueSignal({ label, value, tone }: { label: string; value: number; tone: "cyan" | "gold" }) {
+function QueueSignal({ label, value, tone }: { label: string; value?: number; tone: "cyan" | "gold" }) {
   const toneClass = tone === "gold" ? "border-dfc-gold/35 bg-dfc-gold/10 text-dfc-gold" : "border-cyan-300/35 bg-cyan-300/10 text-cyan-100";
   return (
     <div className={`rounded-dfc border px-4 py-3 ${toneClass}`}>
       <div className="text-xs font-black">{label}</div>
-      <div className="mt-1 text-2xl font-black tabular-nums">{value}</div>
+      <div className="mt-1 text-2xl font-black tabular-nums">{value ?? "—"}</div>
     </div>
   );
 }
@@ -238,4 +254,17 @@ function formatAction(action: string) {
     CREATE_ADMIN: "创建管理员"
   };
   return map[action] ?? action;
+}
+
+function needsAttention(order: { status: string; acceptanceDeadline?: string | null }) {
+  if (order.status === "PAID") return true;
+  if (order.status !== "ASSIGNED" || !order.acceptanceDeadline) return false;
+  const deadline = Date.parse(order.acceptanceDeadline);
+  return !Number.isFinite(deadline) || deadline <= Date.now();
+}
+
+function reviewHref(type: string) {
+  if (["RECHARGE", "充值"].includes(type)) return "/recharges";
+  if (["WITHDRAWAL", "提现"].includes(type)) return "/withdrawals";
+  return "/complaints";
 }

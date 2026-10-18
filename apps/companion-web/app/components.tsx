@@ -79,11 +79,13 @@ export function MetricCard({ label, value, hint, tone = "cyan" }: { label: strin
 export function OrderCard({
   order,
   action,
-  onAction
+  onAction,
+  disabled
 }: {
   order: { id: string; mode: string; hours: number; amount: number; status: string; customer?: string };
   action?: string;
   onAction?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <article className="companion-card p-4">
@@ -100,7 +102,7 @@ export function OrderCard({
           <div className="text-xs text-dfc-muted">订单金额</div>
           <div className="mt-1 text-2xl font-black tabular-nums text-dfc-gold">¥{order.amount.toFixed(2)}</div>
         </div>
-        {action ? <ActionButton onClick={onAction}>{action}</ActionButton> : null}
+        {action ? <ActionButton onClick={onAction} disabled={disabled}>{action}</ActionButton> : null}
       </div>
     </article>
   );
@@ -143,6 +145,7 @@ function toOrderStatus(status: string) {
     ASSIGNED: "已派单",
     ACCEPTED: "已接单",
     IN_PROGRESS: "服务中",
+    AWAITING_ACCEPTANCE: "待验收结算",
     COMPLETED: "已完成",
     CANCELLED: "已取消",
     DISPUTED: "争议中"

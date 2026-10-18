@@ -17,6 +17,11 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { BotNotificationService } from "../bot/bot-notification.service";
 import { OrdersService } from "./orders.service";
+import { createHash } from "node:crypto";
+import { enqueueJob } from "../bot/integration-jobs.service";
+import { fixedDecimal } from "../financial-values";
+import { publicServiceLabel } from "./public-dispatch";
+import { requireKookActor } from "../kook/kook-flow-identity";
 
 type CreateDraftBody = {
   customerId?: string;
@@ -151,8 +156,14 @@ export class OrderDraftsService {
     const priceTier = this.normalizePriceTier(body.priceTier, body.mode);
     const budgetAmount = body.budgetAmount ? this.positiveDecimal(body.budgetAmount, "budgetAmount") : undefined;
     const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
+    const sourceBusinessKey = body.sourceMessageId ? createHash("sha256").update(JSON.stringify([sourcePlatform, body.sourceGuildId, body.sourceChannelId, body.sourceMessageId])).digest("hex") : null;
 
     return this.prisma.$transaction(async (tx) => {
+      if (sourceBusinessKey) {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${sourceBusinessKey}, 0))::text`;
+        const existing = await tx.orderDraft.findUnique({ where: { sourceBusinessKey } });
+        if (existing) return { ...existing, newlyCreated: false };
+      }
       if (body.customerId) {
         await this.assertActiveCustomer(tx, body.customerId);
       }
@@ -160,6 +171,7 @@ export class OrderDraftsService {
       const draft = await tx.orderDraft.create({
         data: {
           draftNo: this.generateDraftNo(),
+          sourceBusinessKey,
           customerId: body.customerId,
           serviceAdminId: adminId,
           sourcePlatform,
@@ -195,8 +207,138 @@ export class OrderDraftsService {
         mode: draft.mode
       });
 
-      return draft;
+      return { ...draft, newlyCreated: true };
     });
+  }
+
+  // Customer-owned KOOK demand entry. serviceAdminId routes exceptions; it
+  // does not impersonate the administrator or grant the customer admin rights.
+  async createKookCustomerDemand(tx: Prisma.TransactionClient, customerId: string, platformUserId: string,
+    body: { requestId: string; mode: string; hours: string }) {
+    const customer = await requireKookActor(tx, platformUserId, customerId, UserRole.CUSTOMER);
+    const hours = this.positiveDecimal(body.hours, "hours");
+    if (hours.gt(this.positiveDecimal(process.env.ORDER_MAX_HOURS ?? "8", "ORDER_MAX_HOURS"))) throw new BadRequestException("服务时长超出当前上限");
+    if (!body.mode.trim()) throw new BadRequestException("请先选择服务模式");
+    const sourceBusinessKey = createHash("sha256").update(JSON.stringify(["KOOK_CUSTOMER_DEMAND", customerId, platformUserId, body.requestId])).digest("hex");
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${sourceBusinessKey}, 0))::text`;
+    const existing = await tx.orderDraft.findUnique({ where: { sourceBusinessKey } });
+    if (existing) {
+      if (existing.customerId !== customerId || existing.customerPlatformUserId !== platformUserId || existing.mode !== body.mode || !existing.hours?.eq(hours)) throw new BadRequestException("原需求与本次内容不一致，请刷新原需求");
+      return existing;
+    }
+    const admin = await tx.user.findFirst({ where: { status: UserStatus.ACTIVE, role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] } }, orderBy: [{ role: "desc" }, { createdAt: "asc" }], select: { id: true } });
+    if (!admin) throw new BadRequestException("当前没有可用管理员接收需求，尚未发布或扣款，请联系人工客服。");
+    const draft = await tx.orderDraft.create({ data: {
+      sourceBusinessKey, draftNo: this.generateDraftNo(), customerId, customerPlatformUserId: platformUserId,
+      customerDisplayName: customer.displayName, serviceAdminId: admin.id, sourcePlatform: OrderSourcePlatform.KOOK,
+      sourceGuildId: process.env.KOOK_GUILD_ID, sourceChannelId: process.env.KOOK_AI_DISPATCH_CHANNEL_ID ?? process.env.KOOK_DISPATCH_CHANNEL_ID,
+      sourceMessageId: body.requestId, game: GameCode.DELTA_FORCE, mode: body.mode, hours,
+      priceTier: this.normalizePriceTier(undefined, body.mode), status: OrderDraftStatus.OPEN
+    } });
+    await this.writeDraftEvent(tx, { draftId: draft.id, actorUserId: customerId, actorType: OrderDraftActorType.CUSTOMER,
+      platform: OrderSourcePlatform.KOOK, platformUserId, eventType: OrderDraftEventType.CUSTOMER_REQUESTED_ORDER,
+      content: "客户提交需求，由客服安排；尚未选人、下单或扣款", metadata: { mode: draft.mode, hours: hours.toString(), requestId: body.requestId } });
+    return draft;
+  }
+
+  private async ownedKookDemand(tx: Prisma.TransactionClient, customerId: string, platformUserId: string, draftId: string) {
+    await requireKookActor(tx, platformUserId, customerId, UserRole.CUSTOMER);
+    await tx.$queryRaw`SELECT "id" FROM "order_drafts" WHERE "id" = ${draftId} FOR UPDATE`;
+    const draft = await tx.orderDraft.findUnique({ where: { id: draftId } });
+    if (!draft || draft.customerId !== customerId || draft.customerPlatformUserId !== platformUserId || draft.sourcePlatform !== OrderSourcePlatform.KOOK) {
+      throw new BadRequestException("没有找到属于当前账号的需求，请核对本人绑定。");
+    }
+    return draft;
+  }
+
+  private assertKookDemandFresh(draft: Prisma.OrderDraftGetPayload<{}>) {
+    const configured = Number(process.env.ORDER_DRAFT_STALE_MINUTES ?? "60");
+    const minutes = Number.isFinite(configured) ? Math.max(10, configured) : 60;
+    if (draft.updatedAt.getTime() + minutes * 60_000 <= Date.now()) throw new BadRequestException("需求已超出原报名有效期，请管理员核对原需求；本次没有成单或扣款。");
+  }
+
+  private kookDemandVersion(draft: Prisma.OrderDraftGetPayload<{}>) {
+    return createHash("sha256").update(JSON.stringify([draft.id, draft.updatedAt.toISOString(), draft.status, draft.selectedCompanionId,
+      draft.mode, draft.hours?.toString(), draft.priceTier, draft.rankTierKey, draft.customerId, draft.customerPlatformUserId])).digest("hex");
+  }
+
+  async kookDemandSnapshot(tx: Prisma.TransactionClient, customerId: string, platformUserId: string, draftId: string, page = 0) {
+    const draft = await this.ownedKookDemand(tx, customerId, platformUserId, draftId);
+    const order = await tx.order.findUnique({ where: { sourceDraftId: draftId } });
+    if (order) {
+      if (order.customerId !== customerId) throw new BadRequestException("需求回执需要管理员核对，请不要重新下单。");
+      return { draft, version: this.kookDemandVersion(draft), order, candidates: [] };
+    }
+    if (![OrderDraftStatus.OPEN, OrderDraftStatus.TRIALING, OrderDraftStatus.SELECTED].includes(draft.status as "OPEN" | "TRIALING" | "SELECTED")) throw new BadRequestException("该需求已关闭或已进入人工处理，请不要重新下单。");
+    if (draft.game !== GameCode.DELTA_FORCE || !draft.hours || draft.rankTierKey || draft.priceTier !== this.normalizePriceTier(undefined, draft.mode)) throw new BadRequestException("该需求含定制内容，需要管理员明确报价后处理。");
+    const candidates = await tx.orderDraftCandidate.findMany({ where: { draftId, status: { not: OrderDraftCandidateStatus.REJECTED },
+      companion: { status: UserStatus.ACTIVE, role: UserRole.COMPANION, companionProfile: { is: { status: CompanionProfileStatus.LISTED, OR: [{ game: draft.game }, { games: { has: draft.game } }] } } }
+    }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], skip: Math.max(0, page) * 3, take: 3,
+      select: { id: true, companionId: true, companion: { select: { companionProfile: { select: { nickname: true } }, displayName: true } } } });
+    return { draft, version: this.kookDemandVersion(draft), order: null,
+      candidates: candidates.map(candidate => ({ id: candidate.id, companionId: candidate.companionId, name: candidate.companion.companionProfile?.nickname ?? candidate.companion.displayName })) };
+  }
+
+  async selectKookDemandCandidate(tx: Prisma.TransactionClient, customerId: string, platformUserId: string,
+    body: { draftId: string; candidateId: string; expectedVersion: string }) {
+    const draft = await this.ownedKookDemand(tx, customerId, platformUserId, body.draftId);
+    this.assertKookDemandFresh(draft);
+    if (this.kookDemandVersion(draft) !== body.expectedVersion || ![OrderDraftStatus.OPEN, OrderDraftStatus.TRIALING].includes(draft.status as "OPEN" | "TRIALING")) throw new BadRequestException("需求或选择已更新，请刷新需求后再选人。");
+    await tx.$queryRaw`SELECT "id" FROM "order_draft_candidates" WHERE "id" = ${body.candidateId} FOR UPDATE`;
+    const candidate = await tx.orderDraftCandidate.findUnique({ where: { id: body.candidateId } });
+    if (!candidate || candidate.draftId !== draft.id || candidate.status === OrderDraftCandidateStatus.REJECTED) throw new BadRequestException("这位报名者已失效，请刷新名单。");
+    await this.assertListedCompanion(tx, candidate.companionId, draft.game);
+    await tx.orderDraftCandidate.updateMany({ where: { draftId: draft.id, status: OrderDraftCandidateStatus.SELECTED }, data: { status: OrderDraftCandidateStatus.RECOMMENDED } });
+    await tx.orderDraftCandidate.update({ where: { id: candidate.id }, data: { status: OrderDraftCandidateStatus.SELECTED } });
+    const selected = await tx.orderDraft.update({ where: { id: draft.id }, data: { status: OrderDraftStatus.SELECTED, selectedCompanionId: candidate.companionId } });
+    await this.writeDraftEvent(tx, { draftId: draft.id, actorUserId: customerId, actorType: OrderDraftActorType.CUSTOMER,
+      platform: OrderSourcePlatform.KOOK, platformUserId, eventType: OrderDraftEventType.CUSTOMER_SELECTED_COMPANION,
+      content: "客户本人选TA；尚未确认报价或扣款", metadata: { candidateId: candidate.id, companionId: candidate.companionId } });
+    return selected;
+  }
+
+  async quoteKookDemand(tx: Prisma.TransactionClient, customerId: string, platformUserId: string, draftId: string, expectedCompanionId: string) {
+    const draft = await this.ownedKookDemand(tx, customerId, platformUserId, draftId);
+    this.assertKookDemandFresh(draft);
+    if (draft.status !== OrderDraftStatus.SELECTED || draft.selectedCompanionId !== expectedCompanionId || !draft.hours || draft.game !== GameCode.DELTA_FORCE || draft.rankTierKey || draft.priceTier !== this.normalizePriceTier(undefined, draft.mode)) throw new BadRequestException("需求或所选陪玩已变化，请先刷新需求。");
+    const candidate = await tx.orderDraftCandidate.findUnique({ where: { draftId_companionId: { draftId, companionId: expectedCompanionId } }, include: { companion: { select: { displayName: true, companionProfile: { select: { nickname: true } } } } } });
+    if (candidate?.status !== OrderDraftCandidateStatus.SELECTED) throw new BadRequestException("所选报名者已变化，请刷新需求。");
+    const quote = await this.orders.previewKookCustomerOrder(tx, customerId, { mode: draft.mode, hours: draft.hours.toString(), companionId: expectedCompanionId });
+    return { ...quote, draftId, draftNo: draft.draftNo, draftVersion: this.kookDemandVersion(draft), companionName: candidate.companion.companionProfile?.nickname ?? candidate.companion.displayName };
+  }
+
+  async reopenKookDemand(tx: Prisma.TransactionClient, customerId: string, platformUserId: string, draftId: string, expectedVersion: string) {
+    const draft = await this.ownedKookDemand(tx, customerId, platformUserId, draftId);
+    this.assertKookDemandFresh(draft);
+    if (draft.status !== OrderDraftStatus.SELECTED || this.kookDemandVersion(draft) !== expectedVersion || await tx.order.findUnique({ where: { sourceDraftId: draftId } })) throw new BadRequestException("需求已经更新或成单，请刷新原记录。");
+    await tx.orderDraftCandidate.updateMany({ where: { draftId, status: OrderDraftCandidateStatus.SELECTED }, data: { status: OrderDraftCandidateStatus.RECOMMENDED } });
+    await tx.orderDraft.update({ where: { id: draftId }, data: { status: OrderDraftStatus.TRIALING, selectedCompanionId: null } });
+    await this.writeDraftEvent(tx, { draftId, actorUserId: customerId, actorType: OrderDraftActorType.CUSTOMER, platform: OrderSourcePlatform.KOOK,
+      platformUserId, eventType: OrderDraftEventType.CUSTOMER_CHANGED_COMPANION, content: "客户明确要求重新选人；未扣款", metadata: { previousCompanionId: draft.selectedCompanionId } });
+  }
+
+  async confirmKookDemand(tx: Prisma.TransactionClient, customerId: string, platformUserId: string,
+    body: { draftId: string; companionId: string; expectedVersion: string; expectedTotalAmount: string; expiresAt?: number }) {
+    const draft = await this.ownedKookDemand(tx, customerId, platformUserId, body.draftId);
+    const existing = await tx.order.findUnique({ where: { sourceDraftId: draft.id } });
+    if (existing) {
+      if (existing.customerId !== customerId) throw new BadRequestException("原订单归属需要管理员核对，请勿重新付款。");
+      return existing;
+    }
+    if (this.kookDemandVersion(draft) !== body.expectedVersion) throw new BadRequestException("需求或报价上下文已变化，请刷新报价后重新确认。");
+    const quote = await this.quoteKookDemand(tx, customerId, platformUserId, draft.id, body.companionId);
+    if (!fixedDecimal(quote.totalAmount, "totalAmount").eq(fixedDecimal(body.expectedTotalAmount, "expectedTotalAmount"))) throw new BadRequestException("价格已变化，请刷新报价后重新确认。");
+    const order = await this.orders.createConfirmedKookDraftOrder(tx, customerId, platformUserId, {
+      draftId: draft.id, companionId: body.companionId, expectedTotalAmount: body.expectedTotalAmount, mode: quote.mode, hours: quote.hours, expiresAt: body.expiresAt
+    });
+    await tx.orderDraft.update({ where: { id: draft.id }, data: { status: OrderDraftStatus.CONVERTED } });
+    await this.writeDraftEvent(tx, { draftId: draft.id, actorUserId: customerId, actorType: OrderDraftActorType.CUSTOMER,
+      platform: OrderSourcePlatform.KOOK, platformUserId, eventType: OrderDraftEventType.CUSTOMER_CONFIRMED,
+      content: "客户明确确认本次报价", metadata: { totalAmount: quote.totalAmount, companionId: body.companionId } });
+    await this.writeDraftEvent(tx, { draftId: draft.id, actorUserId: customerId, actorType: OrderDraftActorType.CUSTOMER,
+      platform: OrderSourcePlatform.KOOK, platformUserId, eventType: OrderDraftEventType.DRAFT_CONVERTED_TO_ORDER,
+      content: "客户本人确认成单；通知尚待送达", metadata: { orderId: order.id, orderNo: order.orderNo } });
+    return order;
   }
 
   async createDraftFromDemand(adminId: string, body: {
@@ -228,6 +370,8 @@ export class OrderDraftsService {
       note: parsed.note
     });
 
+    if (!draft.newlyCreated) return { draft, parsed, notifications: [] };
+
     await this.prisma.orderDraftEvent.create({
       data: {
         draftId: draft.id,
@@ -241,8 +385,20 @@ export class OrderDraftsService {
       }
     });
 
-    const notifications = await this.botNotifications.sendOrderDraftDispatchNotifications(draft.id);
-    return { draft, parsed, notifications };
+    return { draft, parsed, notifications: [], notificationStatus: "SERVICE_DESK" };
+  }
+
+  async publishFallback(adminId: string, draftId: string) {
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "order_drafts" WHERE "id" = ${draftId} FOR UPDATE`;
+      const admin = await tx.user.findFirst({ where: { id: adminId, status: UserStatus.ACTIVE, role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] } } });
+      if (!admin) throw new BadRequestException("Active admin required");
+      const draft = await tx.orderDraft.findUnique({ where: { id: draftId } });
+      if (!draft || !["OPEN", "TRIALING"].includes(draft.status) || draft.selectedCompanionId) throw new BadRequestException("Draft is not available for fallback recruitment");
+      await enqueueJob(tx, "DRAFT_DISPATCH", `draft-dispatch:${draft.id}`, { draftId: draft.id });
+      await this.writeAdminLog(tx, adminId, draft.customerId ?? undefined, "PUBLISH_DRAFT_FALLBACK", draft.id, { reason: "客服无合适人选，手动启用备用招募" });
+      return { queued: true };
+    });
   }
 
   async createDraftFromCompanion(companionId: string, body: CreateDraftFromCompanionBody) {
@@ -391,15 +547,15 @@ export class OrderDraftsService {
         id: draft.id,
         draftNo: draft.draftNo,
         sourcePlatform: draft.sourcePlatform,
-        customerDisplayName: draft.customer?.displayName ?? draft.customerDisplayName ?? "平台客户",
-        customerContact: draft.customer?.email ?? draft.customerPlatformUserId ?? null,
+        customerDisplayName: "平台客户",
+        customerContact: null,
         game: draft.game,
-        mode: draft.mode,
+        mode: publicServiceLabel(draft.priceTier),
         hours: draft.hours?.toString() ?? null,
         priceTier: draft.priceTier,
         estimatedPricePerHour: this.pickCompanionPriceForTier(companion.companionProfile, draft.sourcePlatform, draft.priceTier).toString(),
         budgetAmount: draft.budgetAmount?.toString() ?? null,
-        note: draft.note,
+        note: null,
         status: draft.status,
         candidatesCount: draft.candidates.length,
         selectedForMe,
@@ -576,8 +732,33 @@ export class OrderDraftsService {
 
     return {
       draftNo: draft.draftNo,
-      text: `请继续发送：报名 ${draft.draftNo} 段位/水平，报价，可服务时间，性格优势，是否可试音。只点按钮不会直接报名，后台会以这条报名信息给老板挑选。`
+      text: `发送：报名 ${draft.draftNo}。备注选填，可补充可服务时间或要求；无需重复填写已有资料。此按钮只显示说明，收到报名回执才算已记录；正式订单仍需另行确认和接单。`
     };
+  }
+
+  async companionApplyKookButton(draftId: string, platformUserId: string, messageId: string) {
+    return this.prisma.$transaction(async tx => {
+      const user = await requireKookActor(tx, platformUserId, undefined, UserRole.COMPANION);
+      await tx.$queryRaw`SELECT "id" FROM "order_drafts" WHERE "id" = ${draftId} FOR UPDATE`;
+      const draft = await tx.orderDraft.findUnique({ where: { id: draftId } });
+      if (!draft || draft.sourcePlatform !== OrderSourcePlatform.KOOK) throw new BadRequestException("该需求不支持当前平台报名。");
+      await this.assertListedCompanion(tx, user.id, draft.game);
+      const candidate = await tx.orderDraftCandidate.findUnique({ where: { draftId_companionId: { draftId, companionId: user.id } } });
+      // Replay never resets SELECTED/CUSTOMER_CONFIRMED to TRIALING or revives a rejected application.
+      if (candidate && candidate.status !== OrderDraftCandidateStatus.REJECTED) return { draftNo: draft.draftNo, candidate, replayed: true };
+      if (candidate || ![OrderDraftStatus.OPEN, OrderDraftStatus.TRIALING].includes(draft.status as "OPEN" | "TRIALING")) {
+        throw new BadRequestException("该需求已停止报名，原选择不会因此改变。");
+      }
+      const configured = Number(process.env.ORDER_DRAFT_STALE_MINUTES ?? "60");
+      const minutes = Number.isFinite(configured) ? Math.max(10, configured) : 60;
+      if (draft.updatedAt.getTime() + minutes * 60_000 <= Date.now()) throw new BadRequestException("这张需求卡片已过期，请联系管理员核对最新需求。");
+      const created = await tx.orderDraftCandidate.create({ data: { draftId, companionId: user.id, status: OrderDraftCandidateStatus.TRIALING } });
+      await tx.orderDraft.update({ where: { id: draftId }, data: { status: OrderDraftStatus.TRIALING } });
+      await this.writeDraftEvent(tx, { draftId, actorUserId: user.id, actorType: OrderDraftActorType.COMPANION,
+        platform: OrderSourcePlatform.KOOK, platformUserId, eventType: OrderDraftEventType.COMPANION_APPLIED,
+        metadata: { companionId: user.id, messageId, source: "KOOK_BUTTON" } });
+      return { draftNo: draft.draftNo, candidate: created, replayed: false };
+    });
   }
 
   private async companionApplyToDraft(
@@ -587,13 +768,15 @@ export class OrderDraftsService {
     body: { note?: string; quoteAmount?: string; messageId?: string }
   ) {
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "order_drafts" WHERE "id" = ${draftId} FOR UPDATE`;
       const draft = await this.assertEditableDraft(tx, draftId);
+      if (draft.sourcePlatform !== platform) throw new BadRequestException("该需求不支持当前平台报名");
       const externalAccount = await tx.userExternalAccount.findFirst({
         where: {
           platform: platform === OrderSourcePlatform.DISCORD ? "DISCORD" : "KOOK",
           externalUserId: platformUserId,
           user: {
-            status: UserStatus.ACTIVE,
+            role: UserRole.COMPANION, status: UserStatus.ACTIVE,
             companionProfile: { is: { OR: [{ game: draft.game }, { games: { has: draft.game } }], status: CompanionProfileStatus.LISTED } }
           }
         },
@@ -601,6 +784,13 @@ export class OrderDraftsService {
       });
       if (!externalAccount) {
         throw new BadRequestException("Platform account is not bound to an active listed companion");
+      }
+
+      const previous = await tx.orderDraftCandidate.findUnique({ where: { draftId_companionId: { draftId, companionId: externalAccount.userId } } });
+      if (previous?.status === OrderDraftCandidateStatus.REJECTED) throw new BadRequestException("该报名已被拒绝，请联系管理员核对");
+      if (![OrderDraftStatus.OPEN, OrderDraftStatus.TRIALING].includes(draft.status as "OPEN" | "TRIALING")) {
+        if (previous) return { candidate: previous, companionName: externalAccount.user.companionProfile?.nickname ?? externalAccount.user.displayName, replayed: true };
+        throw new BadRequestException("该需求已停止报名，客户选择不会因此改变");
       }
 
       const noteParts = [
@@ -662,8 +852,7 @@ export class OrderDraftsService {
                 companionOrders: {
                   where: { status: "COMPLETED" },
                   select: { id: true }
-                },
-                complaintsFiled: { select: { id: true } }
+                }
               }
             }
           }
@@ -681,9 +870,8 @@ export class OrderDraftsService {
         const onlineScore = profile?.onlineStatus === "ONLINE" ? 30 : profile?.onlineStatus === "BUSY" ? 10 : 0;
         const statusScore = candidate.status === OrderDraftCandidateStatus.TRIALING ? 15 : 5;
         const completionScore = Math.min(candidate.companion.companionOrders.length * 2, 20);
-        const complaintPenalty = Math.min(candidate.companion.complaintsFiled.length * 5, 20);
         const modeScore = profile?.skillModes.some((mode) => draft.mode.toLowerCase().includes(mode.toLowerCase())) ? 10 : 0;
-        const score = onlineScore + statusScore + budgetScore + completionScore + modeScore - complaintPenalty;
+        const score = onlineScore + statusScore + budgetScore + completionScore + modeScore;
         return {
           candidateId: candidate.id,
           companionId: candidate.companionId,
@@ -725,11 +913,30 @@ export class OrderDraftsService {
     };
   }
 
-  async selectCompanion(adminId: string, draftId: string, body: { companionId?: string; companionIds?: string[]; note?: string }) {
+  async selectCompanion(adminId: string, draftId: string, body: { companionId?: string; companionIds?: string[]; note?: string },
+    customerContext?: { draftNo: string; sourcePlatform: OrderSourcePlatform; platformUserId: string;
+      customerId?: string; guildId?: string; channelId?: string; candidateId: string }) {
     const companionIds = this.normalizeCompanionIds(body);
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "order_drafts" WHERE "id" = ${draftId} FOR UPDATE`;
       const draft = await this.assertEditableDraft(tx, draftId);
+      if (customerContext) {
+        const ownsDraft = (customerContext.customerId && draft.customerId === customerContext.customerId) ||
+          (customerContext.platformUserId && draft.customerPlatformUserId === customerContext.platformUserId);
+        if (!ownsDraft || draft.draftNo !== customerContext.draftNo || draft.sourcePlatform !== customerContext.sourcePlatform ||
+          !["OPEN", "TRIALING", "SELECTED"].includes(draft.status) ||
+          (customerContext.guildId && draft.sourceGuildId !== customerContext.guildId) ||
+          (customerContext.channelId && draft.sourceChannelId !== customerContext.channelId)) {
+          throw new BadRequestException("该草稿不属于你或上下文已变化，请刷新后重新选择");
+        }
+        await tx.$queryRaw`SELECT "id" FROM "order_draft_candidates" WHERE "id" = ${customerContext.candidateId} FOR UPDATE`;
+        const candidate = await tx.orderDraftCandidate.findUnique({ where: { id: customerContext.candidateId } });
+        if (!candidate || candidate.draftId !== draftId || candidate.status === OrderDraftCandidateStatus.REJECTED ||
+          companionIds.length !== 1 || candidate.companionId !== companionIds[0]) {
+          throw new BadRequestException("该候选已失效，请刷新草稿后重新选择");
+        }
+      }
       for (const companionId of companionIds) {
         await this.assertListedCompanion(tx, companionId, draft.game);
       }
@@ -767,8 +974,8 @@ export class OrderDraftsService {
 
       await this.writeDraftEvent(tx, {
         draftId,
-        actorUserId: adminId,
-        actorType: OrderDraftActorType.ADMIN,
+        actorUserId: customerContext ? customerContext.customerId : adminId,
+        actorType: customerContext ? OrderDraftActorType.CUSTOMER : OrderDraftActorType.ADMIN,
         platform: draft.sourcePlatform,
         platformUserId: draft.customerPlatformUserId,
         eventType: previousCompanionId ? OrderDraftEventType.CUSTOMER_CHANGED_COMPANION : OrderDraftEventType.CUSTOMER_SELECTED_COMPANION,
@@ -866,6 +1073,10 @@ export class OrderDraftsService {
     draftId: string,
     body: { companionId?: string; companionIds?: string[]; note?: string; rankTierKey?: string; customUnitPrice?: string } = {}
   ) {
+    // A committed order is the durable conversion receipt, even if dispatch or
+    // draft finalization failed. Recover before trying to edit a closed draft.
+    const recovered = await this.recoverDraftConversion(adminId, draftId);
+    if (recovered) return recovered;
     const requestedCompanionIds = this.normalizeCompanionIds(body, false);
     if (requestedCompanionIds.length) {
       await this.selectCompanion(adminId, draftId, { companionIds: requestedCompanionIds, note: body.note });
@@ -913,40 +1124,7 @@ export class OrderDraftsService {
         assignedById: adminId
       });
 
-      const updatedDraft = await this.prisma.$transaction(async (tx) => {
-        const updated = await tx.orderDraft.update({
-          where: { id: draftId },
-          data: {
-            status: OrderDraftStatus.CONVERTED,
-            convertedById: adminId
-          }
-        });
-        await this.writeDraftEvent(tx, {
-          draftId,
-          actorUserId: adminId,
-          actorType: OrderDraftActorType.ADMIN,
-          platform: draft.sourcePlatform,
-          platformUserId: draft.customerPlatformUserId,
-          eventType: OrderDraftEventType.DRAFT_CONVERTED_TO_ORDER,
-          metadata: {
-            orderGroupId: groupResult.orderGroup.id,
-            groupNo: groupResult.orderGroup.groupNo,
-            companionIds: selectedCompanionIds,
-            orderIds: groupResult.orders.map((order) => order.id),
-            orderNos: groupResult.orders.map((order) => order.orderNo)
-          }
-        });
-        await this.writeAdminLog(tx, adminId, draft.customerId, "CONVERT_ORDER_DRAFT_GROUP", draftId, {
-          orderGroupId: groupResult.orderGroup.id,
-          groupNo: groupResult.orderGroup.groupNo,
-          companionIds: selectedCompanionIds,
-          orderIds: groupResult.orders.map((order) => order.id),
-          orderNos: groupResult.orders.map((order) => order.orderNo)
-        });
-        return updated;
-      });
-
-      return { draft: updatedDraft, orderGroup: groupResult.orderGroup, orders: groupResult.orders, notifications: groupResult.notifications };
+      return { ...(await this.recoverDraftConversion(adminId, draftId))!, notifications: groupResult.notifications };
     }
 
     const selectedCompanionId = selectedCompanionIds[0];
@@ -966,30 +1144,43 @@ export class OrderDraftsService {
       sourceMessageId: draft.sourceMessageId ?? undefined
     });
 
-    const assignment = selectedCompanionId ? await this.orders.assignOrder(order.id, selectedCompanionId, adminId) : null;
+    const assignment = selectedCompanionId ? await this.orders.assignOrder(order.id, selectedCompanionId, adminId, order.dispatchVersion) : null;
 
-    const updatedDraft = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.orderDraft.update({
-        where: { id: draftId },
-        data: {
-          status: OrderDraftStatus.CONVERTED,
-          convertedById: adminId
-        }
+    return { ...(await this.recoverDraftConversion(adminId, draftId))!, assignment };
+  }
+
+  private async recoverDraftConversion(adminId: string, draftId: string) {
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "order_drafts" WHERE "id" = ${draftId} FOR UPDATE`;
+      const draft = await tx.orderDraft.findUnique({ where: { id: draftId }, include: {
+        convertedOrder: true, convertedOrderGroup: { include: { orders: true } }
+      } });
+      if (!draft) throw new NotFoundException("Order draft not found");
+      const order = draft.convertedOrder;
+      const group = draft.convertedOrderGroup;
+      if (!order && !group) return null;
+      if (order && group) throw new BadRequestException("Draft has conflicting conversion receipts; admin review required");
+      if (draft.status === OrderDraftStatus.CANCELLED) throw new BadRequestException("Cancelled draft has a funded order; admin review required");
+      const metadata = group ? {
+        orderGroupId: group.id, groupNo: group.groupNo,
+        companionIds: group.orders.map(item => item.companionId),
+        orderIds: group.orders.map(item => item.id), orderNos: group.orders.map(item => item.orderNo)
+      } : { orderId: order!.id, orderNo: order!.orderNo };
+      const updated = draft.status === OrderDraftStatus.CONVERTED ? draft : await tx.orderDraft.update({
+        where: { id: draftId }, data: { status: OrderDraftStatus.CONVERTED, convertedById: adminId }
       });
-      await this.writeDraftEvent(tx, {
-        draftId,
-        actorUserId: adminId,
-        actorType: OrderDraftActorType.ADMIN,
-        platform: draft.sourcePlatform,
-        platformUserId: draft.customerPlatformUserId,
-        eventType: OrderDraftEventType.DRAFT_CONVERTED_TO_ORDER,
-        metadata: { orderId: order.id, orderNo: order.orderNo }
-      });
-      await this.writeAdminLog(tx, adminId, draft.customerId, "CONVERT_ORDER_DRAFT", draftId, { orderId: order.id, orderNo: order.orderNo });
-      return updated;
+      if (draft.status !== OrderDraftStatus.CONVERTED) {
+        await this.writeDraftEvent(tx, { draftId, actorUserId: adminId, actorType: OrderDraftActorType.ADMIN,
+          platform: draft.sourcePlatform, platformUserId: draft.customerPlatformUserId,
+          eventType: OrderDraftEventType.DRAFT_CONVERTED_TO_ORDER, metadata });
+        await this.writeAdminLog(tx, adminId, draft.customerId,
+          group ? "CONVERT_ORDER_DRAFT_GROUP" : "CONVERT_ORDER_DRAFT", draftId, metadata);
+      }
+      // Never re-dispatch on recovery: an earlier notification may have an unknown outcome.
+      return group ? { draft: updated, orderGroup: group, orders: group.orders, notifications: [],
+        requiresDispatch: group.orders.some(item => item.status === "PAID") }
+        : { draft: updated, order: order!, assignment: null, requiresDispatch: order!.status === "PAID" };
     });
-
-    return { draft: updatedDraft, order, assignment };
   }
 
   private normalizeCompanionIds(body: { companionId?: string; companionIds?: string[] }, required = true) {
@@ -1198,14 +1389,7 @@ export class OrderDraftsService {
   }
 
   private positiveDecimal(value: string, fieldName: string) {
-    let decimal: Prisma.Decimal;
-    try {
-      decimal = new Prisma.Decimal(value);
-    } catch {
-      throw new BadRequestException(`${fieldName} must be a valid amount`);
-    }
-    if (decimal.lte(0)) throw new BadRequestException(`${fieldName} must be greater than 0`);
-    return decimal;
+    return fixedDecimal(value, fieldName, { max: fieldName === "hours" ? "9999.99" : undefined });
   }
 
   private pickCompanionPriceForPlatform(
@@ -1299,11 +1483,11 @@ export class OrderDraftsService {
     return "平台派单";
   }
 
-  private buildCustomerRecommendationMessage(draftNo: string, recommendations: Array<{ nickname: string; pricePerHour: string; onlineStatus: string; reasons: string[] }>) {
+  private buildCustomerRecommendationMessage(draftNo: string, recommendations: Array<{ candidateId: string; nickname: string; pricePerHour: string; onlineStatus: string; reasons: string[] }>) {
     return [
       `根据你的需求，May猫饼为你推荐以下陪玩（试音单 ${draftNo}）：`,
-      ...recommendations.map((item, index) => `${index + 1}. ${item.nickname}，¥${item.pricePerHour}/小时，${item.onlineStatus}，${item.reasons.join(" / ")}`),
-      "你可以回复编号选择，也可以继续要求试音或转人工客服。"
+      ...recommendations.map((item, index) => `${index + 1}. ${item.nickname}，¥${item.pricePerHour}/小时，${item.onlineStatus}，${item.reasons.join(" / ")}；选择指令：选择 ${draftNo} #${item.candidateId}`),
+      `请复制候选对应的完整选择指令；也可回复“选择 ${draftNo} 陪玩昵称”（昵称须唯一）。仅草稿本人可选，选择后仍需确认服务和价格。`
     ].join("\n");
   }
 

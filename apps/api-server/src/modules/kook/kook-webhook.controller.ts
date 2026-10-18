@@ -1,6 +1,11 @@
-import { BadRequestException, Body, Controller, HttpCode, Post, UnauthorizedException, UseGuards } from "@nestjs/common";
-import { createDecipheriv } from "node:crypto";
-import { BotEventStatus, BotPlatform, OrderSourcePlatform } from "@prisma/client";
+import { KookOrderFlowService } from "./kook-order-flow.service";
+import { parseOrderAcceptAction, DISPATCH_REFRESH_MESSAGE } from "@dfc/shared";
+import { DispatchVersionException } from "../orders/dispatch-version";
+import { BadRequestException, Body, Controller, HttpCode, Post, UnauthorizedException, UseGuards, Optional } from "@nestjs/common";
+import { createDecipheriv, createHash } from "node:crypto";
+import { BotEventStatus, BotPlatform, OrderSourcePlatform, Prisma } from "@prisma/client";
+import { enqueueJob, IntegrationJobsService } from "../bot/integration-jobs.service";
+import { PrismaService } from "../prisma/prisma.service";
 import { AuthService } from "../auth/auth.service";
 import { BotInternalGuard } from "../bot/bot-internal.guard";
 import { BotNotificationService } from "../bot/bot-notification.service";
@@ -15,13 +20,20 @@ export class KookWebhookController {
     private readonly orderDrafts: OrderDraftsService,
     private readonly platformSupport: PlatformSupportService,
     private readonly botNotifications: BotNotificationService,
-    private readonly auth: AuthService
+    private readonly auth: AuthService,
+    private readonly prisma: PrismaService,
+    private readonly jobs: IntegrationJobsService,
+    @Optional() private readonly flows?: KookOrderFlowService
   ) {}
+
+  onModuleInit() {
+    this.jobs.register("KOOK_EVENT", async payload => { await this.processVerifiedWebhook(payload as unknown as KookWebhookBody); });
+  }
 
   @Post("orders/accept")
   @UseGuards(BotInternalGuard)
-  acceptOrder(@Body() body: { orderId: string; kookUserId: string; messageId?: string }) {
-    return this.orders.acceptOrderFromPlatform(BotPlatform.KOOK, body.orderId, body.kookUserId, body.messageId);
+  acceptOrder(@Body() body: { orderId: string; kookUserId: string; messageId?: string; dispatchVersion?: number }) {
+    return this.orders.acceptOrderFromPlatform(BotPlatform.KOOK, body.orderId, body.kookUserId, body.messageId, body.dispatchVersion);
   }
 
   @Post("order-drafts/apply")
@@ -54,9 +66,6 @@ export class KookWebhookController {
   @HttpCode(200)
   async webhook(@Body() body: KookWebhookBody) {
     const webhookBody = this.decodeWebhookBody(body);
-    const challenge = this.extractChallenge(webhookBody);
-    if (challenge) return { challenge };
-
     const expectedVerifyToken = process.env.KOOK_VERIFY_TOKEN;
     const actualVerifyToken = webhookBody.verify_token ?? webhookBody.d?.verify_token;
 
@@ -67,36 +76,45 @@ export class KookWebhookController {
       throw new UnauthorizedException("Invalid KOOK verify token");
     }
 
+    const challenge = this.extractChallenge(webhookBody);
+    if (challenge) return { challenge };
+    // Button body.msg_id identifies the card, not this delivered event. Only the
+    // outer event ID is a durable inbox identity; transport sn may wrap or recur.
+    const eventId = webhookBody.d?.msg_id;
+    if (typeof eventId !== "string" || !eventId.trim()) {
+      throw new BadRequestException("KOOK event requires an outer d.msg_id; card and timestamp fallback is not supported");
+    }
+    // Stable configured bot IDs survive verify-token rotation. Legacy deployments
+    // use a digest of the already-verified token, never persist the token itself.
+    const configuredBotId = process.env.KOOK_BOT_ID?.trim();
+    const botScope = configuredBotId
+      ? ["bot", configuredBotId]
+      : ["verified-webhook", createHash("sha256").update(expectedVerifyToken).digest("hex")];
+    const key = `kook-event:${createHash("sha256").update(JSON.stringify([botScope, eventId])).digest("hex")}`;
+    const payload = JSON.parse(JSON.stringify(webhookBody, (name, value) => ["verify_token", "encrypt", "sn"].includes(name) ? undefined : value)) as Prisma.InputJsonValue;
+    await enqueueJob(this.prisma, "KOOK_EVENT", key, payload);
+    return { accepted: true };
+  }
+
+  private async processVerifiedWebhook(webhookBody: KookWebhookBody) {
     const memberJoin = this.extractMemberJoin(webhookBody);
     if (memberJoin) {
-      const account = await this.platformSupport.ensurePlatformCustomer({
-        platform: BotPlatform.KOOK,
-        platformUserId: memberJoin.kookUserId,
-        displayName: memberJoin.displayName
-      });
-
-      const roleSync = account?.userId
-        ? await this.botNotifications.syncKookCustomerMembershipLevel(account.userId).catch((error) => ({
-            platform: BotPlatform.KOOK,
-            status: BotEventStatus.FAILED,
-            error: errorMessage(error)
-          }))
-        : null;
-
+      // Joining a guild is not consent to open a business account or grant roles.
       const guideNotification = await this.sendKookAccountBindingGuide(memberJoin.kookUserId);
-
-      return {
-        registered: Boolean(account),
-        platform: BotPlatform.KOOK,
-        kookUserId: memberJoin.kookUserId,
-        userId: account?.userId,
-        displayName: account?.displayName ?? memberJoin.displayName,
-        roleSync,
-        guideNotification
-      };
+      return { welcomed: true, registered: false, platform: BotPlatform.KOOK, guideNotification };
     }
 
-    const actionValue = this.extractActionValue(webhookBody);
+    const isButton = webhookBody.d?.extra?.type === "message_btn_click";
+    const actionValue = isButton ? this.extractActionValue(webhookBody) : undefined;
+    if (this.flows && actionValue && (actionValue.startsWith("dfc.") || actionValue.startsWith("order-draft.apply."))) {
+      const userId = this.extractKookUserId(webhookBody);
+      const eventId = webhookBody.d?.msg_id;
+      const messageId = this.extractMessageId(webhookBody);
+      if (!userId || !eventId || !messageId) throw new BadRequestException("Missing verified KOOK button identity");
+      const input = { userId, eventId, messageId, value: actionValue };
+      if (actionValue.startsWith("order-draft.apply.")) return this.flows.applyDraft(input, this.extractChannelId(webhookBody));
+      return this.flows.action(input);
+    }
     if (actionValue?.startsWith("order-draft.apply.")) {
       const draftId = actionValue.replace("order-draft.apply.", "");
       const kookUserId = this.extractKookUserId(webhookBody);
@@ -115,14 +133,24 @@ export class KookWebhookController {
       return this.handlePlatformTextMessage(webhookBody);
     }
 
-    const orderId = actionValue.replace("order.accept.", "");
     const kookUserId = this.extractKookUserId(webhookBody);
-
-    if (!orderId || !kookUserId) {
-      throw new BadRequestException("Missing KOOK order accept payload");
+    if (!kookUserId) throw new BadRequestException("Missing KOOK order accept payload");
+    try {
+      // Already-persisted verified dispatch events may predate outer event IDs.
+      // New deliveries still require d.msg_id at webhook ingress above.
+      if (this.flows) return await this.flows.acceptVerifiedDispatch({
+        userId: kookUserId, messageId: this.extractMessageId(webhookBody), value: actionValue
+      });
+      const action = parseOrderAcceptAction(actionValue);
+      if (!action) throw new DispatchVersionException();
+      return await this.orders.acceptOrderFromPlatform(BotPlatform.KOOK, action.orderId, kookUserId, this.extractMessageId(webhookBody), action.dispatchVersion);
+    } catch (error) {
+      if (!(error instanceof DispatchVersionException)) throw error;
+      // Feedback runs under the persistent inbox delivery context; UNKNOWN is never blindly retried.
+      const notification = await this.botNotifications.sendKookDirectMessage(kookUserId, DISPATCH_REFRESH_MESSAGE);
+      if (notification.status === BotEventStatus.FAILED) throw new Error("DispatchRefreshPromptFailed");
+      return { rejected: true, reason: DISPATCH_REFRESH_MESSAGE, notification };
     }
-
-    return this.orders.acceptOrderFromPlatform(BotPlatform.KOOK, orderId, kookUserId, this.extractMessageId(webhookBody));
   }
 
   @Post("support/messages")
@@ -172,6 +200,10 @@ export class KookWebhookController {
     if (!content || !kookUserId) return { ignored: true };
     if (body.d?.extra?.author?.bot) return { ignored: true };
 
+    if (this.flows?.acceptsCommand(content) && body.d?.msg_id) {
+      return this.flows.command(kookUserId, body.d.msg_id, content);
+    }
+
     const bindingCode = parseBindingText(content);
     if (bindingCode) {
       return this.handleAccountBinding(body, bindingCode, kookUserId);
@@ -207,36 +239,28 @@ export class KookWebhookController {
         : null;
 
     await this.platformSupport.markReplyMessage(result.conversationId, notification?.messageId);
+    if (notification?.status === BotEventStatus.FAILED) throw new Error("KookReplyFailed");
 
     return { ...result, notification };
   }
 
   private async handleAccountBinding(body: KookWebhookBody, code: string, kookUserId: string) {
-    const channelId = this.extractChannelId(body);
-    const isDirect = body.d?.channel_type === "PERSON";
-
-    try {
-      const result = await this.auth.consumePlatformBindingCode(BotPlatform.KOOK, {
-        code,
-        externalUserId: kookUserId,
-        displayName: this.extractAuthorName(body)
-      });
-      const reply = `绑定成功：${result.user.displayName}。以后 KOOK 里的客服、派单和订单记录会关联到你的网站账号。`;
-      const notification = isDirect
-        ? await this.botNotifications.sendKookDirectMessage(kookUserId, reply)
-        : channelId
-          ? await this.botNotifications.sendKookChannelText(channelId, `(met)${kookUserId}(met) ${reply}`)
-          : null;
-      return { bound: true, notification };
-    } catch (error) {
-      const reply = `绑定失败：${errorMessage(error)}。请回网站个人设置重新生成绑定码，10 分钟内使用。`;
-      const notification = isDirect
-        ? await this.botNotifications.sendKookDirectMessage(kookUserId, reply)
-        : channelId
-          ? await this.botNotifications.sendKookChannelText(channelId, `(met)${kookUserId}(met) ${reply}`)
-          : null;
-      return { bound: false, notification };
+    if (body.d?.channel_type !== "PERSON") {
+      const notification = await this.botNotifications.sendKookDirectMessage(kookUserId, "请在私聊中发送绑定码。群聊这次没有执行绑定；公开过的绑定码请在网页重新生成。");
+      return { bound: false, privateRequired: true, notification };
     }
+    let reply: string;
+    let bound = false;
+    try {
+      const result = await this.auth.consumePlatformBindingCode(BotPlatform.KOOK, { code, externalUserId: kookUserId, displayName: this.extractAuthorName(body) });
+      bound = true;
+      reply = `绑定成功：${result.user.displayName}。发送“下单”或“我的订单”即可继续。`;
+    } catch {
+      reply = "本次未完成绑定。请回已登录网页的账号绑定入口重新生成绑定码，在有效期内私聊发送“绑定 绑定码”。";
+    }
+    const notification = await this.botNotifications.sendKookDirectMessage(kookUserId, reply);
+    // Notification failure cannot turn a committed binding into a failed binding.
+    return { bound, notification };
   }
 
   private async handleDispatchApplyText(body: KookWebhookBody, content: string, kookUserId: string) {
@@ -245,7 +269,7 @@ export class KookWebhookController {
     if (!parsed) {
       if (/报名|我要|接|可|来/i.test(content)) {
         const notification = channelId
-          ? await this.botNotifications.sendKookChannelText(channelId, "报名请按格式发送：报名 TRY编号 段位/水平/报价/可服务时间/性格优势/是否可试音")
+          ? await this.botNotifications.sendKookChannelText(channelId, "点击需求卡片的报名按钮即可；也可发送：报名 TRY编号。备注选填，报名不等于正式接单。")
           : null;
         return { ignored: true, notification };
       }
@@ -280,7 +304,7 @@ export class KookWebhookController {
     const note = match[2]?.trim();
     return {
       draftNo: match[1].toUpperCase(),
-      note: note || "按钮/文字报名，待补充段位、报价、性格和服务优势"
+      note: note || undefined
     };
   }
 
@@ -340,14 +364,17 @@ export class KookWebhookController {
   }
 
   private extractKookUserId(body: KookWebhookBody): string | undefined {
-    return body.d?.author_id ?? body.d?.extra?.user_id ?? body.d?.extra?.body?.user_id;
+    if (body.d?.extra?.type === "message_btn_click") return body.d.extra.body?.user_id;
+    return body.d?.author_id ?? body.d?.extra?.user_id;
   }
 
   private extractMessageId(body: KookWebhookBody): string | undefined {
+    if (body.d?.extra?.type === "message_btn_click") return body.d.extra.body?.msg_id;
     return body.d?.msg_id ?? body.d?.extra?.body?.msg_id;
   }
 
   private extractChannelId(body: KookWebhookBody): string | undefined {
+    if (body.d?.extra?.type === "message_btn_click") return body.d.extra.body?.target_id;
     return body.d?.target_id ?? body.d?.channel_id ?? body.d?.extra?.channel_id ?? body.d?.extra?.body?.channel_id;
   }
 
@@ -448,6 +475,7 @@ interface KookWebhookBody {
     verify_token?: string;
     author_id?: string;
     msg_id?: string;
+    msg_timestamp?: number;
     target_id?: string;
     channel_id?: string;
     content?: string;
@@ -472,6 +500,7 @@ interface KookWebhookBody {
         username?: string;
         nickname?: string;
         user?: KookWebhookUser;
+        target_id?: string;
         msg_id?: string;
         channel_id?: string;
         data?: {

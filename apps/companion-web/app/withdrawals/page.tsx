@@ -7,6 +7,7 @@ import { CompanionShell, MetricCard, SectionHeader, StatusBadge } from "../compo
 type CompanionWalletSummary = {
   wallet: {
     availableIncome: string;
+    disputeReserve: string;
     pendingIncome: string;
     frozenIncome: string;
   } | null;
@@ -105,10 +106,11 @@ export default function WithdrawalsPage() {
   return (
     <CompanionShell>
       <SectionHeader eyebrow="Payout Desk" title="我的提现申请" desc="这里只显示当前陪玩账号的提现余额和记录。第一阶段由管理员审核后人工打款。" />
-      <section className="mt-6 grid gap-4 md:grid-cols-3">
+      <section className="mt-6 grid gap-4 md:grid-cols-4">
         <MetricCard label="可提现收益" value={`¥${formatMoney(wallet?.availableIncome ?? "0")}`} hint="当前账号可提交提现" tone="gold" />
         <MetricCard label="提现中" value={`¥${formatMoney(summary?.withdrawingAmount ?? "0")}`} hint="等待审核或打款" />
         <MetricCard label="冻结收益" value={`¥${formatMoney(wallet?.frozenIncome ?? "0")}`} hint="提现申请会先冻结" tone="green" />
+        <MetricCard label="投诉待复核预留" value={`¥${formatMoney(wallet?.disputeReserve ?? "0")}`} hint="相关订单待人工裁决；已从可提现额扣除" />
       </section>
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">

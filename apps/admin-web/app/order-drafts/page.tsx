@@ -1,7 +1,8 @@
 "use client";
 
+import { acknowledgeDirectOrder, prepareDirectOrder, readPendingDirectOrder, type PendingDirectOrder } from "./pending-direct-order";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 
 type AdminUser = {
@@ -26,6 +27,8 @@ type Companion = {
   games?: string[];
   status: string;
   onlineStatus: string;
+  userStatus?: string;
+  activeServiceCount?: number;
   pricePerHour: string;
   kookPricePerHour?: string | null;
   discordPricePerHour?: string | null;
@@ -145,6 +148,9 @@ function isClosedDraft(draft: Pick<OrderDraft, "status">) {
 }
 
 export default function OrderDraftsPage() {
+  const directBusy = useRef(false);
+  const [directSubmitting, setDirectSubmitting] = useState(false);
+  const [pendingDirect, setPendingDirect] = useState<PendingDirectOrder | null>(null);
   const [drafts, setDrafts] = useState<OrderDraft[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [companions, setCompanions] = useState<Companion[]>([]);
@@ -172,7 +178,7 @@ export default function OrderDraftsPage() {
     note: ""
   });
 
-  async function loadData() {
+  async function loadData(preferredDraftId?: string) {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
     const [draftsResponse, usersResponse, companionsResponse, promotionSettingsResponse, rankPricesResponse] = await Promise.all([
@@ -192,12 +198,16 @@ export default function OrderDraftsPage() {
     setSelectedDraftId((current) => {
       const currentDraft = nextDrafts.find((draft) => draft.id === current);
       if (currentDraft && !isClosedDraft(currentDraft)) return current;
+      const preferred = nextDrafts.find(draft => draft.id === preferredDraftId && !isClosedDraft(draft));
+      if (preferred) return preferred.id;
       return nextDrafts.find((draft) => !isClosedDraft(draft))?.id || "";
     });
   }
 
   useEffect(() => {
-    void loadData().catch(() => setError("无法加载试音派单数据，请确认管理员已登录"));
+    try { setPendingDirect(readPendingDirectOrder(sessionStorage)); }
+    catch { setError("原请求记录无法读取，请先核对订单，勿重复成单"); }
+    void loadData(new URLSearchParams(window.location.search).get("draftId") ?? undefined).catch(() => setError("无法加载试音派单数据，请确认管理员已登录"));
   }, []);
 
   const customers = users.filter((user) => user.role === "CUSTOMER" && user.status === "ACTIVE");
@@ -246,29 +256,12 @@ export default function OrderDraftsPage() {
     () => {
       const keyword = companionQuery.trim().toLowerCase();
       if (!selectedDraft) return [];
-      return selectedDraft.candidates
-        .filter((candidate) => candidate.companion.companionProfile)
-        .map((candidate) => {
-          const profile = candidate.companion.companionProfile!;
-          return {
-            userId: candidate.companion.id,
-            nickname: profile.nickname || candidate.companion.displayName,
-            email: candidate.companion.email,
-            game: selectedDraft.game,
-            games: [selectedDraft.game],
-            status: profile.status,
-            onlineStatus: profile.onlineStatus,
-            pricePerHour: profile.pricePerHour,
-            kookPricePerHour: profile.kookPricePerHour,
-            discordPricePerHour: profile.discordPricePerHour,
-            entertainmentPricePerHour: profile.entertainmentPricePerHour,
-            rankedPricePerHour: profile.rankedPricePerHour,
-            highRankedPricePerHour: profile.highRankedPricePerHour
-          } satisfies Companion;
-        })
+      return companions
+        .filter(companion => companion.status === "LISTED" && companion.userStatus === "ACTIVE" &&
+          (companion.game === selectedDraft.game || companion.games?.includes(selectedDraft.game)))
         .filter((companion) => !keyword || [companion.nickname, companion.email].some((value) => value.toLowerCase().includes(keyword)));
     },
-    [selectedDraft, companionQuery]
+    [selectedDraft, companionQuery, companions]
   );
   const multiPickerCompanions = useMemo(() => {
     const selectedFirst = selectedCompanionIds
@@ -343,10 +336,12 @@ export default function OrderDraftsPage() {
         ...(options.headers ?? {})
       }
     });
-    const data = (await response.json().catch(() => ({}))) as T & { message?: string | string[] };
+    const data = (await response.json().catch(() => ({}))) as T & { message?: string | string[]; requestOutcome?: string };
     if (!response.ok) {
       const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      throw new Error(toFriendlyError(message));
+      throw Object.assign(new Error(toFriendlyError(message)), {
+        requestNotCommitted: response.status === 400 && data.requestOutcome === "NOT_COMMITTED"
+      });
     }
     return data;
   }
@@ -364,41 +359,63 @@ export default function OrderDraftsPage() {
       setError("请填写服务时长");
       return;
     }
-    if (!directCompanionIds.length) {
-      setError("请至少选择 1 个客户指定的陪玩");
+    if (directBusy.current) return;
+    if (!directBill || directBill.count !== Math.max(1, directCompanionIds.length) || directBill.totalAmount <= 0) {
+      setError("请核对本笔陪玩、时长和价格，金额确认后再成单");
       return;
     }
-
+    const customer = customers.find((item) => item.id === form.customerId);
+    if (!window.confirm(`确认冻结余额并直接成单？\n客户：${customer?.displayName ?? form.customerId} (${form.customerId})\n陪玩：${directCompanionIds.join("、")}\n模式：${form.mode}；时长：${form.hours}\n预估总额：¥${directBill.totalAmount.toFixed(2)}（以服务端计算为准）`)) return;
     try {
-      const data = await callApi<{ orderGroup?: { groupNo?: string }; orders?: Array<{ orderNo: string }> }>("/api/admin/orders/direct", {
-        method: "POST",
-        body: JSON.stringify({
-          customerId: form.customerId,
-          companionIds: directCompanionIds,
-          sourcePlatform: form.sourcePlatform,
-          sourceChannelId: form.sourceChannelId || undefined,
-          game: form.game,
-          mode: form.mode,
-          hours: form.hours,
-          priceTier: form.priceTier,
-          rankTierKey: form.rankTierKey === "CUSTOM" ? undefined : form.rankTierKey,
-          customUnitPrice: form.rankTierKey === "CUSTOM" ? form.customUnitPrice || undefined : undefined,
-          notes: form.note || undefined,
-          voiceTrialRequested: false
-        })
+      const pending = prepareDirectOrder(sessionStorage, {
+        customerId: form.customerId, companionIds: directCompanionIds, sourcePlatform: form.sourcePlatform,
+        sourceChannelId: form.sourceChannelId || undefined, game: form.game, mode: form.mode, hours: form.hours,
+        priceTier: form.priceTier, rankTierKey: form.rankTierKey === "CUSTOM" ? undefined : form.rankTierKey,
+        customUnitPrice: form.rankTierKey === "CUSTOM" ? form.customUnitPrice || undefined : undefined,
+        notes: form.note || undefined, voiceTrialRequested: false
+      }, () => crypto.randomUUID());
+      setPendingDirect(pending);
+      await submitDirectOrder(pending);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "原请求未确认，请勿重复成单");
+    }
+  }
+
+  async function submitDirectOrder(pending: PendingDirectOrder) {
+    if (directBusy.current) return;
+    directBusy.current = true;
+    setDirectSubmitting(true);
+    let committed = false;
+    try {
+      const data = await callApi<{ orderGroup?: { groupNo?: string }; orders?: Array<{ id: string; orderNo: string }> }>("/api/admin/orders/direct", {
+        method: "POST", body: JSON.stringify({ ...pending.payload, requestId: pending.requestId })
       });
-      const groupNo = data.orderGroup?.groupNo;
-      const firstOrderNo = data.orders?.[0]?.orderNo;
-      setStatus(
-        directCompanionIds.length > 1
-          ? `已直接创建正式订单组 ${groupNo ?? ""}：${directCompanionIds.length} 个陪玩子订单。`
-          : `已直接创建正式订单 ${firstOrderNo ?? groupNo ?? ""}。`
-      );
+      const reference = data.orderGroup?.groupNo || data.orders?.[0]?.orderNo;
+      if (!reference) throw new Error("未收到有效订单号，结果待确认，请重试原请求");
+      committed = true;
+      acknowledgeDirectOrder(sessionStorage, pending.requestId);
+      setPendingDirect(null);
+      setStatus(`正式订单已确认：${reference}。`);
       setDirectCompanionIds([]);
       setForm((current) => ({ ...current, mode: "", hours: "", note: "" }));
+      if (!pending.payload.companionIds.length && data.orders?.[0]?.id) {
+        window.location.assign(`/admin/dispatch?orderId=${encodeURIComponent(data.orders[0].id)}`);
+        return;
+      }
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "直接成单失败");
+      if (!committed && err && typeof err === "object" && "requestNotCommitted" in err && err.requestNotCommitted === true) {
+        try { acknowledgeDirectOrder(sessionStorage, pending.requestId); }
+        catch { setError("服务端确认未成单，但本地原请求记录无法清理，请保留并核对原请求"); return; }
+        setPendingDirect(null);
+        setError(`服务端确认本笔未成单，请修改后重试。${err instanceof Error ? err.message : "参数无效"}`);
+        return;
+      }
+      setError(committed ? "订单已确认，但列表刷新或本地记录清理失败，请核对原订单，勿重复创建"
+        : `原请求结果待确认，参数已保留；可重试原请求。${err instanceof Error ? err.message : "请求失败"}`);
+    } finally {
+      directBusy.current = false;
+      setDirectSubmitting(false);
     }
   }
 
@@ -420,7 +437,7 @@ export default function OrderDraftsPage() {
     }
     const companionIds = selectedCompanionIdsForAction();
     try {
-      await callApi(`/api/admin/order-drafts/${selectedDraftId}/convert`, {
+      const result = await callApi<{ requiresDispatch?: boolean; orderGroup?: { groupNo: string }; orders?: Array<{ id: string }> }>(`/api/admin/order-drafts/${selectedDraftId}/convert`, {
         method: "POST",
         body: JSON.stringify({
           ...(companionIds.length > 1 ? { companionIds } : { companionId: companionIds[0] || undefined }),
@@ -428,7 +445,11 @@ export default function OrderDraftsPage() {
           customUnitPrice: selectedDraftRankTierKey === "CUSTOM" ? selectedDraftCustomUnitPrice || undefined : undefined
         })
       });
-      setStatus(companionIds.length > 1 ? `已转为订单组：${companionIds.length} 个陪玩子订单。` : companionIds.length === 1 ? "\u5df2\u6307\u5b9a\u966a\u73a9\u5e76\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002" : "\u5df2\u8f6c\u4e3a\u6b63\u5f0f\u8ba2\u5355\u3002");
+      setStatus(result.requiresDispatch
+        ? "正式订单已保留，仍待派单，请前往派单台继续处理。"
+        : result.orderGroup
+            ? `已转为订单组：${result.orders?.length ?? 0} 个陪玩子订单。`
+            : "正式订单已就绪，请查看订单当前状态。");
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "\u8f6c\u8ba2\u5355\u5931\u8d25");
@@ -494,7 +515,7 @@ export default function OrderDraftsPage() {
 
   return (
     <AdminShell>
-      <SectionHeader eyebrow="Group Order Desk" title="群下单成单台" desc="招募消息在 Discord / KOOK 频道由人工或 AI 发布；后台只处理平台报名回流和客户已选陪玩的直接成单。" />
+      <SectionHeader eyebrow="Group Order Desk" title="客服代下单" desc="填写客户、需求、时长和价格即可建单，再到派单台找人。客户已确认陪玩时也可保留原有直接成单方式。" />
 
       <section className="mb-5 grid gap-4 md:grid-cols-3">
         <Signal label="待处理草稿" value={String(stats.open)} hint="等待平台报名或客户确认选择" tone="cyan" />
@@ -506,7 +527,7 @@ export default function OrderDraftsPage() {
       {status ? <Alert tone="success">{status}</Alert> : null}
 
       <section className="mb-6">
-        <Panel title="已选陪玩直接成单" hint="客户已经在 KOOK / Discord 点名陪玩时使用：后台选择客户和陪玩后直接扣余额、生成正式订单。">
+        <Panel title="快速代建单" hint="按客户确认的需求与价格冻结现有余额；陪玩可先不选，建单后立即进入客服派单台。">
           <div className="grid gap-3 md:grid-cols-2">
             <CustomerSelect value={form.customerId} customers={customers} onChange={(value) => setForm({ ...form, customerId: value })} />
             <select value={form.sourcePlatform} onChange={(event) => setForm({ ...form, sourcePlatform: event.target.value as "WEB" | "DISCORD" | "KOOK" })} className="input">
@@ -591,8 +612,8 @@ export default function OrderDraftsPage() {
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <ActionButton onClick={() => void createDirectOrder()}>
-              {directCompanionIds.length > 1 ? `直接创建正式订单（${directCompanionIds.length} 人）` : "直接创建正式订单"}
+            <ActionButton disabled={directSubmitting || Boolean(pendingDirect)} onClick={() => void createDirectOrder()}>
+              {directCompanionIds.length > 1 ? `直接创建正式订单（${directCompanionIds.length} 人）` : directCompanionIds.length ? "直接创建正式订单" : "建单并去选陪玩"}
             </ActionButton>
           </div>
         </Panel>
@@ -600,7 +621,12 @@ export default function OrderDraftsPage() {
 
       <section className="admin-panel mb-6">
         <h2 className="text-base font-black text-white">平台报名处理</h2>
-        <p className="mt-1 text-xs leading-5 text-dfc-muted">这里不做后台招募，只处理 DC / KOOK 报名回流和客户最终选择，最后转正式订单。</p>
+        <p className="mt-1 text-xs leading-5 text-dfc-muted">客服先安排人选；没有合适人选时才手动启用备用招募。</p>
+        <ActionButton disabled={!selectedDraft || !["NEW", "OPEN", "TRIALING"].includes(selectedDraft.status)} onClick={() => {
+          void callApi(`/api/admin/order-drafts/${selectedDraftId}/publish-fallback`, { method: "POST" })
+            .then(() => setStatus("备用招募已进入通知队列，报名不等于正式接单"))
+            .catch(err => setError(err instanceof Error ? err.message : "启用失败"));
+        }}>无合适人选，启用备用招募</ActionButton>
         <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
           <select value={selectedDraftId} onChange={(event) => setSelectedDraftId(event.target.value)} className="input">
             <option value="">选择待处理草稿</option>
@@ -635,9 +661,15 @@ export default function OrderDraftsPage() {
                 <div className="text-sm font-black text-white">平台报名候选（可多选）</div>
                 <div className="mt-1 text-xs leading-5 text-dfc-muted">
                   {selectedDraft
-                    ? "这里只展示 DC / KOOK 已报名回流的陪玩；客户从报名里选好后，在这里勾选并转正式订单。"
+                    ? "展示本游戏上架陪玩；客服沟通确认后选择人选，无需先公开招募。"
                     : "先选择一个待处理草稿，随后这里会显示平台报名回流的陪玩。"}
                 </div>
+            {pendingDirect ? <div className="mt-3 text-sm text-dfc-gold">
+              <p>原请求待确认：客户 {pendingDirect.payload.customerId}，{pendingDirect.payload.mode}，{pendingDirect.payload.hours} 小时，陪玩 {pendingDirect.payload.companionIds.join("、")}。刷新页面后仍保留。</p>
+              <ActionButton disabled={directSubmitting} onClick={() => {
+                if (window.confirm(`重试此原请求，沿用原参数和请求号？\n客户：${pendingDirect.payload.customerId}\n模式：${pendingDirect.payload.mode}；时长：${pendingDirect.payload.hours}\n陪玩：${pendingDirect.payload.companionIds.join("、")}`)) void submitDirectOrder(pendingDirect);
+              }}>重试原请求</ActionButton>
+            </div> : null}
               </div>
               <div className="rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100">
                 已选 {selectedCompanionIds.length} 人
@@ -668,7 +700,7 @@ export default function OrderDraftsPage() {
                   <button
                     key={companion.userId}
                     type="button"
-                    disabled={!selectedDraft}
+                    disabled={!selectedDraft || companion.onlineStatus === "BUSY" || Boolean(companion.activeServiceCount)}
                     onClick={() => selectedDraft && toggleSelectedCompanion(companion.userId)}
                     className={`min-h-20 rounded-dfc-control border p-3 text-left transition hover:border-cyan-300/50 ${
                       selected ? "border-cyan-300/70 bg-cyan-300/10" : "border-cyan-300/15 bg-[#101827]"
@@ -681,7 +713,7 @@ export default function OrderDraftsPage() {
                       </span>
                     </div>
                     <div className="mt-2 text-xs leading-5 text-dfc-muted">
-                      {orderUnitPriceLabel(game, rankTierKey, customUnitPrice, price, rankPrices)} / {toOnlineStatus(companion.onlineStatus)}
+                      {orderUnitPriceLabel(game, rankTierKey, customUnitPrice, price, rankPrices)} / {companion.activeServiceCount ? "服务中" : toOnlineStatus(companion.onlineStatus)}
                     </div>
                   </button>
                 );
@@ -689,7 +721,7 @@ export default function OrderDraftsPage() {
             </div>
             {multiPickerCompanions.length === 0 ? (
               <div className="mt-3 rounded-dfc-control border border-cyan-300/10 bg-black/20 px-3 py-2 text-xs text-dfc-muted">
-                暂无平台报名候选。请先在 DC / KOOK 招募频道 @ 对应标签，让陪玩在平台报名。
+                暂无匹配陪玩；可调整搜索，或由客服手动启用备用招募。
               </div>
             ) : null}
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-dfc-muted">
@@ -1108,6 +1140,11 @@ function buildDirectBill(
 ): DraftBill | null {
   const hours = Number(order.hours || 0);
   if (!Number.isFinite(hours) || hours <= 0) return null;
+  if (!selectedIds.length) {
+    const unitPrice = Number(findRankPrice(rankPrices, order.game, order.rankTierKey)?.unitPrice || order.customUnitPrice || 0);
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return null;
+    return { count: 1, hours, originalAmount: unitPrice * hours, discountAmount: 0, totalAmount: unitPrice * hours };
+  }
   const unitPrices = companions
     .filter((companion) => selectedIds.includes(companion.userId))
     .map((companion) => Number(companionPriceForOrder(companion, { ...order, rankPrices })) || 0);

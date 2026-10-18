@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { BotEventStatus, BotPlatform, CompanionProfileStatus, GameCode, OrderSourcePlatform, Prisma, UserRole, UserStatus } from "@prisma/client";
-import { randomBytes, randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 import { normalizeDisplayNameKey } from "../auth/display-name.util";
 import { createPasswordHash } from "../auth/password.util";
 import { PrismaService } from "../prisma/prisma.service";
@@ -20,6 +20,8 @@ type SupportResult = {
 };
 
 type SupportHistoryTurn = {
+  id?: string;
+  matchedTopic?: string | null;
   message: string;
   answer: string;
 };
@@ -46,6 +48,8 @@ type PlatformSupportMessage = {
   content: string;
   isDirect?: boolean;
 };
+
+type SupportScope = { userId?: string; platform?: BotPlatform; platformUserId?: string; guildId?: string; channelId?: string; isDirect?: boolean };
 
 type PlatformCustomerIdentity = Pick<PlatformSupportMessage, "platform" | "platformUserId" | "displayName">;
 type PlatformAccountWithUser = Prisma.UserExternalAccountGetPayload<{ include: { user: true } }>;
@@ -80,7 +84,7 @@ const SUPPORT_RULES: SupportRule[] = [
     topic: "试音选人",
     keywords: ["试音", "语音", "频道", "听声音", "选人", "人工派单"],
     answer:
-      "可以先试音选人。流程是：你说需求 -> 客服整理派单 -> 有空的陪玩报名 -> 客服把候选人发给你 -> 你确认后再转正式订单。"
+      "可以先表达试音需求。试音、选择陪玩和正式接单是三个步骤；是否收费和何时能试，需要核对候选陪玩。"
   },
   {
     topic: "退款投诉",
@@ -111,13 +115,13 @@ const SUPPORT_RULES: SupportRule[] = [
     topic: "优惠推荐",
     keywords: ["优惠", "推荐", "邀请码", "老带新", "返利", "奖励", "首单", "首充", "优惠码", "充值码"],
     answer:
-      "平台支持首充赠送、老带新、陪玩带客奖励、优惠码和充值码。具体能否使用、是否已使用、奖励金额，以后台活动配置和人工客服确认结果为准。"
+      "优惠是否可用要核对活动配置和你的订单。请在确认页查看实际优惠和总额；这里不能保证返利或赠送。"
   },
   {
     topic: "人工客服",
     keywords: ["人工", "客服", "微信", "vx", "联系", "二维码"],
     answer:
-      "你可以通过充值页的 VX 二维码、KOOK 客服入口或 Discord 客服入口联系人工客服。请不要把后台 Token、验证码、密码发给任何人。"
+      "请从网站客服入口联系人工。目前没有人工接单回执，不能保证何时回复。"
   }
 ];
 
@@ -192,106 +196,76 @@ export class PlatformSupportService {
 
   async autoReplyForWeb(userId: string, message: string) {
     const normalizedMessage = this.normalizeMessage(message);
-    const history = await this.loadConversationHistory({ userId });
-    const result = await this.resolveSupportAnswer(normalizedMessage, history);
-    await this.prisma.aiSupportConversation.create({
-      data: {
-        userId,
-        message: normalizedMessage,
-        answer: result.answer,
-        matchedTopic: result.matchedTopic,
-        handoffRequired: result.handoffRequired
-      }
-    });
-
-    return {
-      answer: result.answer,
-      matchedTopic: result.matchedTopic,
-      handoffRequired: result.handoffRequired,
-      suggestions: DEFAULT_SUPPORT_SUGGESTIONS
-    };
+    const scope: SupportScope = { userId };
+    const history = await this.loadConversationHistory(scope);
+    const result = await this.resolveSupportAnswer(normalizedMessage, history, scope);
+    const answer = this.identifyAssistant(result.answer, history);
+    await this.prisma.aiSupportConversation.create({ data: { userId, message: normalizedMessage, ...result, answer } });
+    return { ...result, answer, suggestions: DEFAULT_SUPPORT_SUGGESTIONS };
   }
 
   async handlePlatformMessage(input: PlatformSupportMessage) {
     const message = this.normalizeMessage(input.content);
     const duplicate = await this.findDuplicatePlatformMessage(input, message);
-    if (duplicate) {
-      return {
-        conversationId: duplicate.id,
-        reply: "",
-        matchedTopic: duplicate.matchedTopic ?? "duplicate",
-        handoffRequired: duplicate.handoffRequired,
-        draft: null,
-        duplicate: true
-      };
-    }
+    if (duplicate) return {
+      conversationId: duplicate.id, reply: duplicate.replyMessageId ? "" : duplicate.answer,
+      matchedTopic: duplicate.matchedTopic ?? "duplicate", handoffRequired: duplicate.handoffRequired,
+      draft: null, duplicate: Boolean(duplicate.replyMessageId)
+    };
 
     let account = await this.prisma.userExternalAccount.findUnique({
-      where: {
-        platform_externalUserId: {
-          platform: input.platform,
-          externalUserId: input.platformUserId
-        }
-      },
+      where: { platform_externalUserId: { platform: input.platform, externalUserId: input.platformUserId } },
       include: { user: true }
     });
-
-    if (!account) {
-      account = await this.findOrCreatePlatformCustomer(input);
-    } else {
-      account = await this.refreshPlatformAccountDisplayName(account, input);
-    }
-
-    const history = await this.loadConversationHistory({
-      userId: account?.userId,
-      platform: input.platform,
-      platformUserId: input.platformUserId
-    });
-    const result = await this.resolveSupportAnswer(message, history);
-    const dispatchIntent = !this.isPureConsultation(message) && (this.isDispatchIntent(message) || this.isDemandContinuation(message, history));
-    const customerId = account?.user?.role === UserRole.CUSTOMER && account.user.status === UserStatus.ACTIVE ? account.userId : undefined;
-    let finalAnswer = result.answer;
-    let matchedTopic = result.matchedTopic;
-    let handoffRequired = result.handoffRequired;
+    if (!account) account = await this.findOrCreatePlatformCustomer(input);
+    else if (account.user.status === UserStatus.ACTIVE) account = await this.refreshPlatformAccountDisplayName(account, input);
+    const scope: SupportScope = { ...input, userId: account?.userId };
+    const history = await this.loadConversationHistory(scope);
+    const customerId = account?.user.role === UserRole.CUSTOMER && account.user.status === UserStatus.ACTIVE ? account.userId : undefined;
+    let result: SupportResult;
     let draft: { id: string; draftNo: string } | null = null;
-    const selectedCandidate = await this.trySelectDraftCandidate(input, account, message);
+    const escalation = this.handoffAnswer(message, history);
+    const selectionCommand = /^(?:选择|选)\s+TRY/i.test(message.normalize("NFKC"));
+    const dispatch = !escalation && !this.isOrderQuestion(message) && !this.isOrderContinuation(message, history) && !this.isPureConsultation(message) &&
+      (this.isDispatchIntent(message) || this.isDemandContinuation(message, history));
 
-    if (selectedCandidate) {
-      draft = { id: selectedCandidate.draftId, draftNo: selectedCandidate.draftNo };
-      finalAnswer = selectedCandidate.reply;
-      matchedTopic = "选择陪玩";
-      handoffRequired = false;
-    } else if (dispatchIntent) {
-      const facts = this.withExplicitPublishDefaults(message, this.buildDemandFacts(message, history));
-      const dispatchResult = await this.maybeCreateDispatchDraft(input, customerId, message, facts, history);
-      draft = dispatchResult.draft;
-      finalAnswer = dispatchResult.reply;
-      matchedTopic = "找陪玩";
-      handoffRequired = true;
-    }
-
-    const conversation = await this.prisma.aiSupportConversation.create({
-      data: {
-        userId: account?.userId,
-        platform: input.platform,
-        platformUserId: input.platformUserId,
-        platformGuildId: input.guildId,
-        platformChannelId: input.channelId,
-        platformMessageId: input.messageId,
-        message,
-        answer: finalAnswer,
-        matchedTopic,
-        handoffRequired
+    if (escalation) result = escalation;
+    else if (selectionCommand && customerId) {
+      try {
+        const selected = await this.trySelectDraftCandidate(input, account, message);
+        if (selected) {
+          draft = { id: selected.draftId, draftNo: selected.draftNo };
+          result = { answer: selected.reply, matchedTopic: "选择陪玩", handoffRequired: false };
+        } else result = { answer: "没能确认这次选择。请使用当前候选卡上的需求号和陪玩姓名；同名时用候选编号。不会自动替你选其他人。", matchedTopic: "选择待确认", handoffRequired: false };
+      } catch {
+        result = { answer: "这次选人的结果暂时没确认，请让人工客服核对原需求；先不要重复操作。", matchedTopic: "选择结果待核", handoffRequired: true };
       }
-    });
+    } else if (dispatch) {
+      const facts = this.buildDemandFacts(message, history);
+      const receipt = await this.maybeCreateDispatchDraft(input, customerId, message, facts, history);
+      draft = receipt.draft;
+      result = { answer: receipt.reply, matchedTopic: receipt.topic, handoffRequired: receipt.handoffRequired };
+    } else result = await this.resolveSupportAnswer(message, history, scope);
 
-    return {
-      conversationId: conversation.id,
-      reply: finalAnswer,
-      matchedTopic,
-      handoffRequired,
-      draft
-    };
+    const firstUseGuide = !account && input.platform === BotPlatform.KOOK
+      ? "\n首次使用请私聊发送“首次使用”，由本人确认建立客户档案；已有网页账号请先绑定原账号。普通咨询不会建立客户档案。" : "";
+    const answer = this.identifyAssistant(result.answer + firstUseGuide, history);
+    let conversation;
+    try {
+      conversation = await this.prisma.aiSupportConversation.create({ data: {
+        userId: account?.userId, platform: input.platform, platformUserId: input.platformUserId,
+        platformGuildId: input.guildId ?? null, platformChannelId: input.channelId ?? null,
+        platformMessageId: input.messageId, message, ...result, answer
+      } });
+    } catch (error) {
+      // Concurrent deliveries may race on the durable platform/message unique key.
+      if (!input.messageId || (error as { code?: string }).code !== "P2002") throw error;
+      const saved = await this.findDuplicatePlatformMessage(input, message);
+      if (!saved) throw error;
+      return { conversationId: saved.id, reply: "", matchedTopic: saved.matchedTopic ?? "duplicate",
+        handoffRequired: saved.handoffRequired, draft: null, duplicate: true };
+    }
+    return { conversationId: conversation.id, reply: answer, matchedTopic: result.matchedTopic, handoffRequired: result.handoffRequired, draft };
   }
 
   async markReplyMessage(conversationId: string, replyMessageId?: string) {
@@ -309,98 +283,85 @@ export class PlatformSupportService {
   }
 
   private async maybeCreateDispatchDraft(
-    input: PlatformSupportMessage,
-    customerId: string | undefined,
-    message: string,
-    facts: DemandFacts,
-    history: SupportHistoryTurn[] = []
+    input: PlatformSupportMessage, customerId: string | undefined, message: string,
+    facts: DemandFacts, history: SupportHistoryTurn[] = []
   ) {
-    const shouldPublish = process.env.AI_AUTO_DISPATCH_ENABLED === "true" || this.shouldPublishDispatchDraft(message, facts);
-    if (!shouldPublish) {
-      const fallbackReply = this.buildDispatchCollectionReply(facts);
-      return {
-        draft: null,
-        reply: (await this.tryAiDispatchReply(message, history, facts, "collecting", fallbackReply)) ?? fallbackReply
-      };
-    }
-
-    if (!facts.game || !facts.duration) {
-      const fallbackReply = this.buildDispatchCollectionReply(facts);
-      return {
-        draft: null,
-        reply: (await this.tryAiDispatchReply(message, history, facts, "collecting", fallbackReply)) ?? fallbackReply
-      };
-    }
-
-    const serviceAdmin = await this.findServiceAdmin();
-    if (!serviceAdmin) {
-      return {
-        draft: null,
-        reply: "我已记录你的需求，但后台暂时没有可用管理员账号。请人工客服先处理这条派单。"
-      };
-    }
-
-    const sourcePlatform = input.platform === BotPlatform.DISCORD ? OrderSourcePlatform.DISCORD : OrderSourcePlatform.KOOK;
-    const result = await this.orderDrafts.createDraftFromDemand(serviceAdmin.id, {
-      customerId,
-      sourcePlatform,
-      customerPlatformUserId: input.platformUserId,
-      customerDisplayName: input.displayName,
-      sourceGuildId: input.guildId,
-      sourceChannelId: input.channelId,
-      sourceMessageId: input.messageId,
-      demandText: facts.summary || message
-    });
-
-    const fallbackReply = this.buildDispatchPublishedReply(result.draft.draftNo, facts, result.notifications);
-
-    return {
-      draft: { id: result.draft.id, draftNo: result.draft.draftNo },
-      reply: (await this.tryAiDispatchReply(message, history, facts, "published", fallbackReply, result.draft.draftNo)) ?? fallbackReply
+    const collecting = { draft: null, reply: this.buildDispatchCollectionReply(facts),
+      topic: facts.missing.length ? "需求收集" : "需求待确认", handoffRequired: false };
+    const lastReset = history.reduce((index, turn, current) => /(重新开始|重新下单|新需求|再来一单|换一单)/.test(turn.message) ? current : index, -1);
+    const currentHistory = /(重新开始|重新下单|新需求|再来一单|换一单)/.test(message) ? [] : history.slice(Math.max(0, lastReset));
+    const priorReceipt = [...currentHistory].reverse().find(turn =>
+      ["需求已记录", "需求结果待核", "需求修改待核"].includes(turn.matchedTopic ?? "") || /派单草稿.+已记录|已发布派单/.test(turn.answer));
+    const anchor = [...currentHistory].reverse().find(turn => turn.matchedTopic === "需求待确认" && turn.answer.includes(facts.summary));
+    if (priorReceipt && (!this.isExplicitDispatchPublish(message) || !anchor)) return {
+      ...collecting, reply: "前面已有提交过的需求，这次补充不会另建一单，也还没有修改原需求。请让人工客服核对原需求后调整。", topic: "需求修改待核", handoffRequired: true
     };
+    if (!this.shouldPublishDispatchDraft(message, facts)) return collecting;
+    // Only a persisted, unchanged summary can authorize this particular demand.
+    if (!anchor?.id) return collecting;
+    if (!customerId) return { ...collecting, reply: "请先绑定有效的客户账号，再确认发布需求；当前还没有创建草稿。", topic: "身份待确认", handoffRequired: true };
+    if (!input.messageId) return { ...collecting, reply: "这条消息缺少回执编号，暂时不能安全发布需求。请从客服入口重试。", topic: "消息待确认", handoffRequired: true };
+    if (facts.game !== "三角洲行动") return { ...collecting, reply: "当前自动需求流程只支持三角洲行动。其他游戏请先向人工客服确认是否能接。", topic: "人工核实", handoffRequired: true };
+    const sourcePlatform = input.platform === BotPlatform.DISCORD ? OrderSourcePlatform.DISCORD : OrderSourcePlatform.KOOK;
+    // Stable across different confirmation messages, disconnects and process restarts.
+    const sourceMessageId = `support:${input.platformUserId}:${anchor.id}`;
+    const sourceBusinessKey = createHash("sha256").update(JSON.stringify([sourcePlatform, input.guildId, input.channelId, sourceMessageId])).digest("hex");
+    try {
+      const existing = await this.prisma.orderDraft.findUnique({ where: { sourceBusinessKey }, select: { id: true, draftNo: true, status: true } });
+      if (existing) return { draft: { id: existing.id, draftNo: existing.draftNo },
+        reply: `需求 ${existing.draftNo} 已记录，这次没有重复创建。${this.draftStatusText(existing.status)}`,
+        topic: "需求已记录", handoffRequired: false };
+      const anchorIndex = history.indexOf(anchor);
+      if (history.slice(anchorIndex + 1).some(turn => turn.matchedTopic === "需求结果待核")) return {
+        ...collecting, reply: "上一条需求的提交结果仍待核实，先不要重新发布。请让人工客服核对原记录。", topic: "需求结果待核", handoffRequired: true
+      };
+      const serviceAdmin = await this.findServiceAdmin();
+      if (!serviceAdmin) return { ...collecting, reply: "当前没有可用的派单管理员，尚未创建草稿。请联系人工客服。", topic: "发布失败", handoffRequired: true };
+      // Use the typed entry point: reparsing a summary can turn a start time into a budget.
+      const result = await this.orderDrafts.createDraft(serviceAdmin.id, {
+        customerId, sourcePlatform, customerPlatformUserId: input.platformUserId, customerDisplayName: input.displayName,
+        sourceGuildId: input.guildId, sourceChannelId: input.channelId, sourceMessageId,
+        game: GameCode.DELTA_FORCE, mode: facts.mode!, hours: facts.duration!.replace("小时", ""),
+        budgetAmount: facts.budget?.startsWith("¥") && Number(facts.budget.slice(1)) > 0 ? facts.budget.slice(1) : undefined,
+        note: `AI 客服需求确认：${facts.summary}`
+      });
+      return { draft: { id: result.id, draftNo: result.draftNo },
+        reply: `需求 ${result.draftNo} 已记录，已交给客服安排，尚未生成正式订单或扣款；选好陪玩后还要核对时长、单价和总额。`,
+        topic: "需求已记录", handoffRequired: false };
+    } catch {
+      return { ...collecting, reply: "这次提交的结果暂时无法确认，先不要重新发布或付款。请让人工客服核对这条需求。", topic: "需求结果待核", handoffRequired: true };
+    }
   }
 
   private async trySelectDraftCandidate(input: PlatformSupportMessage, account: PlatformAccountWithUser | null, message: string) {
-    const normalized = message.normalize("NFKC").trim().toLowerCase();
-    if (!/(选|选择|就|要|这个|第|号|1|2|3|一|二|三)/.test(normalized)) return null;
-
+    // A name/ID is stable across recommendation reordering; a bare ordinal is not.
+    const command = message.normalize("NFKC").trim().match(/^(?:选择|选)\s+(TRY[A-Z0-9]+)\s+(.{1,100})$/i);
+    if (!command || !input.platformUserId) return null;
+    const draftNo = command[1].toUpperCase();
+    const selector = command[2].trim().toLowerCase();
+    if (/^第?\s*\d+\s*号?$/.test(selector)) return null;
     const sourcePlatform = input.platform === BotPlatform.DISCORD ? OrderSourcePlatform.DISCORD : OrderSourcePlatform.KOOK;
     const draft = await this.prisma.orderDraft.findFirst({
       where: {
-        sourcePlatform,
+        sourcePlatform, draftNo,
         status: { in: ["OPEN", "TRIALING", "SELECTED"] },
         OR: [
-          account?.userId ? { customerId: account.userId } : undefined,
-          { customerPlatformUserId: input.platformUserId },
-          input.channelId ? { sourceChannelId: input.channelId } : undefined
-        ].filter(Boolean) as Prisma.OrderDraftWhereInput[]
+          ...(account?.userId ? [{ customerId: account.userId }] : []),
+          { customerPlatformUserId: input.platformUserId }
+        ],
+        ...(input.guildId ? { sourceGuildId: input.guildId } : {}),
+        ...(input.channelId && !input.isDirect ? { sourceChannelId: input.channelId } : {})
       },
-      orderBy: { updatedAt: "desc" },
-      include: {
-        candidates: {
-          orderBy: { createdAt: "asc" },
-          include: {
-            companion: {
-              include: { companionProfile: true }
-            }
-          }
-        }
-      }
+      include: { candidates: { include: { companion: { include: { companionProfile: true } } } } }
     });
-    if (!draft?.candidates.length) return null;
-
-    const ordinal = this.extractCandidateOrdinal(normalized);
-    let selected = typeof ordinal === "number" ? draft.candidates[ordinal - 1] : undefined;
-    if (!selected) {
-      selected = draft.candidates.find((candidate) => {
-        const profile = candidate.companion.companionProfile;
-        const names = [profile?.nickname, candidate.companion.displayName, candidate.companion.email]
-          .filter(Boolean)
-          .map((value) => String(value).toLowerCase());
-        return names.some((name) => normalized.includes(name));
-      });
-    }
-    if (!selected) return null;
+    if (!draft) return null;
+    const matches = draft.candidates.filter(candidate => candidate.status !== "REJECTED" &&
+      (selector === `#${candidate.id}`.toLowerCase() ||
+       [candidate.companion.companionProfile?.nickname, candidate.companion.displayName]
+         .some(name => typeof name === "string" && name.normalize("NFKC").trim().toLowerCase() === selector)));
+    // Duplicate display names must be resolved through the exact candidate ID.
+    if (matches.length !== 1) return null;
+    const selected = matches[0];
 
     const serviceAdmin = await this.findServiceAdmin();
     if (!serviceAdmin) return null;
@@ -408,61 +369,143 @@ export class PlatformSupportService {
     await this.orderDrafts.selectCompanion(serviceAdmin.id, draft.id, {
       companionId: selected.companionId,
       note: `Customer selected this companion from ${sourcePlatform}: ${message}`
+    }, {
+      draftNo, sourcePlatform, platformUserId: input.platformUserId,
+      customerId: account?.userId, guildId: input.guildId,
+      channelId: input.isDirect ? undefined : input.channelId, candidateId: selected.id
     });
 
     const companionName = selected.companion.companionProfile?.nickname ?? selected.companion.displayName;
     return {
       draftId: draft.id,
       draftNo: draft.draftNo,
-      reply: `已记录你选择的陪玩：${companionName}。后台已指定该陪玩，客服会继续确认价格、时长和开始时间。`
+      reply: `已记录你选择的陪玩：${companionName}。这还不是正式接单或扣款；请先核对游戏、模式、时长、开始时间、单价和总额，再确认正式订单。`
     };
   }
 
-  private extractCandidateOrdinal(normalized: string) {
-    if (/第?\s*1\s*号?|一号|第一个|选一|选1/.test(normalized)) return 1;
-    if (/第?\s*2\s*号?|二号|第二个|选二|选2/.test(normalized)) return 2;
-    if (/第?\s*3\s*号?|三号|第三个|选三|选3/.test(normalized)) return 3;
-    return null;
+  private async resolveSupportAnswer(message: string, history: SupportHistoryTurn[] = [], scope: SupportScope = {}): Promise<SupportResult> {
+    const handoff = this.handoffAnswer(message, history);
+    if (handoff) return handoff;
+    if (this.isOrderQuestion(message) || this.isOrderContinuation(message, history)) return this.orderAnswer(message, history, scope);
+    if (/(我想接单|我要接单|怎么接单|如何接单|陪玩入驻|成为陪玩|应聘陪玩)/.test(message)) return {
+      answer: "想成为陪玩接单，需要先联系人工提交资料和试音考核，通过后由管理员创建并上架陪玩账号。", matchedTopic: "陪玩入驻", handoffRequired: true
+    };
+    if (/(你是.*(真人|机器人|人工|AI)|你是谁|真人吗|人工吗|是不是机器人)/i.test(message)) return {
+      answer: "我是 DFC 的 AI 客服，可以查订单状态、整理陪玩需求。退款、争议和异常需要人工处理。", matchedTopic: "客服身份", handoffRequired: false
+    };
+    if (/^(谢谢|谢了|好的|好|收到|ok|嗯|明白了)[！!。.]?$/i.test(message)) {
+      const last = history.at(-1);
+      return { answer: last?.matchedTopic === "需求待确认" ? "确认这些信息的话，回复“确认发布需求”就可以；目前还没发布。" : "好，有新的情况直接接着说就行。", matchedTopic: "简短回应", handoffRequired: false };
+    }
+    if (/^(你好|您好|在吗|有人吗|hi|hello|hey|客服在吗)[？?！!。.]?$/i.test(message)) return {
+      answer: "在的，你想找陪玩，还是有订单需要我看一下？", matchedTopic: "问候", handoffRequired: false
+    };
+    if (!this.isPureConsultation(message) && (this.isDispatchIntent(message) || this.isDemandContinuation(message, history))) {
+      const facts = this.buildDemandFacts(message, history);
+      return { answer: `${this.buildDispatchCollectionReply(facts)}${scope.platform ? "" : " 网站聊天不会代你下单，请在下单页核对陪玩、时长和总额后提交。"}`,
+        matchedTopic: facts.missing.length ? "需求收集" : "需求待确认", handoffRequired: false };
+    }
+    try {
+      if (this.isPriceQuestion(message)) {
+        const game = this.buildDemandFacts(message, history).game;
+        return { answer: await this.buildPricingAnswer(game ? `${game} ${message}` : message), matchedTopic: "价格咨询", handoffRequired: false };
+      }
+      const dynamic = await this.tryDynamicBusinessAnswer(message.toLowerCase());
+      if (dynamic) return dynamic;
+    } catch {
+      return { answer: "当前查询没成功，暂时不能确认实时信息。可以稍后重试，急用的话请联系人工客服。", matchedTopic: "查询失败", handoffRequired: true };
+    }
+    const matched = SUPPORT_RULES.find(rule => rule.keywords.some(word => message.toLowerCase().includes(word.toLowerCase())));
+    return { answer: matched?.answer ?? this.buildContextualFallback(message), matchedTopic: matched?.topic ?? "继续确认", handoffRequired: matched?.handoffRequired ?? false };
   }
 
-  private async resolveSupportAnswer(message: string, history: SupportHistoryTurn[] = []): Promise<SupportResult> {
-    const normalized = this.normalizeMessage(message).toLowerCase();
+  private identifyAssistant(answer: string, history: SupportHistoryTurn[]) {
+    return history.some(turn => /AI 客服/.test(turn.answer)) || /AI 客服/.test(answer) ? answer : `我是 DFC 的 AI 客服。${answer}`;
+  }
 
-    const dynamicAnswer = await this.tryDynamicBusinessAnswer(normalized);
-    if (dynamicAnswer) return dynamicAnswer;
-
-    const matched = SUPPORT_RULES.find((rule) => rule.keywords.some((keyword) => normalized.includes(keyword.toLowerCase())));
-
-    if (matched?.handoffRequired) {
-      return {
-        matchedTopic: matched.topic,
-        answer: matched.answer,
-        handoffRequired: true
+  private handoffAnswer(message: string, history: SupportHistoryTurn[]): SupportResult | null {
+    const issue = /(退款|退钱|投诉|纠纷|争议|不满意|取消订单|取消陪玩|重复扣|多扣|异常|失败|没反应|充值|到账|余额|转账|提现|人工|真人客服|撤销|先别|不要发|别发|不下单|不找了|不玩了)/.test(message);
+    if (!issue) {
+      if (history.at(-1)?.matchedTopic === "人工核实" && /(截图|凭证|补充|还是|怎么还|多久|有人处理|发了|已经提交)/.test(message)) return {
+        answer: "补充说明会保留在这段对话里。附件是否提交成功，请看上传回执；处理结果仍要从客服入口请人工核对，目前没有人工接单回执。", matchedTopic: "人工核实", handoffRequired: true
       };
+      return null;
     }
-
-    const aiAnswer = await this.tryOpenAiSupportAnswer(message, history, matched?.answer, this.buildAiBusinessContextHint(message));
-    if (aiAnswer) {
-      return {
-        matchedTopic: matched?.topic ?? "AI客服",
-        answer: aiAnswer,
-        handoffRequired: false
-      };
-    }
-
-    if (matched) {
-      return {
-        matchedTopic: matched.topic,
-        answer: matched.answer,
-        handoffRequired: false
-      };
-    }
-
-    return {
-      matchedTopic: "继续确认",
-      answer: this.buildContextualFallback(message),
-      handoffRequired: false
+    if (/(先别|不要发|别发|不下单|不找了|不玩了)/.test(message)) return {
+      answer: "好，先不继续发布。若已有需求或订单，请在对应页面取消；聊天这句不会自动撤销已提交的记录。", matchedTopic: "需求暂停", handoffRequired: false
     };
+    const refund = /(退款|退钱|投诉|纠纷|争议|不满意|取消订单|取消陪玩|重复扣|多扣)/.test(message);
+    const last = history.at(-1);
+    const followup = last?.matchedTopic === "人工核实";
+    const orderKnown = this.orderReferences([message, ...history.map(t => t.message)].join(" ")).numbers.length > 0;
+    return { answer: followup ? "这条仍需要人工核实，前面的说明已在本段对话中。请从网站客服入口联系人工；这里还没有人工接单回执。" :
+      refund ? `这类售后需要人工核实。${orderKnown ? "已有订单号，不用重复发；" : "请在私聊或网站提供订单号，"}补充具体问题和相关证据即可。我不能判定退款，也还没有人工接单回执。` :
+      /(充值|到账|余额|转账)/.test(message) ? "充值需要管理员审核，我这里不能确认到账。请在充值记录查看审核状态；已转账但未到账的话，从网站客服入口提供充值记录和凭证给人工核对。" :
+      /提现/.test(message) ? "提现要由管理员审核并核实打款。我不能确认已打款，请从提现记录联系人工核对。" :
+      "这项需要人工处理。请从网站客服入口联系人工；本段对话会保留，但目前没有人工接单回执。", matchedTopic: "人工核实", handoffRequired: true };
+  }
+
+  private isOrderQuestion(message: string) {
+    return this.orderReferences(message).specified || /(我的.*订单|订单.*(状态|进度|怎么样|到了|在哪|查询)|查.*订单|有人接|接单了吗|开始了吗|怎么还没|刚才那单|上一单|这单|那单|催单)/.test(message);
+  }
+
+  private orderReferences(message: string) {
+    const text = message.normalize("NFKC");
+    // OrdersService generates MAY..., draft numbers use TRY...; retain legacy IDs.
+    // Keep unknown explicitly labelled IDs too: failing to parse must never select a different order.
+    const prefixed = text.match(/\b(?:MAY|DFC|ORD|TRY)[A-Z0-9_-]{5,}\b/ig) ?? [];
+    const labelled = [...text.matchAll(/(?:订单号|需求号|单号|(?:查|查询)(?:一下)?订单|订单)\s*(?:是|为)?\s*[:：#]?\s*([A-Z0-9][A-Z0-9_-]*)/ig)].map(match => match[1]);
+    const numbers = [...new Set([...prefixed, ...labelled].map(value => value.toUpperCase()))];
+    return { numbers, specified: numbers.length > 0 || /(订单号|需求号|单号)/.test(text) };
+  }
+
+  private isOrderContinuation(message: string, history: SupportHistoryTurn[]) {
+    return history.at(-1)?.matchedTopic === "订单查询" && /(什么时候|还要多久|现在呢|有变化|还没开始|进度呢)/.test(message);
+  }
+
+  private async orderAnswer(message: string, history: SupportHistoryTurn[], scope: SupportScope): Promise<SupportResult> {
+    const result = (answer: string, handoffRequired = false): SupportResult => ({ answer, matchedTopic: "订单查询", handoffRequired });
+    if (scope.platform && scope.isDirect !== true) return result("订单信息请在私聊或登录网站后查询，避免在公共频道公开。这里不会展示订单和金额。");
+    if (!scope.userId) return result("先绑定客户账号，再查自己的订单；订单号本身不能代替身份验证。");
+    try {
+      const user = await this.prisma.user.findUnique({ where: { id: scope.userId }, select: { role: true, status: true } });
+      if (user?.role !== UserRole.CUSTOMER || user.status !== UserStatus.ACTIVE) return result("当前身份不能查询客户订单，请使用有效的客户账号。", true);
+      const explicit = this.orderReferences(message);
+      if (explicit.numbers.length > 1) return result("这次提到了多个订单，请指定要查的那一个订单号。");
+      if (explicit.specified && !explicit.numbers.length) return result("请提供完整订单号，再核对这一笔；我不会替换成其他订单。");
+      const previous = history.at(-1);
+      const continuation = /(这单|那单|刚才那单|上一单)/.test(message) || this.isOrderContinuation(message, history);
+      let ref = explicit.numbers[0];
+      if (!ref && continuation) {
+        if (previous?.matchedTopic === "订单查询") {
+          const requested = this.orderReferences(previous.message);
+          const inherited = requested.specified ? requested.numbers : this.orderReferences(previous.answer).numbers;
+          if (inherited.length === 1) ref = inherited[0];
+        }
+        if (!ref) return result("还没确定你指的是哪一笔，请提供订单号；我不会自动选另一笔订单。");
+      }
+      if (ref?.startsWith("TRY")) {
+        const draft = await this.prisma.orderDraft.findFirst({ where: { draftNo: ref, customerId: scope.userId }, select: { draftNo: true, status: true } });
+        return result(draft ? `需求 ${draft.draftNo}：${this.draftStatusText(draft.status)}` : `没有查到属于当前账号的需求 ${ref}，请核对编号和绑定账号。`);
+      }
+      const orders = await this.prisma.order.findMany({ where: { customerId: scope.userId,
+        ...(ref ? { orderNo: ref } : { status: { notIn: ["COMPLETED", "CANCELLED", "REFUNDED"] } }) },
+        select: { orderNo: true, status: true, game: true, mode: true, hours: true, unitPrice: true, totalAmount: true, voiceTrialRequested: true },
+        orderBy: { createdAt: "desc" }, take: 2 });
+      if (!orders.length) return result(`没有查到属于当前账号的${ref ? `订单 ${ref}` : "这笔订单"}。可以从订单页复制订单号并核对绑定账号；我不会据此判断是否扣款或退款。`);
+      if (orders.length > 1) return result("你有多笔进行中的订单，请指定订单号，免得查错。");
+      const order = orders[0];
+      const states: Record<string, string> = { PENDING_PAYMENT: "待支付，支付前请核对金额", PAID: "已支付，等待派单", ASSIGNED: "已派单，等待陪玩接单", ACCEPTED: "陪玩已接单，尚未开始服务", IN_PROGRESS: "服务进行中", AWAITING_ACCEPTANCE: "陪玩已报完成，等待你验收", COMPLETED: "已完成", CANCELLED: "已取消，资金情况请核对钱包流水", REFUND_REQUESTED: "退款申请待人工审核", REFUNDED: "订单标记为已退款，具体流水请在钱包核对", DISPUTED: "争议待人工处理" };
+      return result(`订单 ${order.orderNo}：${states[order.status] ?? "状态待人工核实"}。${this.getGameName(order.game)}，${order.mode}，${order.hours}小时；订单单价 ¥${order.unitPrice}/时，总额 ¥${order.totalAmount}。${order.voiceTrialRequested ? "试音申请与正式服务状态分开，以这里的订单状态为准。" : ""}`,
+        ["REFUND_REQUESTED", "DISPUTED"].includes(order.status) || !states[order.status]);
+    } catch {
+      return result("订单查询暂时失败，状态还不能确认。先别重复下单或付款，可稍后重查或联系人工核对。", true);
+    }
+  }
+
+  private draftStatusText(status: string) {
+    const states: Record<string, string> = { OPEN: "等待候选报名，尚未正式接单或扣款。", TRIALING: "试音中，尚未正式接单或扣款。", SELECTED: "已选陪玩，正式下单前仍需确认时长和金额。", CUSTOMER_CONFIRMED: "需求已确认，请在订单页核对是否已生成正式订单。", CONVERTED: "已转正式订单，请在订单页查看服务和金额。", CANCELLED: "需求已取消。", CLOSED: "需求已关闭。" };
+    return states[status] ?? "状态暂时无法确认，请人工核对。";
   }
 
   private async tryDynamicBusinessAnswer(message: string): Promise<SupportResult | null> {
@@ -522,7 +565,7 @@ export class PlatformSupportService {
       return {
         matchedTopic: "客服能力",
         answer:
-          "我可以先帮你处理找陪玩、试音选人、充值说明、优惠码、订单问题、投诉退款和陪玩入驻咨询。涉及加余额、退款结论、提现完成这类要改后台数据的事，我会提醒转人工处理。你可以直接像聊天一样说需求，不用按固定格式发。",
+          "我是 DFC 的 AI 客服，可以查订单、整理陪玩和试音需求。涉及退款、投诉和资金核实，需要人工处理。",
         handoffRequired: false
       };
     }
@@ -531,31 +574,11 @@ export class PlatformSupportService {
   }
 
   private async findDuplicatePlatformMessage(input: PlatformSupportMessage, message: string) {
-    if (input.messageId) {
-      const existing = await this.prisma.aiSupportConversation.findFirst({
-        where: {
-          platform: input.platform,
-          platformMessageId: input.messageId
-        },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, matchedTopic: true, handoffRequired: true }
-      });
-      if (existing) return existing;
-    }
-
-    const recentSameMessage = await this.prisma.aiSupportConversation.findFirst({
-      where: {
-        platform: input.platform,
-        platformUserId: input.platformUserId,
-        platformChannelId: input.channelId,
-        message,
-        createdAt: { gte: new Date(Date.now() - 8000) }
-      },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, matchedTopic: true, handoffRequired: true }
-    });
-
-    return recentSameMessage;
+    if (!input.messageId) return null;
+    return this.prisma.aiSupportConversation.findFirst({ where: {
+      platform: input.platform, platformMessageId: input.messageId, platformUserId: input.platformUserId,
+      platformGuildId: input.guildId ?? null, platformChannelId: input.channelId ?? null
+    }, orderBy: { createdAt: "desc" }, select: { id: true, matchedTopic: true, handoffRequired: true, answer: true, replyMessageId: true } });
   }
 
   private async findOrCreatePlatformCustomer(input: PlatformCustomerIdentity) {
@@ -572,6 +595,8 @@ export class PlatformSupportService {
       include: { user: true }
     });
     if (existing) return this.refreshPlatformAccountDisplayName(existing, input);
+    // KOOK customers are created only by their issued, explicit first-use confirmation.
+    if (input.platform === BotPlatform.KOOK) return null;
 
     const resolvedDisplayName = (await this.resolvePlatformDisplayName(input)) ?? input.displayName;
     const realDisplayName = sanitizePlatformDisplayName(resolvedDisplayName);
@@ -812,8 +837,7 @@ export class PlatformSupportService {
           : await this.callResponsesApi(baseUrl, apiKey, model, messages);
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        this.logger.warn(`AI support reply failed: HTTP ${response.status} ${text.slice(0, 240)}`);
+        this.logger.warn(`AI support reply failed: HTTP ${response.status}`);
         return null;
       }
       const data = (await response.json()) as {
@@ -833,7 +857,7 @@ export class PlatformSupportService {
         null;
       return text ? this.cleanAiSupportAnswer(text) : null;
     } catch (error) {
-      this.logger.warn(`AI support reply error: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn("AI support reply unavailable");
       return null;
     }
   }
@@ -841,6 +865,7 @@ export class PlatformSupportService {
   private callResponsesApi(baseUrl: string, apiKey: string, model: string, messages: Array<{ role: string; content: string }>) {
     return fetch(`${baseUrl}/responses`, {
       method: "POST",
+      signal: AbortSignal.timeout(8000),
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json"
@@ -856,6 +881,7 @@ export class PlatformSupportService {
   private callChatCompletions(baseUrl: string, apiKey: string, model: string, messages: Array<{ role: string; content: string }>) {
     return fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
+      signal: AbortSignal.timeout(8000),
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json"
@@ -878,7 +904,7 @@ export class PlatformSupportService {
         role: "developer",
         content:
           [
-            "你是 May猫饼电竞 的真人感客服助手，服务场景是网站、KOOK 和 Discord 频道。",
+            "你是 DFC 的 AI 客服，不能自称真人。自然简短地说话，首次介绍身份，之后不用反复介绍。",
             "必须先理解客户当前这句话的意图，再回答；不要把所有问题都套成下单表单。",
             "客户问价格、有哪些游戏、陪玩数量、怎么下单时，先直接回答问题，再最多追问 1 个自然的问题。",
             "只有客户明确说要下单、找人、安排、派单、开始、发布招募时，才进入派单信息收集。",
@@ -931,7 +957,7 @@ export class PlatformSupportService {
             "当前是陪玩派单流程：系统已经创建派单草稿并尝试发到 KOOK/Discord 派单频道。",
             draftNo ? `派单号：${draftNo}` : undefined,
             `已识别需求：${facts.summary || "暂无"}`,
-            "回复要像真人客服：告诉客户已经发出/记录，接下来等陪玩报名，客服会把候选和报价给客户确认。",
+            "只使用已验证的动作回执，创建草稿不等于通知送达、正式接单或扣款。",
             "不要承诺一定有人接，不要承诺价格，不要再追问多个问题。"
           ]
             .filter(Boolean)
@@ -940,7 +966,7 @@ export class PlatformSupportService {
             "当前是陪玩下单信息收集流程。客户在 KOOK/Discord 里随口说需求，你要像真人客服一样顺着聊。",
             `已识别需求：${facts.summary || "暂无"}`,
             `还缺字段：${facts.missing.length ? facts.missing.join("、") : "无"}`,
-            "如果还缺信息，只追问一个最关键的问题；如果客户没说预算，不要卡预算，说明可以按陪玩报价确认。",
+            "一次问齐缺少的必要信息，已经提供的不要再问；预算不确定不能当成零元或报价。",
             "不要机械复述“游戏/模式/时长/预算/试音/还差”，不要像表单。"
           ].join("\n");
 
@@ -971,120 +997,60 @@ export class PlatformSupportService {
     return DANGEROUS_AI_PHRASES.some((phrase) => normalized.includes(phrase));
   }
 
-  private async loadConversationHistory(input: { userId?: string; platform?: BotPlatform; platformUserId?: string }) {
-    const where = input.userId
-      ? { userId: input.userId }
-      : input.platform && input.platformUserId
-        ? { platform: input.platform, platformUserId: input.platformUserId }
-        : undefined;
-
-    if (!where) return [];
-
-    const rows = await this.prisma.aiSupportConversation.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 6,
-      select: { message: true, answer: true }
-    });
-
+  private async loadConversationHistory(input: SupportScope) {
+    if (!input.userId && !(input.platform && input.platformUserId)) return [];
+    // Never merge private web/DM history into a public channel, even for a bound user.
+    if (input.platform && !input.channelId && !input.isDirect) return [];
+    const where: Prisma.AiSupportConversationWhereInput = input.platform ? {
+      platform: input.platform, platformUserId: input.platformUserId,
+      userId: input.userId ?? null, platformGuildId: input.guildId ?? null, platformChannelId: input.channelId ?? null
+    } : { userId: input.userId, platform: null, platformUserId: null, platformGuildId: null, platformChannelId: null };
+    const rows = await this.prisma.aiSupportConversation.findMany({ where: { ...where, createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      orderBy: { createdAt: "desc" }, take: 30, select: { id: true, message: true, answer: true, matchedTopic: true } });
     return rows.reverse();
   }
 
   private isDispatchIntent(message: string) {
+    if (/(我想接单|我要接单|怎么接单|如何接单|陪玩入驻|成为陪玩|应聘陪玩)/.test(message)) return false;
     if (this.isPureConsultation(message)) return false;
     return this.hasExplicitDispatchAction(message) || /(want.*play|need.*companion|boost|rank)/i.test(message);
   }
 
   private isDemandContinuation(message: string, history: SupportHistoryTurn[] = []) {
-    if (this.isPureConsultation(message)) return false;
-    if (!history.some((turn) => this.isDispatchIntent(turn.message) || turn.answer.includes("下单需求") || turn.answer.includes("派单"))) {
-      return false;
-    }
-
-    return Boolean(
-      this.extractGame(message) ||
-        this.extractDuration(message) ||
-        this.extractMode(message) ||
-        this.extractBudget(message) ||
-        this.extractStartTime(message) ||
-        this.extractTrialPreference(message) ||
-        this.isExplicitDispatchPublish(message)
-    );
+    if (this.isPureConsultation(message) || this.handoffAnswer(message, []) || this.isOrderQuestion(message)) return false;
+    const last = history.at(-1);
+    if (!last || !["需求收集", "需求待确认", "需求已记录", "需求结果待核", "需求修改待核", "简短回应", "找陪玩", "游戏确认"].includes(last.matchedTopic ?? "")) return false;
+    return this.buildDemandFacts(message, history).hasOrderContext && Boolean(this.extractGame(message) || this.extractMode(message) || this.extractDuration(message) || this.extractBudget(message) || this.extractStartTime(message) || this.extractTrialPreference(message) || this.isExplicitDispatchPublish(message));
   }
 
   private buildDemandFacts(message: string, history: SupportHistoryTurn[] = []): DemandFacts {
-    const currentMessage = this.normalizeMessage(message);
-    const historyMessages = history.map((turn) => this.normalizeMessage(turn.message));
-    const messages = [...historyMessages, currentMessage];
-    const historyCombined = historyMessages.join("，");
-    const current = {
-      game: this.extractGame(currentMessage),
-      mode: this.extractMode(currentMessage),
-      duration: this.extractDuration(currentMessage),
-      budget: this.extractBudget(currentMessage),
-      startTime: this.extractStartTime(currentMessage),
-      trial: this.extractTrialPreference(currentMessage)
-    };
-    const historical = {
-      game: this.extractGame(historyCombined),
-      mode: this.extractMode(historyCombined),
-      duration: this.extractDuration(historyCombined),
-      budget: this.extractBudget(historyCombined),
-      startTime: this.extractStartTime(historyCombined),
-      trial: this.extractTrialPreference(historyCombined)
-    };
-    const startsFreshDemand =
-      Boolean(current.game && historical.game && current.game !== historical.game) ||
-      Boolean(current.duration && historical.duration && current.duration !== historical.duration) ||
-      (this.isDispatchIntent(currentMessage) && Boolean(current.game || current.duration));
-    const fallback: typeof historical = startsFreshDemand
-      ? { game: undefined, mode: undefined, duration: undefined, budget: undefined, startTime: undefined, trial: undefined }
-      : historical;
-    const facts = {
-      hasOrderContext: messages.some((item) => this.isDispatchIntent(item)),
-      game: current.game ?? fallback.game,
-      mode: current.mode ?? fallback.mode,
-      duration: current.duration ?? fallback.duration,
-      budget: current.budget ?? fallback.budget,
-      startTime: current.startTime ?? fallback.startTime,
-      trial: current.trial ?? fallback.trial
-    };
-
-    const missing: string[] = [];
-    if (!facts.game) missing.push("游戏");
-    if (!facts.mode) missing.push("模式");
-    if (!facts.duration) missing.push("预计时长");
-    if (!facts.trial) missing.push("是否试音");
-    if (!facts.startTime) missing.push("现在开始还是预约");
-
-    const summary = [
-      facts.game ? `游戏：${facts.game}` : undefined,
-      facts.mode ? `模式：${facts.mode}` : undefined,
-      facts.duration ? `时长：${facts.duration}` : undefined,
-      facts.budget ? `预算：${facts.budget}` : "预算：按陪玩报价确认",
-      facts.trial ? `试音：${facts.trial}` : undefined,
-      facts.startTime ? `时间：${facts.startTime}` : undefined
-    ]
-      .filter(Boolean)
-      .join("，");
-
-    return { ...facts, missing, summary };
+    const facts: DemandFacts = { hasOrderContext: false, missing: [], summary: "" };
+    // Fold chronologically: corrections replace one field; only an explicit new demand resets it.
+    for (const text of [...history.map(turn => turn.message), message]) {
+      if (/(重新开始|重新下单|新需求|再来一单|换一单|不找了|不玩了|不要发|先别发)/.test(text)) {
+        for (const key of ["game", "mode", "duration", "budget", "startTime", "trial"] as const) facts[key] = undefined;
+        facts.hasOrderContext = false;
+      }
+      if (this.handoffAnswer(text, []) || this.isOrderQuestion(text) || this.isPureConsultation(text)) continue;
+      if (this.isDispatchIntent(text)) facts.hasOrderContext = true;
+      const game = this.extractGame(text);
+      if (game && facts.game && game !== facts.game) facts.mode = undefined;
+      const values = { game, mode: this.extractMode(text), duration: this.extractDuration(text), budget: this.extractBudget(text), startTime: this.extractStartTime(text), trial: this.extractTrialPreference(text) };
+      if (/(?:\d|[一二两三四五六七八九十])(?:个)?(?:半)?(?:小时|分钟|h)/i.test(text) && !values.duration) facts.duration = undefined;
+      if (/\d{1,2}(?:点|[:：])/.test(text) && !values.startTime) facts.startTime = undefined;
+      for (const key of Object.keys(values) as Array<keyof typeof values>) if (values[key]) facts[key] = values[key];
+    }
+    if (!facts.game) facts.missing.push("游戏");
+    if (!facts.mode) facts.missing.push("模式");
+    if (!facts.duration) facts.missing.push("预计时长");
+    if (!facts.startTime || facts.startTime === "预约时间") facts.missing.push("开始时间（预约请给具体时间）");
+    if (!facts.trial) facts.missing.push("是否先试音");
+    facts.summary = this.buildDemandSummary(facts);
+    return facts;
   }
 
-  private withExplicitPublishDefaults(message: string, facts: DemandFacts): DemandFacts {
-    if (!this.isExplicitDispatchPublish(message)) return facts;
-
-    const next: DemandFacts = {
-      ...facts,
-      mode: facts.mode ?? "随意",
-      trial: facts.trial ?? (/(不用|不要|不需要|免试|直接)/i.test(message) ? "不需要" : "待确认"),
-      startTime: facts.startTime ?? "现在/待确认"
-    };
-    next.missing = [];
-    if (!next.game) next.missing.push("游戏");
-    if (!next.duration) next.missing.push("预计时长");
-    next.summary = this.buildDemandSummary(next);
-    return next;
+  private withExplicitPublishDefaults(_message: string, facts: DemandFacts): DemandFacts {
+    return facts;
   }
 
   private buildDemandSummary(facts: DemandFacts) {
@@ -1101,12 +1067,11 @@ export class PlatformSupportService {
   }
 
   private isExplicitDispatchPublish(message: string) {
-    const normalized = message.replace(/\s+/g, "");
-    return /^(开始|发布|发吧|可以发|直接发|确认发|派吧)$/.test(normalized) || /(发布招募|发招募|直接招募|开始招募|直接发布|派单吧|直接派单|发派单|发布派单|发到派单|推到派单)/i.test(normalized);
+    return /^(确认发布需求|确认发布招募|直接发布招募|发布招募|确认发布|确认，发布需求)[。！!]?$/u.test(message.replace(/\s+/g, ""));
   }
 
   private shouldPublishDispatchDraft(message: string, facts: DemandFacts) {
-    return facts.missing.length === 0 || (this.isExplicitDispatchPublish(message) && Boolean(facts.game && facts.duration));
+    return facts.missing.length === 0 && this.isExplicitDispatchPublish(message);
   }
 
   private buildDispatchPublishedReply(draftNo: string, facts: DemandFacts, notifications: Array<{ platform: BotPlatform; status: BotEventStatus; error?: string }>) {
@@ -1123,17 +1088,9 @@ export class PlatformSupportService {
   }
 
   private buildDispatchCollectionReply(facts: DemandFacts) {
-    if (facts.missing.length === 0) {
-      return `收到，需求够了：${facts.summary}。你可以回复“直接发布招募”，我会发到派单频道；价格以候选陪玩报价和后台订单为准。`;
-    }
-
-    if (facts.game && facts.duration && facts.mode) {
-      const nextQuestion = facts.missing.includes("是否试音") ? "要不要先试音？" : `还差：${facts.missing.slice(0, 2).join("、")}。`;
-      return `收到，先记下：${facts.summary}。${nextQuestion}`;
-    }
-
-    const ask = facts.missing.slice(0, 3).join("、");
-    return `可以，我先帮你记录下单需求。${facts.summary ? `已记下：${facts.summary}。` : ""}还差：${ask}。预算不确定也没关系，可以按陪玩报价确认。`;
+    if (!facts.missing.length) return `请核对：${facts.summary}。这里只发布需求，不是正式订单，也不会扣款；报价和总额尚未确定。信息没问题就回复“确认发布需求”。`;
+    const known = [facts.game, facts.mode, facts.duration, facts.startTime, facts.trial ? `试音${facts.trial}` : undefined].filter(Boolean).join("、");
+    return `${known ? `${known}，记下了。` : "可以。"}还需要${facts.missing.join("、")}，可以一次告诉我。预算不确定也没关系。`;
   }
 
   private extractGame(message: string) {
@@ -1160,46 +1117,46 @@ export class PlatformSupportService {
 
   private extractMode(message: string) {
     const normalized = message.replace(/\s+/g, "");
-    if (/(模式随意|模式不限|模式都行|模式任意|随便模式|模式无所谓|模式没要求|没有模式|没模式|无模式)/i.test(normalized)) return "随意";
-    const explicit = normalized.match(/(?:模式|玩法)[:：]?([\u4e00-\u9fa5A-Za-z0-9]{1,12})/i);
-    if (explicit?.[1] && !/(随便|随意|不限|都行|任意|无所谓)/i.test(explicit[1])) return explicit[1];
-    if (/(排位|排位赛|上分|天梯|rank)/i.test(normalized)) return "排位/上分";
-    if (/(匹配|娱乐|休闲|快速|普通)/i.test(normalized)) return "匹配/娱乐";
+    if (/(模式随意|模式不限|模式都行|模式任意|随便模式|模式无所谓|模式没要求)/.test(normalized)) return "随意";
+    const explicit = normalized.match(/(?:模式|玩法)[:：]([^，。；,;\n]{1,20})/);
+    if (explicit?.[1]) return explicit[1];
+    if (/(烽火|摸金|撤离)/.test(normalized)) return "烽火地带";
+    if (/全面战场/.test(normalized)) return "全面战场";
+    if (/(排位|上分|天梯|rank)/i.test(normalized)) return "排位/上分";
+    if (/(匹配|娱乐|休闲)/.test(normalized)) return "匹配/娱乐";
     return undefined;
   }
 
   private extractDuration(message: string) {
     const normalized = message.replace(/\s+/g, "");
-    const match = normalized.match(/(\d+(?:\.\d+)?)(?:个)?(?:小时|h|H)/);
-    if (match?.[1]) return `${match[1]}小时`;
-    const chineseHour = normalized.match(/([一二两三四五六七八九十])(?:个)?小时/);
-    const number = chineseHour?.[1] ? chineseNumberToDigit(chineseHour[1]) : undefined;
-    return number ? `${number}小时` : undefined;
+    if (/半(?:个)?小时/.test(normalized) && !/[一二两三四五六七八九十\d]个?半/.test(normalized)) return "0.5小时";
+    const match = [...normalized.matchAll(/(\d+(?:\.\d+)?|[一二两三四五六七八九十])(?:个)?(半)?(?:小时|h)/ig)].at(-1);
+    const value = match ? Number(chineseNumberToDigit(match[1]) ?? match[1]) + (match[2] ? 0.5 : 0) : NaN;
+    if (Number.isFinite(value) && value > 0 && value <= 24) return `${value}小时`;
+    const minutes = normalized.match(/(\d+)分钟/);
+    if (minutes && Number(minutes[1]) > 0 && Number(minutes[1]) <= 1440) return `${Number((Number(minutes[1]) / 60).toFixed(2))}小时`;
+    return undefined;
   }
 
   private extractBudget(message: string) {
-    const normalized = message.replace(/\s+/g, "");
-    if (/(预算不确定|没预算|没有预算|预算随意|预算无所谓|价格随意|客服报价|按报价|看报价|报价确认)/i.test(normalized)) {
-      return "按陪玩报价确认";
-    }
-    const money = normalized.match(/(?:预算|价格|价位|费用)?(?:¥|￥)?(\d{2,5})(?:元|块)?/);
-    return money?.[1] ? `¥${money[1]}` : undefined;
+    if (/(预算不确定|没预算|没有预算|预算随意|预算无所谓|按报价|看报价|报价确认)/.test(message)) return "按陪玩报价确认";
+    const money = message.match(/(?:预算|不超过)\s*[:：]?\s*[¥￥]?\s*(\d+(?:\.\d{1,2})?)(?![\d.])/) ?? message.match(/(\d+(?:\.\d{1,2})?)(?:元|块)以内/);
+    return money ? `¥${money[1]}` : undefined;
   }
 
   private extractStartTime(message: string) {
     const normalized = message.replace(/\s+/g, "");
-    if (/^(开始|现在开始)$/.test(normalized) || /(现在|马上|立刻|直接开始|现在开始|这会儿)/i.test(normalized)) return "现在开始";
-    if (/(今晚|晚上)/i.test(normalized)) return "今晚/晚上";
-    if (/(明天|后天|预约|预定|约)/i.test(normalized)) return "预约时间";
-    const time = normalized.match(/(\d{1,2})[点:：](\d{2})?/);
-    return time ? `${time[1]}点${time[2] ?? ""}` : undefined;
+    const time = normalized.match(/((?:今天|今晚|明天|后天)?(?:上午|下午|晚上)?)(\d{1,2})(?:点|[:：])(\d{1,2}|半)?/);
+    if (time && Number(time[2]) < 24 && (time[3] === "半" || Number(time[3] ?? 0) < 60)) return `${time[1]}${time[2]}点${time[3] ?? ""}`;
+    if (/(现在|马上|立刻|这会儿)/.test(normalized)) return "现在开始";
+    if (/(今晚|晚上|明天|后天|预约|预定)/.test(normalized)) return "预约时间";
+    return undefined;
   }
 
   private extractTrialPreference(message: string) {
-    const normalized = message.replace(/\s+/g, "");
-    if (/(不用试音|不要试音|不试音|直接下单)/i.test(normalized)) return "不需要";
-    if (/(要试音|先试音|试音|听声音|语音看看)/i.test(normalized)) return "需要";
-    if (/(无所谓|都行|随意)/i.test(normalized) && /(声音|语音|试音)/i.test(normalized)) return "无所谓";
+    if (/(不用|不要|不需要|不想|不)试音/.test(message)) return "不需要";
+    if (/(试音|声音|语音).*(无所谓|都行|随意)/.test(message)) return "无所谓";
+    if (/(试音|听声音|语音看看)/.test(message)) return "需要";
     return undefined;
   }
 
@@ -1221,13 +1178,12 @@ export class PlatformSupportService {
   }
 
   private isPriceQuestion(message: string) {
-    const normalized = message.replace(/\s+/g, "");
-    return /(价格|多少钱|怎么收费|收费|报价|单价|费用|价位|一小时|每小时|没说价格|没说价|价格是多少)/i.test(normalized);
+    const normalized = message.replace(/\s+/g, "").replace(/(按陪玩报价确认|按报价|看报价|报价确认|价格随意|价格无所谓)/g, "");
+    return /(价格|多少钱|怎么收费|收费|报价|单价|费用|价位|没说价格|没说价)/i.test(normalized);
   }
 
   private isPureConsultation(message: string) {
-    if (!(this.isCatalogQuestion(message) || this.isPriceQuestion(message) || this.isCompanionCountQuestion(message))) return false;
-    return !this.hasExplicitDispatchAction(message);
+    return this.isCatalogQuestion(message) || this.isPriceQuestion(message) || this.isCompanionCountQuestion(message) || /(怎么下单|如何下单|怎么试音|如何试音)/.test(message);
   }
 
   private hasExplicitDispatchAction(message: string) {
@@ -1268,36 +1224,20 @@ export class PlatformSupportService {
       }
     }
     const listedNames = [...listedCodes].map((code) => this.getGameName(code)).filter(Boolean);
-    const fallbackNames = SUPPORTED_PRICE_LIST_GAMES.map((code) => this.getGameName(code));
-    const names = (listedNames.length ? listedNames : fallbackNames).slice(0, 8).join("、");
-    const suffix = listedNames.length ? "这些是当前已上架陪玩可接的方向" : "这些是平台支持登记的方向，具体能不能接看当天陪玩在线情况";
-    return `目前有：${names}。${suffix}。你想问哪个游戏的陪玩？`;
+    if (!listedNames.length) return "暂时没有查到已上架陪玩的游戏范围。当前自动需求流程支持三角洲行动，实际是否有人能接仍需人工核对。";
+    return `已上架资料中登记了：${listedNames.slice(0, 8).join("、")}。登记不代表现在能接单，当前自动需求流程支持三角洲行动。`;
   }
 
   private async buildPricingAnswer(message: string) {
     const gameCode = this.extractGameCode(message);
-    const profiles = await this.prisma.companionProfile.findMany({
-      where: {
-        status: CompanionProfileStatus.LISTED,
-        user: { is: { status: UserStatus.ACTIVE } },
-        ...(gameCode ? { OR: [{ game: gameCode }, { games: { has: gameCode } }] } : {})
-      },
-      select: {
-        pricePerHour: true,
-        kookPricePerHour: true,
-        discordPricePerHour: true,
-        onlineStatus: true
-      },
-      take: 50
-    });
-    const gameName = gameCode ? `${this.getGameName(gameCode)} ` : "";
-    const onlineCount = profiles.filter((profile) => profile.onlineStatus === "ONLINE").length;
-    const onlineText = profiles.length ? `当前该方向在线 ${onlineCount}/${profiles.length} 位。` : "";
-    const priceText =
-      gameCode === GameCode.CALL_OF_DUTY
-        ? "常规 ¥118/时，硬核深处 ¥138/时"
-        : "黄金以下 ¥98/时起，高段位按价目卡递增";
-    return `${gameName}${priceText}；全部可语音，新客首单试音免费 15 分钟，不做代练，不设静音价。点 2 个及以上陪玩，每人 -¥10/时。${onlineText}最终以价目卡、后台订单和客服确认为准。`;
+    if (!gameCode) return "价格要按游戏、陪玩和服务类型核对。你想问哪个游戏？";
+    const profiles = await this.prisma.companionProfile.findMany({ where: {
+      status: CompanionProfileStatus.LISTED, user: { is: { status: UserStatus.ACTIVE } }, OR: [{ game: gameCode }, { games: { has: gameCode } }]
+    }, select: { pricePerHour: true }, take: 50 });
+    const prices = profiles.map(profile => Number(profile.pricePerHour)).filter(price => Number.isFinite(price) && price > 0);
+    if (!prices.length) return `${this.getGameName(gameCode)}暂时没有查到可核实的上架报价。请让人工客服确认；试音是否收费、优惠和最终总额也要一起核对。`;
+    const low = Math.min(...prices).toFixed(2), high = Math.max(...prices).toFixed(2);
+    return `${this.getGameName(gameCode)}查到的上架基础价是 ¥${low}${low === high ? "" : `—${high}`}/时。平台和服务类型可能影响报价，这不是最终订单价；确定陪玩、时长后再核对单价、优惠和总额。`;
   }
 
   private buildAiBusinessContextHint(message: string) {
@@ -1317,18 +1257,8 @@ export class PlatformSupportService {
     return GAME_NAME_BY_CODE[code as GameCode] ?? code;
   }
 
-  private buildContextualFallback(message: string) {
-    const normalized = message.toLowerCase();
-
-    if (/(吗|么|多少|怎么|如何|什么|啥|？|\?)/.test(normalized)) {
-      return "这个问题我先按客服口径回答：我现在没有足够信息给你下最终结论，但可以继续帮你判断。你可以直接把具体问题说完整一点，比如是问价格、陪玩数量、充值、订单、试音还是入驻，我会按对应流程回复；需要改余额或处理售后的地方会转人工。";
-    }
-
-    if (/(想|要|需要|找|来|安排|下单|陪玩|陪练|试音)/i.test(normalized)) {
-      return "可以，我先理解成你有找陪玩或试音需求。你不用填表，直接告诉我游戏、模式、大概什么时候玩、想男声女声还是无所谓，我会继续帮你整理给人工派单。";
-    }
-
-    return "收到。我会按 May猫饼客服流程继续跟进。你可以直接补充下一句，不用按模板发；如果涉及充值、退款、提现、投诉或后台改余额，我会提醒你转人工确认。";
+  private buildContextualFallback(_message: string) {
+    return "这句我还没确定你的意思。你是想继续刚才的需求，还是查一笔订单？";
   }
 
   private async findServiceAdmin() {

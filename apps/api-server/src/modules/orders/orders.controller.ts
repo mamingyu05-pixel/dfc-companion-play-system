@@ -1,3 +1,5 @@
+import { customerOrderAction, validateCustomerOrderInput } from "./customer-order-input";
+import { requireOrderRequestId } from "./order-request";
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { GameCode, UserRole } from "@prisma/client";
 import { CurrentUser } from "../auth/current-user.decorator";
@@ -27,11 +29,32 @@ export class OrdersController {
     return this.orders.listOrderableCompanions(game);
   }
 
+  @Get("requests/:requestId")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  findRequest(@CurrentUser() user: AuthenticatedUser, @Param("requestId") requestId: string) {
+    return this.orders.findCustomerOrderRequest(user.id, requireOrderRequestId(requestId));
+  }
+
+  @Get("environment")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  orderEnvironment() {
+    return this.orders.getOrderEnvironment();
+  }
+
   @Get("my")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER)
   listMyOrders(@CurrentUser() user: AuthenticatedUser) {
     return this.orders.listCustomerOrders(user.id);
+  }
+
+  @Get(":id/record")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  orderRecord(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.orders.getOrderRecord(id, user);
   }
 
   @Get("companion/available")
@@ -89,20 +112,36 @@ export class OrdersController {
     });
   }
 
+  @Post("preview")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  previewOrder(@CurrentUser() user: AuthenticatedUser, @Body() body: { game?: GameCode; mode: string; hours: string; companionId: string; testEnvironment?: string }) {
+    return customerOrderAction(() => {
+      validateCustomerOrderInput(body, true);
+      return this.orders.previewCustomerOrder(user.id, body);
+    });
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER)
   createOrder(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { game?: GameCode; mode: string; hours: string; companionId?: string; notes?: string; voiceTrialRequested?: boolean }
+    @Body() body: { requestId?: string; game?: GameCode; mode: string; hours: string; companionId?: string; notes?: string; voiceTrialRequested?: boolean; expectedTotalAmount?: string; testEnvironment?: string }
   ) {
-    return this.orders.createOrder(user.id, {
-      game: body.game,
-      mode: body.mode,
-      hours: body.hours,
-      companionId: body.companionId,
-      notes: body.notes,
-      voiceTrialRequested: body.voiceTrialRequested
+    return customerOrderAction(() => {
+      validateCustomerOrderInput(body, false);
+      return this.orders.createOrder(user.id, {
+        requestId: requireOrderRequestId(body.requestId),
+        expectedTotalAmount: body.expectedTotalAmount,
+        testEnvironment: body.testEnvironment,
+        game: body.game,
+        mode: body.mode,
+        hours: body.hours,
+        companionId: body.companionId,
+        notes: body.notes,
+        voiceTrialRequested: body.voiceTrialRequested
+      });
     });
   }
 
@@ -116,8 +155,15 @@ export class OrdersController {
   @Patch(":id/accept")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-  acceptOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.orders.acceptOrderFromWeb(id, user.id);
+  acceptOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { dispatchVersion?: number } = {}) {
+    return this.orders.acceptOrderFromWeb(id, user.id, body.dispatchVersion);
+  }
+
+  @Patch(":id/decline")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.COMPANION, UserRole.CUSTOMER)
+  declineOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { reason: string; dispatchVersion?: number }) {
+    return this.orders.declineOrder(id, user.id, body.reason, body.dispatchVersion);
   }
 
   @Patch(":id/complete")
@@ -125,5 +171,12 @@ export class OrdersController {
   @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   completeOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.orders.completeOrder(id, user.id);
+  }
+
+  @Patch(":id/confirm-completion")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  confirmCompletion(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { note?: string } = {}) {
+    return this.orders.acceptCompletion(id, user.id, body.note);
   }
 }

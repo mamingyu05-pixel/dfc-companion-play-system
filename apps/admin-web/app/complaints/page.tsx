@@ -18,19 +18,32 @@ export default function ComplaintsPage() {
   const [resolution, setResolution] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   async function loadComplaints() {
-    const token = localStorage.getItem("dfc_admin_token");
-    if (!token) return;
-    const response = await fetch("/api/admin/complaints", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) throw new Error("无法加载投诉");
-    setComplaints((await response.json()) as Complaint[]);
+    setIsLoading(true);
+    setLoadError("");
+    try {
+      const token = localStorage.getItem("dfc_admin_token");
+      if (!token) {
+        setLoadError("请先登录后重试加载投诉");
+        return;
+      }
+      const response = await fetch("/api/admin/complaints", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error("无法加载投诉");
+      setComplaints((await response.json()) as Complaint[]);
+    } catch {
+      setLoadError("无法加载真实投诉数据，请重试");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   useEffect(() => {
-    void loadComplaints().catch(() => setError("无法加载真实投诉数据"));
+    void loadComplaints();
   }, []);
 
   async function reviewComplaint(id: string, nextStatus: "IN_REVIEW" | "RESOLVED" | "REJECTED") {
@@ -38,41 +51,57 @@ export default function ComplaintsPage() {
     if (!token) return;
     setError("");
     setStatus("");
-    const response = await fetch(`/api/admin/complaints/${id}/review`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ status: nextStatus, resolution })
-    });
-    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    if (!response.ok) {
-      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(message ?? "投诉处理失败");
-      return;
+    try {
+      const response = await fetch(`/api/admin/complaints/${id}/review`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status: nextStatus, resolution })
+      });
+      const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+      if (!response.ok) {
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        setError(message ?? "投诉处理失败");
+        return;
+      }
+      setResolution("");
+      setStatus("投诉状态已更新");
+      await loadComplaints();
+    } catch {
+      setError("投诉处理失败，请重试");
     }
-    setResolution("");
-    setStatus("投诉状态已更新");
-    await loadComplaints();
   }
 
   const stats = useMemo(() => {
     const open = complaints.filter((item) => item.status === "OPEN").length;
     const reviewing = complaints.filter((item) => item.status === "IN_REVIEW").length;
     const resolved = complaints.filter((item) => item.status === "RESOLVED").length;
-    return { open, reviewing, resolved };
+    const rejected = complaints.filter((item) => item.status === "REJECTED").length;
+    return { open, reviewing, resolved, rejected };
   }, [complaints]);
+  const dataReady = !isLoading && !loadError;
 
   return (
     <AdminShell>
       <SectionHeader eyebrow="Support Risk" title="投诉处理" desc="处理客户和陪玩投诉。第一阶段退款仍由管理员人工处理，所有结果需要写明原因，便于后续复盘。" />
 
-      <section className="mb-5 grid gap-4 md:grid-cols-3">
-        <Signal label="新投诉" value={String(stats.open)} hint="需要尽快接手" tone="gold" />
-        <Signal label="处理中" value={String(stats.reviewing)} hint="等待证据或沟通" tone="cyan" />
-        <Signal label="已解决" value={String(stats.resolved)} hint="保留处理记录" tone="green" />
-      </section>
+      {isLoading ? <p role="status" className="mb-5 text-dfc-muted">正在加载投诉…</p> : null}
+      {loadError ? (
+        <div className="mb-5">
+          <Alert tone="danger">{loadError}</Alert>
+          <ActionButton tone="secondary" onClick={() => void loadComplaints()}>重试加载</ActionButton>
+        </div>
+      ) : null}
+      {dataReady ? (
+        <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Signal label="新投诉" value={String(stats.open)} hint="需要尽快接手" tone="gold" />
+          <Signal label="处理中" value={String(stats.reviewing)} hint="等待证据或沟通" tone="cyan" />
+          <Signal label="已解决" value={String(stats.resolved)} hint="保留处理记录" tone="green" />
+          <Signal label="已拒绝" value={String(stats.rejected)} hint="已记录拒绝原因" tone="gold" />
+        </section>
+      ) : null}
 
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
@@ -84,7 +113,7 @@ export default function ComplaintsPage() {
         </label>
       </section>
 
-      <DataTable
+      {dataReady && <DataTable
         columns={["ID", "订单", "发起人", "原因", "状态", "操作"]}
         rows={complaints.map((item) => [
           <div key={`${item.id}-id`}>
@@ -107,7 +136,7 @@ export default function ComplaintsPage() {
             <ActionButton tone="danger" onClick={() => void reviewComplaint(item.id, "REJECTED")}>拒绝</ActionButton>
           </div>
         ])}
-      />
+      />}
     </AdminShell>
   );
 }
@@ -129,7 +158,7 @@ function Signal({ label, value, hint, tone }: { label: string; value: string; hi
 
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
   const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
-  return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+  return <div role={tone === "danger" ? "alert" : "status"} className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
 }
 
 function formatMoney(value: string) {
