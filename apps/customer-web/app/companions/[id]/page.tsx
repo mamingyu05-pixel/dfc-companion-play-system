@@ -7,6 +7,9 @@ import { Badge, CompanionAvatar, CustomerShell, SafeMediaImage, mediaUrl } from 
 import { games } from "../../data";
 
 type ApiCompanion = {
+  averageRating?: number | null;
+  reviewCount?: number;
+  reviews?: Array<{ stars: number; comment: string; createdAt: string }>;
   id: string;
   nickname: string;
   avatarUrl?: string | null;
@@ -137,13 +140,14 @@ export default function CompanionDetailPage() {
               </div>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">
+              <DetailMetric label="客户评价" value={companion.reviewCount ? `${companion.averageRating?.toFixed(1)}分 / ${companion.reviewCount}条评价` : "暂无评价"} />
               <DetailMetric label="可接游戏" value={gameNames(companionGames)} />
               <DetailMetric label="段位" value={companion.deltaForceRank} />
               <DetailMetric label="语音" value={canVoice ? "支持" : "文字"} />
               <DetailMetric label="状态" value={toOnlineStatus(companion.onlineStatus)} />
             </div>
-            <Link href="/order" className="maycat-button mt-5 block px-4 py-3 text-center text-sm font-black">
-              查看群下单方式
+            <Link href={`/order?companionId=${encodeURIComponent(companion.id)}`} className="maycat-button mt-5 block px-4 py-3 text-center text-sm font-black">
+              下单
             </Link>
             <Link
               href={trialHref}
@@ -151,7 +155,7 @@ export default function CompanionDetailPage() {
               rel={trialIsExternal ? "noreferrer" : undefined}
               className="maycat-button-secondary mt-3 block px-4 py-3 text-center text-sm font-black"
             >
-              申请试音
+              {trialIsExternal ? "申请试音" : "联系客服安排试音"}
             </Link>
           </aside>
         </div>
@@ -159,6 +163,14 @@ export default function CompanionDetailPage() {
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-6">
+          <section className="maycat-card p-4">
+            <h2 className="text-lg font-black text-white">最近评价</h2>
+            {!companion.reviewCount && <p className="mt-3">暂无评价</p>}
+            {companion.reviews?.map((review, index) => <article key={index} className="mt-3 border-t border-cyan-300/20 pt-3">
+              <p>{review.stars}星 · {new Date(review.createdAt).toLocaleDateString("zh-CN")}</p>
+              <p className="whitespace-pre-wrap break-words">{review.comment || "未填写评语"}</p>
+            </article>)}
+          </section>
           {companion.photoUrls?.length ? (
             <section className="maycat-card p-4">
               <h2 className="text-lg font-black text-white">展示照片</h2>
@@ -265,8 +277,8 @@ function companionTrialPlatform(companion: ApiCompanion): "DISCORD" | "KOOK" | n
 
 function companionTrialHref(companion: ApiCompanion, publicConfig: PublicConfig) {
   const platform = companionTrialPlatform(companion);
-  if (platform === "DISCORD") return publicConfig.support?.voiceTrialDiscordUrl || publicConfig.support?.discordUrl || "https://discord.gg/dX5prAZMPu";
-  if (platform === "KOOK") return publicConfig.support?.voiceTrialKookUrl || publicConfig.support?.kookUrl || "https://kook.vip/i0o2qA";
+  if (platform === "DISCORD") return publicConfig.support?.voiceTrialDiscordUrl || publicConfig.support?.discordUrl || "/support";
+  if (platform === "KOOK") return publicConfig.support?.voiceTrialKookUrl || publicConfig.support?.kookUrl || "/support";
   return "/support";
 }
 

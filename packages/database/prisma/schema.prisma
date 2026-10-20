@@ -2,6 +2,30 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model AuthRateLimitBucket {
+  key       String   @id
+  attempts  Int
+  expiresAt DateTime @db.Timestamptz
+  @@index([expiresAt])
+  @@map("auth_rate_limit_buckets")
+}
+
+model IntegrationJob {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  kind          String
+  payload       Json
+  status        String   @default("PENDING")
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  leaseUntil    DateTime?
+  lastError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([status, nextAttemptAt])
+  @@map("integration_jobs")
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -81,6 +105,7 @@ enum OrderStatus {
   ASSIGNED
   ACCEPTED
   IN_PROGRESS
+  AWAITING_ACCEPTANCE
   COMPLETED
   CANCELLED
   REFUND_REQUESTED
@@ -149,6 +174,8 @@ enum WalletTransactionType {
   ORDER_PAYMENT
   ORDER_REFUND
   ORDER_SETTLEMENT
+  ORDER_PENDING_INCOME
+  ORDER_PENDING_RELEASE
   WITHDRAWAL_FREEZE
   WITHDRAWAL_COMPLETED
   WITHDRAWAL_REJECTED
@@ -212,6 +239,28 @@ enum BotEventStatus {
   PENDING
   SENT
   FAILED
+  UNKNOWN
+}
+
+model NotificationDelivery {
+  id String @id @default(cuid())
+  key String @unique
+  businessKey String
+  platform BotPlatform
+  target String
+  path String
+  requestBody Json
+  response Json?
+  messageId String?
+  jobKey String?
+  status String @default("READY")
+  attempts Int @default(0)
+  startedAt DateTime?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, startedAt])
+  @@map("notification_deliveries")
 }
 
 model User {
@@ -244,6 +293,7 @@ model User {
   operatedWalletTransactions WalletTransaction[] @relation("WalletTransactionOperator")
   referralsGiven             UserReferral[]      @relation("ReferralReferrer")
   referralReceived           UserReferral?       @relation("ReferralReferredUser")
+  providerPaymentOrders      ProviderPaymentOrder[]
   rechargeRequests           RechargeRequest[]   @relation("RechargeCustomer")
   rechargeReviews            RechargeRequest[]   @relation("RechargeReviewer")
   withdrawalRequests         WithdrawalRequest[] @relation("WithdrawalCompanion")
@@ -256,11 +306,25 @@ model User {
   createdPromotionCodes      PromotionCode[]     @relation("PromotionCodeCreator")
   botEvents                  BotEvent[]          @relation("BotEventActor")
   externalAccounts           UserExternalAccount[]
+  wechatIdentities            WechatIdentity[]
   platformBindingCodes       PlatformBindingCode[]
   supportConversations       AiSupportConversation[]
 
   @@unique([role, displayNameKey])
   @@map("users")
+}
+
+model WechatIdentity {
+  appId     String
+  openId    String
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([appId, openId])
+  @@unique([appId, userId])
+  @@index([userId])
+  @@map("wechat_identities")
 }
 
 model EmailVerificationCode {
@@ -364,6 +428,17 @@ model Wallet {
 }
 
 model Order {
+  review OrderReview?
+  @@index([status, reportedCompletedAt])
+  @@index([status, acceptanceDeadline])
+  dispatchVersion Int @default(0)
+  acceptanceDeadline DateTime?
+  verifiedAt DateTime?
+  reportedCompletedAt DateTime?
+  disputeFromStatus OrderStatus?
+  refundAmount Decimal @default(0) @db.Decimal(12, 2)
+  storeKey String @default("UNASSIGNED")
+  isTest Boolean @default(false)
   id                String           @id @default(cuid())
   orderNo           String           @unique
   orderGroupId      String?
@@ -419,6 +494,18 @@ model Order {
   @@map("orders")
 }
 
+model OrderReview {
+  id String @id @default(cuid())
+  orderId String @unique
+  stars Int
+  comment String @default("") @db.VarChar(200)
+  hidden Boolean @default(false)
+  createdAt DateTime @default(now())
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("order_reviews")
+}
+
 model OrderGroup {
   id              String              @id @default(cuid())
   groupNo         String              @unique
@@ -467,6 +554,8 @@ model UserReferral {
 }
 
 model OrderDraft {
+  kookOrderFlow KookOrderFlow?
+  sourceBusinessKey String? @unique
   id                     String              @id @default(cuid())
   draftNo                String              @unique
   customerId             String?
@@ -565,6 +654,7 @@ model OrderStatusLog {
 
 model WalletTransaction {
   id             String                @id @default(cuid())
+  businessKey    String?               @unique
   walletId       String
   userId         String
   operatorId     String?
@@ -608,6 +698,8 @@ model RechargeRequest {
   @@index([status])
   @@index([promotionCodeId])
   @@map("recharge_requests")
+  providerPayment ProviderPaymentOrder?
+
 }
 
 model PromotionCode {
@@ -774,4 +866,62 @@ model BotEvent {
   @@index([type])
   @@index([orderId])
   @@map("bot_events")
+}
+
+// Created atomically with the frozen payment; never expire a committed request identity.
+model OrderRequestReceipt {
+  key         String   @id @db.VarChar(64)
+  payloadHash String   @db.VarChar(64)
+  resourceId  String?
+  createdAt   DateTime @default(now())
+
+  @@map("order_request_receipts")
+}
+
+
+// Provider receipts share the existing recharge/WalletTransaction ledger, not a second balance.
+model ProviderPaymentOrder {
+  id                    String   @id @default(uuid())
+  requestKey            String   @unique @db.VarChar(64)
+  payloadHash           String   @db.VarChar(64)
+  customerId            String
+  providerId            String   @db.VarChar(64)
+  merchantId            String   @db.VarChar(128)
+  merchantOrderId       String   @db.VarChar(128)
+  amount                Decimal  @db.Decimal(12, 2)
+  currency              String   @default("CNY") @db.VarChar(3)
+  status                String   @default("CREATED") @db.VarChar(16)
+  rechargeRequestId     String?  @unique
+  providerTransactionId String?  @db.VarChar(128)
+  walletBusinessKey     String?  @unique @db.VarChar(96)
+  reviewRequired        Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now()) @updatedAt
+  customer              User @relation(fields: [customerId], references: [id])
+  rechargeRequest       RechargeRequest? @relation(fields: [rechargeRequestId], references: [id], onDelete: Restrict)
+
+  @@unique([providerId, merchantId, merchantOrderId], map: "provider_payment_orders_merchant_order_key")
+  @@unique([providerId, merchantId, providerTransactionId], map: "provider_payment_orders_provider_transaction_key")
+  @@index([customerId, createdAt])
+  @@index([status, updatedAt])
+  @@map("provider_payment_orders")
+}
+
+
+// Candidate: durable private KOOK quote steps. No balances or identity credentials.
+model KookOrderFlow {
+  draftId        String? @unique
+  draft          OrderDraft? @relation(fields: [draftId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  id             String   @id
+  eventKey       String   @unique @db.VarChar(64)
+  userId         String
+  platformUserId String
+  version        Int      @default(0)
+  state          Json
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([userId, platformUserId, createdAt])
+  @@map("kook_order_flows")
 }

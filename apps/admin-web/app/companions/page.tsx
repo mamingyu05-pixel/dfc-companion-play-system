@@ -45,6 +45,7 @@ export default function CompanionsPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
   async function loadCompanions() {
     const token = localStorage.getItem("dfc_admin_token");
@@ -176,9 +177,9 @@ export default function CompanionsPage() {
   }, [companions]);
 
   const normalizedSearch = search.trim().toLowerCase();
-  const filteredCompanions = normalizedSearch
-    ? companions.filter((item) => getSearchableCompanionText(item).includes(normalizedSearch))
-    : companions;
+  const filteredCompanions = companions.filter(item =>
+    (!statusFilter || item.status === statusFilter) &&
+    (!normalizedSearch || getSearchableCompanionText(item).includes(normalizedSearch)));
 
   return (
     <AdminShell>
@@ -195,6 +196,9 @@ export default function CompanionsPage() {
       {status ? <Alert tone="success">{status}</Alert> : null}
 
       <section className="mb-4 rounded-dfc border border-cyan-300/15 bg-[#0a1020]/75 px-4 py-3">
+        <div className="mb-3 flex flex-wrap gap-2" aria-label="陪玩状态筛选">
+          {[["", "全部"], ["PENDING_REVIEW", "待审核"], ["LISTED", "已上架"], ["UNLISTED", "已下架"], ["BANNED", "已封禁"]].map(([value, label]) => <button key={value} type="button" aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)} className={`rounded-dfc-control border px-3 py-2 text-sm ${statusFilter === value ? "bg-cyan-300 text-slate-950" : "text-cyan-100"}`}>{label}</button>)}
+        </div>
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-base font-black text-white">陪玩列表</h2>

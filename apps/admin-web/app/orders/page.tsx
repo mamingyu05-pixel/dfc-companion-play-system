@@ -226,7 +226,9 @@ export default function OrdersPage() {
           order.voiceTrialRequested ? <StatusBadge key={`${order.id}-voice`} tone="warning">需要</StatusBadge> : <span className="text-dfc-muted">不需要</span>,
           <StatusBadge key={`${order.id}-status`} tone={statusTone(order.status)}>{toOrderStatus(order.status)}</StatusBadge>,
           formatDateTime(order.createdAt),
-          canCancelOrder(order) ? (
+          <div key={`${order.id}-actions`} className="flex flex-wrap gap-2">
+          {["PAID", "ASSIGNED"].includes(order.status) ? <Link href={`/dispatch?orderId=${encodeURIComponent(order.id)}`} className="rounded-dfc-control bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950">{order.status === "PAID" ? "派单" : "换人"}</Link> : null}
+          {canCancelOrder(order) ? (
             <button
               key={`${order.id}-cancel`}
               type="button"
@@ -236,7 +238,8 @@ export default function OrdersPage() {
             >
               {actioningOrderId === order.id ? "处理中" : "取消退款"}
             </button>
-          ) : <span key={`${order.id}-no-action`} className="text-dfc-muted">-</span>
+          ) : <span key={`${order.id}-no-action`} className="text-dfc-muted">{order.status === "AWAITING_ACCEPTANCE" ? "等待客户验收" : order.status === "IN_PROGRESS" ? "陪玩服务中" : order.status === "ACCEPTED" ? "等待陪玩开始" : "无待办"}</span>}
+          </div>
         ])}
       />
     </AdminShell>
@@ -372,6 +375,7 @@ function toOrderStatus(status: string) {
     ASSIGNED: "已派单",
     ACCEPTED: "已接单",
     IN_PROGRESS: "进行中",
+    AWAITING_ACCEPTANCE: "待验收",
     COMPLETED: "已完成",
     CANCELLED: "已取消",
     REFUND_REQUESTED: "退款申请",

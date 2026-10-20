@@ -1,59 +1,47 @@
 import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable } from "@nestjs/common";
-
-const WINDOW_MS = 60_000;
-const LIMIT = 5;
-const attempts = new Map<string, number[]>();
+import { createHash } from "node:crypto";
+import { PrismaService } from "../prisma/prisma.service";
 
 type RateLimitRequest = {
-  method?: string;
-  originalUrl?: string;
-  url?: string;
   ip?: string;
-  headers?: Record<string, string | string[] | undefined>;
-  body?: { email?: string; portal?: string };
+  body?: { email?: unknown };
+  user?: { id: string };
   socket?: { remoteAddress?: string };
-  connection?: { remoteAddress?: string };
 };
 
 @Injectable()
 export class AuthRateLimitGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<RateLimitRequest>();
-    const now = Date.now();
-    const key = buildKey(request);
-    const recent = (attempts.get(key) ?? []).filter((timestamp) => now - timestamp < WINDOW_MS);
-
-    if (recent.length >= LIMIT) {
-      attempts.set(key, recent);
-      throw new HttpException("Too many authentication attempts, please try again later", HttpStatus.TOO_MANY_REQUESTS);
+    const route = `${context.getClass().name}.${context.getHandler().name}`;
+    // Express applies the explicitly configured trusted proxy boundary.
+    const ip = request.ip || request.socket?.remoteAddress || "unknown";
+    const email = typeof request.body?.email === "string" ? request.body.email.trim().toLowerCase().slice(0, 320) : "";
+    const identities = [{ value: `ip:${ip}`, limit: 30 }];
+    if (request.user?.id || email) identities.push({ value: `account:${request.user?.id || email}`, limit: 5 });
+    const buckets = identities.map(({ value, limit }) => ({ key: createHash("sha256").update(`${route}:${value}`).digest("hex"), limit }))
+      .sort((a, b) => a.key.localeCompare(b.key));
+    const counts = await this.prisma.$transaction(async (tx) => {
+      const results: number[] = [];
+      for (const bucket of buckets) {
+        const rows = await tx.$queryRaw<Array<{ attempts: number }>>`
+          INSERT INTO "auth_rate_limit_buckets" ("key", "attempts", "expiresAt")
+          VALUES (${bucket.key}, 1, NOW() + INTERVAL '60 seconds')
+          ON CONFLICT ("key") DO UPDATE SET
+            "attempts" = CASE WHEN "auth_rate_limit_buckets"."expiresAt" <= NOW() THEN 1 ELSE LEAST("auth_rate_limit_buckets"."attempts" + 1, 1000) END,
+            "expiresAt" = CASE WHEN "auth_rate_limit_buckets"."expiresAt" <= NOW() THEN NOW() + INTERVAL '60 seconds' ELSE "auth_rate_limit_buckets"."expiresAt" END
+          RETURNING "attempts"`;
+        results.push(rows[0].attempts);
+      }
+      await tx.$executeRaw`DELETE FROM "auth_rate_limit_buckets" WHERE "key" IN
+        (SELECT "key" FROM "auth_rate_limit_buckets" WHERE "expiresAt" < NOW() - INTERVAL '1 minute' LIMIT 100)`;
+      return results;
+    });
+    if (counts.some((count, index) => count > buckets[index].limit)) {
+      throw new HttpException("Too many attempts, please try again later", HttpStatus.TOO_MANY_REQUESTS);
     }
-
-    recent.push(now);
-    attempts.set(key, recent);
-    cleanup(now);
     return true;
-  }
-}
-
-function buildKey(request: RateLimitRequest) {
-  const method = request.method ?? "UNKNOWN";
-  const path = request.originalUrl ?? request.url ?? "unknown-path";
-  const ip = getClientIp(request);
-  const email = request.body?.email?.trim().toLowerCase() || "unknown-email";
-  const portal = request.body?.portal ?? "default";
-  return `${method}:${path}:${ip}:${email}:${portal}`;
-}
-
-function getClientIp(request: RateLimitRequest) {
-  const forwardedFor = request.headers?.["x-forwarded-for"];
-  const raw = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
-  return raw?.split(",")[0]?.trim() || request.ip || request.socket?.remoteAddress || request.connection?.remoteAddress || "unknown-ip";
-}
-
-function cleanup(now: number) {
-  for (const [key, timestamps] of attempts.entries()) {
-    const recent = timestamps.filter((timestamp) => now - timestamp < WINDOW_MS);
-    if (recent.length) attempts.set(key, recent);
-    else attempts.delete(key);
   }
 }

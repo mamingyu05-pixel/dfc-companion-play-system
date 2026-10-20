@@ -5,10 +5,12 @@ import { CompanionExternalAccountsService } from "./companion-external-accounts.
 import { OrdersModule } from "../orders/orders.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { WalletModule } from "../wallet/wallet.module";
+import { OperationsService } from "./operations.service";
+import { OperationsController } from "./operations.controller";
 
 @Module({
   imports: [AuthModule, OrdersModule, PrismaModule, WalletModule],
-  controllers: [AdminController],
-  providers: [CompanionExternalAccountsService]
+  controllers: [AdminController, OperationsController],
+  providers: [CompanionExternalAccountsService, OperationsService]
 })
 export class AdminModule {}

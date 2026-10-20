@@ -1,3 +1,4 @@
+import { requireOrderRequestId } from "../orders/order-request";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import {
   BotPlatform,
@@ -27,7 +28,10 @@ import { RolesGuard } from "../auth/roles.guard";
 import { OrdersService } from "../orders/orders.service";
 import { OrderDraftsService } from "../orders/order-drafts.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { WalletService } from "../wallet/wallet.service";
+import { WalletService, PROVIDER_RECHARGE_EVIDENCE_PREFIX } from "../wallet/wallet.service";
+import { lockOrder } from "../orders/order-lock";
+import { AUTO_ACCEPTANCE_HOURS } from "../orders/acceptance-policy";
+import { fixedDecimal } from "../financial-values";
 
 const SUPPORTED_GAME_CODES = new Set<GameCode>([
   GameCode.DELTA_FORCE,
@@ -52,6 +56,11 @@ export class AdminController {
     private readonly wallet: WalletService,
     private readonly externalAccounts: CompanionExternalAccountsService
   ) {}
+
+  @Get("work-queue")
+  workQueue() {
+    return this.orders.getWorkQueue();
+  }
 
   @Get("dashboard")
   async getDashboard() {
@@ -107,7 +116,7 @@ export class AdminController {
         { label: "今日订单", value: String(todayOrderCount), hint: `${dispatchPendingCount} 个待派单` },
         { label: "待充值审核", value: String(pendingRechargeCount), hint: "需要核对截图" },
         { label: "待提现审核", value: String(pendingWithdrawalCount), hint: "待审核或待打款" },
-        { label: "投诉处理中", value: String(activeComplaintCount), hint: "需要管理员介入" }
+        { label: "未结投诉", value: String(activeComplaintCount), hint: "含新投诉与处理中" }
       ],
       pendingOrders: pendingOrders.map((order) => ({
         id: order.id,
@@ -475,6 +484,7 @@ export class AdminController {
   @Get("recharges")
   listRechargeRequests() {
     return this.prisma.rechargeRequest.findMany({
+      where: { NOT: { screenshotUrl: { startsWith: PROVIDER_RECHARGE_EVIDENCE_PREFIX } } },
       orderBy: { createdAt: "desc" },
       include: {
         customer: {
@@ -624,7 +634,13 @@ export class AdminController {
       throw new BadRequestException("Invalid complaint status");
     }
 
-    const complaint = await this.prisma.complaint.update({
+    if ((body.status === "RESOLVED" || body.status === "REJECTED") && !body.resolution?.trim()) throw new BadRequestException("A documented resolution is required");
+    return this.prisma.$transaction(async tx => {
+    const current = await tx.complaint.findUniqueOrThrow({ where: { id } });
+    await lockOrder(tx, current.orderId);
+    const orderIdentity = await tx.order.findUniqueOrThrow({ where: { id: current.orderId }, select: { companionId: true } });
+    if (orderIdentity.companionId) await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${orderIdentity.companionId} FOR UPDATE`;
+    const complaint = await tx.complaint.update({
       where: { id },
       data: {
         status: body.status,
@@ -634,7 +650,7 @@ export class AdminController {
       include: { order: true, reporter: true }
     });
 
-    await this.prisma.adminLog.create({
+    await tx.adminLog.create({
       data: {
         actorId: user.id,
         targetUserId: complaint.reporterId,
@@ -645,7 +661,19 @@ export class AdminController {
       }
     });
 
+    if (body.status === "REJECTED" && complaint.order.status === OrderStatus.DISPUTED && complaint.order.disputeFromStatus &&
+      await tx.complaint.count({ where: { orderId: complaint.orderId, status: { in: ["OPEN", "IN_REVIEW", "RESOLVED"] } } }) === 0) {
+      await tx.order.update({ where: { id: complaint.orderId }, data: { status: complaint.order.disputeFromStatus, disputeFromStatus: null } });
+      await tx.orderStatusLog.create({ data: { orderId: complaint.orderId, actorId: user.id, fromStatus: OrderStatus.DISPUTED, toStatus: complaint.order.disputeFromStatus, reason: `COMPLAINT_REJECTED: ${body.resolution}` } });
+    }
     return complaint;
+    });
+  }
+
+  @Patch("orders/:id/resolve-dispute")
+  resolveOrderDispute(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { refundAmount: string; note: string }) {
+    if (typeof body.refundAmount !== "string") throw new BadRequestException("An explicit refundAmount is required");
+    return this.orders.acceptCompletion(id, user.id, body.note, body.refundAmount);
   }
 
   @Get("orders")
@@ -658,6 +686,7 @@ export class AdminController {
     @CurrentUser() user: AuthenticatedUser,
     @Body()
     body: {
+      requestId?: string;
       customerId?: string;
       companionId?: string;
       companionIds?: string[];
@@ -678,7 +707,6 @@ export class AdminController {
     if (!customerId) throw new BadRequestException("customerId is required");
 
     const companionIds = [...new Set([...(body.companionIds ?? []), body.companionId].map((id) => id?.trim()).filter((id): id is string => Boolean(id)))];
-    if (!companionIds.length) throw new BadRequestException("companionId or companionIds is required");
 
     const game = body.game ?? GameCode.DELTA_FORCE;
     if (!SUPPORTED_GAME_CODES.has(game)) throw new BadRequestException("Unsupported game");
@@ -689,7 +717,18 @@ export class AdminController {
     const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
     if (!Object.values(OrderSourcePlatform).includes(sourcePlatform)) throw new BadRequestException("Unsupported source platform");
 
+    if (!companionIds.length) {
+      return this.orders.createOrder(customerId, {
+        requestId: requireOrderRequestId(body.requestId), game, mode: body.mode.trim(), hours: body.hours.trim(),
+        priceTier, rankTierKey: body.rankTierKey?.trim() || undefined,
+        customUnitPrice: body.customUnitPrice?.trim() || undefined,
+        notes: body.notes?.trim() || undefined, sourcePlatform,
+        voiceTrialRequested: body.voiceTrialRequested ?? false
+      }).then(order => ({ orders: [order], notifications: [] }));
+    }
+
     return this.orders.createOrderGroup(customerId, {
+      requestId: requireOrderRequestId(body.requestId),
       game,
       mode: body.mode.trim(),
       hours: body.hours.trim(),
@@ -761,6 +800,11 @@ export class AdminController {
     }
   ) {
     return this.orderDrafts.createDraftFromDemand(user.id, body);
+  }
+
+  @Post("order-drafts/:id/publish-fallback")
+  publishDraftFallback(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.orderDrafts.publishFallback(user.id, id);
   }
 
   @Post("order-drafts/:id/recommend-candidates")
@@ -842,6 +886,10 @@ export class AdminController {
             email: true,
             displayName: true,
             status: true,
+            _count: { select: { companionOrders: { where: { OR: [
+              { status: { in: ["ACCEPTED", "IN_PROGRESS"] } },
+              { status: "DISPUTED", disputeFromStatus: { in: ["ACCEPTED", "IN_PROGRESS"] } }
+            ] } } } },
             externalAccounts: {
               select: {
                 platform: true,
@@ -867,6 +915,7 @@ export class AdminController {
         games: profile.games.length ? profile.games : [profile.game],
         status: profile.status,
         onlineStatus: profile.onlineStatus,
+        activeServiceCount: profile.user._count.companionOrders,
         deltaForceRank: profile.deltaForceRank,
         skillModes: profile.skillModes,
         pricePerHour: profile.pricePerHour.toString(),
@@ -892,6 +941,25 @@ export class AdminController {
       value: setting.value,
       description: setting.description
     }));
+  }
+
+  @Get("order-acceptance-settings")
+  async getOrderAcceptanceSettings() {
+    return { hours: await this.orders.autoAcceptanceHours() };
+  }
+
+  @Patch("order-acceptance-settings")
+  async updateOrderAcceptanceSettings(@CurrentUser() user: AuthenticatedUser, @Body() body: { hours?: unknown }) {
+    if (typeof body.hours !== "number" || !Number.isFinite(new Date(Date.now() + body.hours * 3_600_000).getTime()) || body.hours <= 0) {
+      throw new BadRequestException("自动验收小时数必须是大于0的有效数字");
+    }
+    const value = String(body.hours);
+    await this.prisma.$transaction(async tx => {
+      await tx.platformSetting.upsert({ where: { key: AUTO_ACCEPTANCE_HOURS },
+        create: { key: AUTO_ACCEPTANCE_HOURS, value, updatedById: user.id }, update: { value, updatedById: user.id } });
+      await tx.adminLog.create({ data: { actorId: user.id, action: "UPDATE_ORDER_ACCEPTANCE_HOURS", entityType: "PLATFORM_SETTING", entityId: AUTO_ACCEPTANCE_HOURS, detail: { hours: body.hours as number } } });
+    });
+    return this.getOrderAcceptanceSettings();
   }
 
   @Get("game-rank-prices")
@@ -1153,7 +1221,7 @@ export class AdminController {
     const passwordHash = await createPasswordHash(body.password);
     let pricePerHour: Prisma.Decimal;
     try {
-      pricePerHour = new Prisma.Decimal(body.pricePerHour);
+      pricePerHour = fixedDecimal(body.pricePerHour, "pricePerHour");
     } catch {
       throw new BadRequestException("pricePerHour must be a valid amount");
     }
@@ -1276,7 +1344,7 @@ export class AdminController {
 
     let pricePerHour: Prisma.Decimal;
     try {
-      pricePerHour = new Prisma.Decimal(body.pricePerHour);
+      pricePerHour = fixedDecimal(body.pricePerHour, "pricePerHour");
     } catch {
       throw new BadRequestException("pricePerHour must be a valid amount");
     }
@@ -1587,12 +1655,17 @@ export class AdminController {
   }
 
   @Patch("orders/:id/assign")
-  async assignOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { companionId: string; autoStart?: boolean }) {
-    const assignment = await this.orders.assignOrder(id, body.companionId, user.id);
-    if (!body.autoStart) return assignment;
-    const startedOrder = await this.orders.startAssignedOrderByAdmin(id, user.id);
-    return { ...assignment, order: startedOrder, autoStarted: true };
+  assignOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { companionId: string; autoStart?: boolean; dispatchVersion?: number }) {
+    return this.orders.assignOrder(id, body.companionId, user.id, body.dispatchVersion);
   }
+
+  @Patch("orders/:id/dispatch")
+  dispatchOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { mode: "DIRECT" | "OPEN"; companionId?: string; reason: string; acceptanceDeadline?: string | null; dispatchVersion?: number }) {
+    return this.orders.dispatchOrder(id, user.id, body);
+  }
+
+  @Post("orders/expire-assignments")
+  expireAssignments() { return this.orders.expireAssignments(); }
 
   @Post("companions/:id/external-accounts")
   bindCompanionExternalAccount(
@@ -1697,14 +1770,8 @@ function defaultPromotionSettingValue(key: string) {
 }
 
 function parseNonNegativeDecimal(value: string, fieldName: string) {
-  let decimal: Prisma.Decimal;
-  try {
-    decimal = new Prisma.Decimal(value);
-  } catch {
-    throw new BadRequestException(`${fieldName} must be a valid amount`);
-  }
-  if (decimal.lt(0)) throw new BadRequestException(`${fieldName} cannot be negative`);
-  return decimal;
+  const rate = /rate$/i.test(fieldName);
+  return fixedDecimal(value, fieldName, { zero: true, scale: rate ? 4 : 2, max: rate ? "1" : undefined });
 }
 
 function parsePositiveDecimal(value: string, fieldName: string) {

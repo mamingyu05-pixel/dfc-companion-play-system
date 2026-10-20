@@ -1,8 +1,11 @@
+import { diagnoseKook } from "../../../packages/config/src/diagnostics";
 import { KookAdapter } from "./index";
 
 try {
+  const configuration = diagnoseKook(process.env);
+  if (!configuration.configurationValid) throw new Error(`KOOK configuration blocked: ${configuration.blockers.join(", ")}`);
   new KookAdapter();
-  console.log("DFC KOOK adapter ready.");
+  console.log("DFC KOOK adapter configured; live connectivity and order delivery unverified.");
   const intervalSeconds = Math.max(60, Number(process.env.ORDER_DRAFT_EXPIRE_CHECK_SECONDS ?? 300));
   setInterval(() => {
     void expireStaleDrafts();

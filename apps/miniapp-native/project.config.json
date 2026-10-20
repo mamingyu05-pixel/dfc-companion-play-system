@@ -1,0 +1,7 @@
+{
+  "description": "已配置用户提供的微信测试AppID；仅本机原型，未经过微信开发者工具或真机验收",
+  "appid": "wxe2812f4a7cbb2c64",
+  "projectname": "dfc-local-prototype",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "./"
+}

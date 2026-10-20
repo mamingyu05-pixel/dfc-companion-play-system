@@ -11,8 +11,12 @@ import {
 } from "@prisma/client";
 import { BotNotificationService } from "../bot/bot-notification.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { fixedDecimal, money } from "../financial-values";
+
+import { validateRechargeScreenshot } from "./upload-evidence";
 
 const MANUAL_RECHARGE_EVIDENCE = "MANUAL_SUPPORT_CONFIRMATION";
+export const PROVIDER_RECHARGE_EVIDENCE_PREFIX = "PROVIDER_PAYMENT:";
 
 @Injectable()
 export class WalletService {
@@ -45,7 +49,7 @@ export class WalletService {
         }
       }),
       this.prisma.rechargeRequest.findMany({
-        where: { customerId: userId },
+        where: { customerId: userId, NOT: { screenshotUrl: { startsWith: PROVIDER_RECHARGE_EVIDENCE_PREFIX } } },
         orderBy: { createdAt: "desc" },
         take: 20
       })
@@ -86,7 +90,7 @@ export class WalletService {
 
   async getCompanionWalletSummary(userId: string) {
     await this.assertCompanionAccess(userId);
-    const [wallet, withdrawalRequests] = await Promise.all([
+    const [wallet, withdrawalRequests, disputeReserve] = await Promise.all([
       this.prisma.wallet.findUnique({
         where: { userId },
         include: {
@@ -100,18 +104,19 @@ export class WalletService {
         where: { companionId: userId },
         orderBy: { createdAt: "desc" },
         take: 20
-      })
+      }),
+      this.disputedIncome(this.prisma, userId)
     ]);
 
-    const withdrawingAmount = withdrawalRequests
-      .filter((request) => request.status === WithdrawalStatus.PENDING || request.status === WithdrawalStatus.APPROVED)
-      .reduce((total, request) => total.add(request.amount), new Prisma.Decimal(0));
+    const withdrawingAmount = wallet?.frozenIncome ?? new Prisma.Decimal(0);
 
     return {
       wallet: wallet
         ? {
             id: wallet.id,
-            availableIncome: wallet.availableIncome.toString(),
+            availableIncome: Prisma.Decimal.max(0, wallet.availableIncome.sub(disputeReserve)).toString(),
+            availableIncomeBeforeDisputeReserve: wallet.availableIncome.toString(),
+            disputeReserve: disputeReserve.toString(),
             pendingIncome: wallet.pendingIncome.toString(),
             frozenIncome: wallet.frozenIncome.toString(),
             transactions: wallet.transactions.map((transaction) => ({
@@ -188,71 +193,78 @@ export class WalletService {
     customerId: string,
     body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string }
   ) {
-    const amount = this.positiveDecimal(body.amount, "amount");
-    const screenshotUrl = body.screenshotUrl?.trim();
-    if (screenshotUrl && screenshotUrl.length > 2_500_000) {
-      throw new BadRequestException("screenshotUrl is too large");
+    try { return await this.prisma.$transaction(tx => this.createRechargeInTransaction(tx, customerId, body)); }
+    catch (error) {
+      if (isPrismaErrorCode(error, "P2002")) throw new BadRequestException("Promotion code can only be used once per customer");
+      throw error;
     }
+  }
 
-    const customer = await this.prisma.user.findFirst({
+  // Internal provider entry; the public manual DTO cannot create this evidence marker.
+  createProviderRechargeInTransaction(
+    tx: Prisma.TransactionClient, customerId: string, paymentOrderId: string,
+    body: { amount: string; note?: string; promotionCode?: string }
+  ) {
+    return this.createRechargeInTransaction(tx, customerId, body, `${PROVIDER_RECHARGE_EVIDENCE_PREFIX}${paymentOrderId}`);
+  }
+
+  private async createRechargeInTransaction(
+    tx: Prisma.TransactionClient, customerId: string,
+    body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string }, providerEvidence?: string
+  ) {
+    const amount = this.positiveDecimal(body.amount, "amount");
+    const screenshotUrl = providerEvidence ?? validateRechargeScreenshot(body.screenshotUrl);
+
+    const customer = await tx.user.findFirst({
       where: { id: customerId, role: UserRole.CUSTOMER, status: UserStatus.ACTIVE }
     });
     if (!customer) throw new BadRequestException("Customer does not exist or is not active");
 
-    const promotion = body.promotionCode ? await this.findApplicablePromotionCode(body.promotionCode, amount) : null;
+    const promotion = body.promotionCode ? await this.findApplicablePromotionCode(body.promotionCode, amount, tx) : null;
     const promotionCodeBonus = promotion ? calculatePromotionBonus(amount, promotion) : new Prisma.Decimal(0);
     const predepositBonus = calculatePredepositBonus(amount);
     const promotionBonus = promotionCodeBonus.add(predepositBonus);
 
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        if (promotion) {
-          const existingUse = await tx.rechargeRequest.findFirst({
-            where: {
-              customerId,
-              promotionCodeId: promotion.id,
-              status: { not: ReviewStatus.REJECTED }
-            },
-            select: { id: true }
-          });
-          if (existingUse) {
-            throw new BadRequestException("Promotion code can only be used once per customer");
-          }
-
-          if (promotion.usageLimit === null) {
-            await tx.promotionCode.update({
-              where: { id: promotion.id },
-              data: { usedCount: { increment: 1 } }
-            });
-          } else {
-            const reserved = await tx.promotionCode.updateMany({
-              where: {
-                id: promotion.id,
-                usedCount: { lt: promotion.usageLimit }
-              },
-              data: { usedCount: { increment: 1 } }
-            });
-            if (reserved.count !== 1) throw new BadRequestException("Promotion code usage limit reached");
-          }
-        }
-
-        return tx.rechargeRequest.create({
-          data: {
-            customerId,
-            promotionCodeId: promotion?.id,
-            amount,
-            promotionBonus,
-            screenshotUrl: screenshotUrl || MANUAL_RECHARGE_EVIDENCE,
-            note: body.note
-          }
-        });
+    if (promotion) {
+      const existingUse = await tx.rechargeRequest.findFirst({
+        where: {
+          customerId,
+          promotionCodeId: promotion.id,
+          status: { not: ReviewStatus.REJECTED }
+        },
+        select: { id: true }
       });
-    } catch (error) {
-      if (isPrismaErrorCode(error, "P2002")) {
+      if (existingUse) {
         throw new BadRequestException("Promotion code can only be used once per customer");
       }
-      throw error;
+
+      if (promotion.usageLimit === null) {
+        await tx.promotionCode.update({
+          where: { id: promotion.id },
+          data: { usedCount: { increment: 1 } }
+        });
+      } else {
+        const reserved = await tx.promotionCode.updateMany({
+          where: {
+            id: promotion.id,
+            usedCount: { lt: promotion.usageLimit }
+          },
+          data: { usedCount: { increment: 1 } }
+        });
+        if (reserved.count !== 1) throw new BadRequestException("Promotion code usage limit reached");
+      }
     }
+
+    return tx.rechargeRequest.create({
+      data: {
+        customerId,
+        promotionCodeId: promotion?.id,
+        amount,
+        promotionBonus,
+        screenshotUrl: screenshotUrl || MANUAL_RECHARGE_EVIDENCE,
+        note: body.note
+      }
+    });
   }
 
   async adminCreditCustomerBalance(
@@ -341,12 +353,16 @@ export class WalletService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
+      const identity = await tx.rechargeRequest.findUnique({ where: { id: rechargeRequestId }, select: { customerId: true } });
+      if (!identity) throw new NotFoundException("Recharge request not found");
+      await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${identity.customerId} FOR UPDATE`;
       const request = await tx.rechargeRequest.findUnique({
         where: { id: rechargeRequestId },
         include: { customer: { include: { wallet: true } } }
       });
 
       if (!request) throw new NotFoundException("Recharge request not found");
+      if (request.screenshotUrl.startsWith(PROVIDER_RECHARGE_EVIDENCE_PREFIX)) throw new BadRequestException("支付渠道充值不能通过人工审核入账");
       if (request.status !== ReviewStatus.PENDING) throw new BadRequestException("Recharge request was already reviewed");
       if (!request.customer.wallet) {
         await tx.wallet.create({ data: { userId: request.customerId } });
@@ -385,72 +401,7 @@ export class WalletService {
         return tx.rechargeRequest.findUniqueOrThrow({ where: { id: rechargeRequestId } });
       }
 
-      const approvedRechargeCount = await tx.rechargeRequest.count({
-        where: {
-          customerId: request.customerId,
-          status: ReviewStatus.APPROVED,
-          id: { not: rechargeRequestId }
-        }
-      });
-      const firstRechargeBonus = approvedRechargeCount === 0
-        ? await this.calculateFirstRechargeBonus(tx, request.amount)
-        : new Prisma.Decimal(0);
-      const rechargeBonus = request.promotionBonus ?? new Prisma.Decimal(0);
-      const creditAmount = request.amount.add(firstRechargeBonus).add(rechargeBonus);
-
-      const wallet = await tx.wallet.update({
-        where: { userId: request.customerId },
-        data: { availableBalance: { increment: creditAmount } }
-      });
-
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          userId: request.customerId,
-          operatorId: reviewerId,
-          type: WalletTransactionType.RECHARGE_APPROVED,
-          direction: TransactionDirection.CREDIT,
-          amount: request.amount,
-          balanceAfter: wallet.availableBalance,
-          referenceType: "RECHARGE_REQUEST",
-          referenceId: rechargeRequestId,
-          note: body.note
-        }
-      });
-
-      if (firstRechargeBonus.gt(0)) {
-        await tx.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            userId: request.customerId,
-            operatorId: reviewerId,
-            type: WalletTransactionType.PROMOTION_BONUS,
-            direction: TransactionDirection.CREDIT,
-            amount: firstRechargeBonus,
-            balanceAfter: wallet.availableBalance,
-            referenceType: "RECHARGE_REQUEST",
-            referenceId: rechargeRequestId,
-            note: "New customer first recharge bonus"
-          }
-        });
-      }
-
-      if (rechargeBonus.gt(0)) {
-        await tx.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            userId: request.customerId,
-            operatorId: reviewerId,
-            type: WalletTransactionType.PROMOTION_BONUS,
-            direction: TransactionDirection.CREDIT,
-            amount: rechargeBonus,
-            balanceAfter: wallet.availableBalance,
-            referenceType: request.promotionCodeId ? "RECHARGE_PROMOTION_CODE" : "RECHARGE_PREDEPOSIT_BONUS",
-            referenceId: request.promotionCodeId ?? rechargeRequestId,
-            note: request.promotionCodeId ? "Recharge promotion code / predeposit bonus" : "Predeposit recharge bonus"
-          }
-        });
-      }
+      const { firstRechargeBonus, rechargeBonus, creditAmount } = await this.creditApprovedRecharge(tx, request, reviewerId, body.note);
 
       await tx.adminLog.create({
         data: {
@@ -480,6 +431,116 @@ export class WalletService {
     return result;
   }
 
+  // Caller owns the customer lock and commits the payment state and these ledger writes together.
+  async settleProviderRechargeInTransaction(
+    tx: Prisma.TransactionClient, rechargeRequestId: string, paymentOrderId: string,
+    customerId: string, expectedAmount: string, walletBusinessKey: string
+  ) {
+    await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${customerId} FOR UPDATE`;
+    const request = await tx.rechargeRequest.findUnique({ where: { id: rechargeRequestId }, include: { customer: { include: { wallet: true } } } });
+    if (!request || request.customerId !== customerId || request.screenshotUrl !== `${PROVIDER_RECHARGE_EVIDENCE_PREFIX}${paymentOrderId}` ||
+        !request.amount.eq(fixedDecimal(expectedAmount, "amount")) || request.status !== ReviewStatus.PENDING) {
+      throw new BadRequestException("支付充值申请状态、归属或金额不匹配");
+    }
+    if (!/^provider-recharge:[a-f0-9]{64}$/.test(walletBusinessKey)) throw new BadRequestException("Invalid provider wallet business key");
+    if (!request.customer.wallet) await tx.wallet.create({ data: { userId: customerId } });
+    const changed = await tx.rechargeRequest.updateMany({ where: { id: rechargeRequestId, status: ReviewStatus.PENDING },
+      data: { status: ReviewStatus.APPROVED, reviewedAt: new Date(), reviewNote: "支付渠道已确认" } });
+    if (changed.count !== 1) throw new BadRequestException("充值申请状态已变化");
+    await this.creditApprovedRecharge(tx, request, undefined, "支付渠道已确认", walletBusinessKey);
+    return tx.rechargeRequest.findUniqueOrThrow({ where: { id: rechargeRequestId } });
+  }
+
+  async closeProviderRechargeInTransaction(tx: Prisma.TransactionClient, rechargeRequestId: string, paymentOrderId: string, customerId: string) {
+    const request = await tx.rechargeRequest.findUnique({ where: { id: rechargeRequestId } });
+    if (!request || request.customerId !== customerId || request.screenshotUrl !== `${PROVIDER_RECHARGE_EVIDENCE_PREFIX}${paymentOrderId}` || request.status !== ReviewStatus.PENDING) {
+      throw new BadRequestException("支付充值申请状态或归属不匹配");
+    }
+    const changed = await tx.rechargeRequest.updateMany({ where: { id: rechargeRequestId, status: ReviewStatus.PENDING },
+      data: { status: ReviewStatus.REJECTED, reviewedAt: new Date(), reviewNote: "支付渠道确认未付款并关闭" } });
+    if (changed.count !== 1) throw new BadRequestException("充值申请状态已变化");
+    // Same reservation release as a rejected manual application; this never refunds a paid order.
+    if (request.promotionCodeId) await tx.promotionCode.updateMany({ where: { id: request.promotionCodeId, usedCount: { gt: 0 } }, data: { usedCount: { decrement: 1 } } });
+  }
+
+  private async creditApprovedRecharge(
+    tx: Prisma.TransactionClient,
+    request: Prisma.RechargeRequestGetPayload<{ include: { customer: { include: { wallet: true } } } }>,
+    reviewerId?: string, note?: string, walletBusinessKey?: string
+  ) {
+    const rechargeRequestId = request.id;
+    const approvedRechargeCount = await tx.rechargeRequest.count({
+      where: {
+        customerId: request.customerId,
+        status: ReviewStatus.APPROVED,
+        id: { not: rechargeRequestId }
+      }
+    });
+    const firstRechargeBonus = approvedRechargeCount === 0
+      ? await this.calculateFirstRechargeBonus(tx, request.amount)
+      : new Prisma.Decimal(0);
+    const rechargeBonus = request.promotionBonus ?? new Prisma.Decimal(0);
+    const creditAmount = money(request.amount.add(firstRechargeBonus).add(rechargeBonus), true);
+
+    const wallet = await tx.wallet.update({
+      where: { userId: request.customerId },
+      data: { availableBalance: { increment: creditAmount } }
+    });
+
+    await tx.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        userId: request.customerId,
+        operatorId: reviewerId,
+        type: WalletTransactionType.RECHARGE_APPROVED,
+        businessKey: walletBusinessKey,
+        direction: TransactionDirection.CREDIT,
+        amount: request.amount,
+        balanceAfter: wallet.availableBalance,
+        referenceType: "RECHARGE_REQUEST",
+        referenceId: rechargeRequestId,
+        note
+      }
+    });
+
+    if (firstRechargeBonus.gt(0)) {
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          userId: request.customerId,
+          operatorId: reviewerId,
+          type: WalletTransactionType.PROMOTION_BONUS,
+          businessKey: `first-recharge:${request.customerId}`,
+          direction: TransactionDirection.CREDIT,
+          amount: firstRechargeBonus,
+          balanceAfter: wallet.availableBalance,
+          referenceType: "RECHARGE_REQUEST",
+          referenceId: rechargeRequestId,
+          note: "New customer first recharge bonus"
+        }
+      });
+    }
+
+    if (rechargeBonus.gt(0)) {
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          userId: request.customerId,
+          operatorId: reviewerId,
+          type: WalletTransactionType.PROMOTION_BONUS,
+          direction: TransactionDirection.CREDIT,
+          amount: rechargeBonus,
+          balanceAfter: wallet.availableBalance,
+          referenceType: request.promotionCodeId ? "RECHARGE_PROMOTION_CODE" : "RECHARGE_PREDEPOSIT_BONUS",
+          referenceId: request.promotionCodeId ?? rechargeRequestId,
+          note: request.promotionCodeId ? "Recharge promotion code / predeposit bonus" : "Predeposit recharge bonus"
+        }
+      });
+    }
+
+    return { firstRechargeBonus, rechargeBonus, creditAmount };
+  }
+
   async createWithdrawalRequest(
     companionId: string,
     body: { amount: string; payoutAccount: string; note?: string }
@@ -487,6 +548,7 @@ export class WalletService {
     const amount = this.positiveDecimal(body.amount, "amount");
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${companionId} FOR UPDATE`;
       const companion = await tx.user.findFirst({
         where: {
           id: companionId,
@@ -498,11 +560,12 @@ export class WalletService {
       if (!companion?.wallet) throw new BadRequestException("Companion wallet does not exist");
       const payoutAccount = sanitizeText(body.payoutAccount, 500) || buildPayoutAccount(companion.companionProfile);
       if (!payoutAccount) throw new BadRequestException("payoutAccount is required");
+      const disputeReserve = await this.disputedIncome(tx, companionId);
 
       const frozen = await tx.wallet.updateMany({
         where: {
           id: companion.wallet.id,
-          availableIncome: { gte: amount }
+          availableIncome: { gte: amount.add(disputeReserve) }
         },
         data: {
           availableIncome: { decrement: amount },
@@ -561,6 +624,9 @@ export class WalletService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const identity = await tx.withdrawalRequest.findUnique({ where: { id: withdrawalRequestId }, select: { companionId: true } });
+      if (!identity) throw new NotFoundException("Withdrawal request not found");
+      await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${identity.companionId} FOR UPDATE`;
       const request = await tx.withdrawalRequest.findUnique({
         where: { id: withdrawalRequestId },
         include: { companion: { include: { wallet: true } } }
@@ -568,6 +634,11 @@ export class WalletService {
 
       if (!request) throw new NotFoundException("Withdrawal request not found");
       if (!request.companion.wallet) throw new BadRequestException("Companion wallet does not exist");
+      if (body.status !== "REJECTED") {
+        const reserve = await this.disputedIncome(tx, request.companionId);
+        const liquid = request.companion.wallet.availableIncome.add(request.companion.wallet.frozenIncome);
+        if (liquid.sub(request.amount).lt(reserve)) throw new BadRequestException("Unresolved order complaints reserve this income; manual finance review is required");
+      }
       if (request.status !== WithdrawalStatus.PENDING && request.status !== WithdrawalStatus.APPROVED) {
         throw new BadRequestException("Withdrawal request cannot be reviewed from current status");
       }
@@ -746,14 +817,12 @@ export class WalletService {
   }
 
   private positiveDecimal(value: string, fieldName: string) {
-    let decimal: Prisma.Decimal;
-    try {
-      decimal = new Prisma.Decimal(value);
-    } catch {
-      throw new BadRequestException(`${fieldName} must be a valid amount`);
-    }
-    if (decimal.lte(0)) throw new BadRequestException(`${fieldName} must be greater than 0`);
-    return decimal;
+    return fixedDecimal(value, fieldName);
+  }
+
+  private async disputedIncome(tx: Prisma.TransactionClient, companionId: string) {
+    const result = await tx.order.aggregate({ where: { companionId, status: "COMPLETED", complaints: { some: { status: { in: ["OPEN", "IN_REVIEW"] } } } }, _sum: { companionIncome: true } });
+    return result._sum.companionIncome ?? new Prisma.Decimal(0);
   }
 
   private async calculateFirstRechargeBonus(tx: Prisma.TransactionClient, rechargeAmount: Prisma.Decimal) {
@@ -761,16 +830,16 @@ export class WalletService {
       tx.platformSetting.findUnique({ where: { key: "NEW_CUSTOMER_FIRST_RECHARGE_BONUS_RATE" } }),
       tx.platformSetting.findUnique({ where: { key: "NEW_CUSTOMER_FIRST_RECHARGE_BONUS_AMOUNT" } })
     ]);
-    const rate = this.nonNegativeDecimal(rateSetting?.value ?? "0", "NEW_CUSTOMER_FIRST_RECHARGE_BONUS_RATE");
+    const rate = fixedDecimal(rateSetting?.value ?? "0", "NEW_CUSTOMER_FIRST_RECHARGE_BONUS_RATE", { scale: 4, zero: true, max: "1" });
     const fixed = this.nonNegativeDecimal(fixedSetting?.value ?? "0", "NEW_CUSTOMER_FIRST_RECHARGE_BONUS_AMOUNT");
-    return rechargeAmount.mul(rate).add(fixed).toDecimalPlaces(2);
+    return money(rechargeAmount.mul(rate).add(fixed));
   }
 
-  private async findApplicablePromotionCode(code: string, rechargeAmount: Prisma.Decimal) {
+  private async findApplicablePromotionCode(code: string, rechargeAmount: Prisma.Decimal, db: Prisma.TransactionClient = this.prisma) {
     const normalizedCode = normalizePromotionCode(code);
     if (!normalizedCode) return null;
 
-    const promotion = await this.prisma.promotionCode.findUnique({ where: { code: normalizedCode } });
+    const promotion = await db.promotionCode.findUnique({ where: { code: normalizedCode } });
     const now = new Date();
     if (!promotion || !promotion.isActive) {
       throw new BadRequestException("Promotion code is invalid");
@@ -797,14 +866,7 @@ export class WalletService {
   }
 
   private nonNegativeDecimal(value: string, fieldName: string) {
-    let decimal: Prisma.Decimal;
-    try {
-      decimal = new Prisma.Decimal(value);
-    } catch {
-      throw new BadRequestException(`${fieldName} must be a valid amount`);
-    }
-    if (decimal.lt(0)) throw new BadRequestException(`${fieldName} cannot be negative`);
-    return decimal;
+    return fixedDecimal(value, fieldName, { zero: true });
   }
 
   private async debitCustomerAvailableBalance(tx: Prisma.TransactionClient, walletId: string, amount: Prisma.Decimal) {

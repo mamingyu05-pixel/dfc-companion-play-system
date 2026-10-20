@@ -40,8 +40,8 @@ export default function EarningsPage() {
   }, []);
 
   const wallet = summary?.wallet;
-  const creditAmount = useMemo(
-    () => wallet?.transactions.filter((item) => item.direction === "CREDIT").reduce((sum, item) => sum + Number(item.amount || 0), 0) ?? 0,
+  const settledServiceIncome = useMemo(
+    () => wallet?.transactions.filter((item) => item.type === "ORDER_SETTLEMENT" && item.direction === "CREDIT").reduce((sum, item) => sum + Number(item.amount || 0), 0) ?? 0,
     [wallet]
   );
 
@@ -54,7 +54,7 @@ export default function EarningsPage() {
         <MetricCard label="可提现收益" value={`¥${formatMoney(wallet?.availableIncome ?? "0")}`} hint="当前账号可提交提现" tone="gold" />
         <MetricCard label="待结算收益" value={`¥${formatMoney(wallet?.pendingIncome ?? "0")}`} hint="订单完成后释放" />
         <MetricCard label="提现中" value={`¥${formatMoney(summary?.withdrawingAmount ?? "0")}`} hint="等待人工打款" tone="green" />
-        <MetricCard label="累计入账" value={`¥${formatMoney(String(creditAmount))}`} hint="当前流水入账合计" />
+        <MetricCard label="已确认服务收益" value={`¥${formatMoney(String(settledServiceIncome))}`} hint="最近20条流水中的订单结算；提现与退回不重复计入" />
       </section>
 
       <section className="companion-card mt-6 p-4">
@@ -94,9 +94,13 @@ function formatDateTime(value: string) {
 
 function toTransactionType(type: string) {
   const map: Record<string, string> = {
+    ORDER_PENDING_INCOME: "服务报完工，计入待结算",
+    ORDER_PENDING_RELEASE: "验收或裁决后，转出待结算",
     ORDER_SETTLEMENT: "订单结算",
     REFERRAL_REWARD: "推广分成",
     WITHDRAWAL: "提现",
+    WITHDRAWAL_FREEZE: "提现申请，冻结收益",
+    WITHDRAWAL_REJECTED: "提现被拒绝，退回收益",
     ADMIN_ADJUSTMENT: "管理员调账"
   };
   return map[type] ?? type;

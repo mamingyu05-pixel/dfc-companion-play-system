@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 
 type RechargeRequest = {
@@ -28,7 +28,10 @@ export default function RechargesPage() {
   const [recharges, setRecharges] = useState<RechargeRequest[]>([]);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  const [reviewNote, setReviewNote] = useState("");
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const inFlight = useRef(new Set<string>());
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
+  const [uncertainIds, setUncertainIds] = useState<string[]>([]);
 
   async function loadRecharges() {
     const token = localStorage.getItem("dfc_admin_token");
@@ -39,36 +42,50 @@ export default function RechargesPage() {
     });
     if (!response.ok) throw new Error("无法加载充值审核列表");
     setRecharges((await response.json()) as RechargeRequest[]);
+    setUncertainIds([]);
   }
 
   useEffect(() => {
     void loadRecharges().catch(() => setError("无法加载真实充值审核列表，请确认管理员已登录"));
   }, []);
 
-  async function reviewRecharge(id: string, nextStatus: "APPROVED" | "REJECTED") {
+  async function reviewRecharge(item: RechargeRequest, nextStatus: "APPROVED" | "REJECTED") {
+    const id = item.id;
+    if (inFlight.current.has(id) || uncertainIds.includes(id) || item.status !== "PENDING") return;
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
-
+    const action = nextStatus === "APPROVED" ? "通过" : nextStatus === "REJECTED" ? "拒绝" : "确认已人工打款";
+    if (!window.confirm(`${action}本笔充值？\n编号：${id}\n用户：${item.customer.displayName} (${item.customer.email})\n金额：¥${formatMoney(item.amount)}\n备注：${reviewNotes[id] || "无"}`)) return;
+    inFlight.current.add(id);
+    setPendingIds((current) => [...current, id]);
     setError("");
     setStatus("");
-    const response = await fetch(`/api/admin/recharges/${id}/review`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ status: nextStatus, note: reviewNote })
-    });
-    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    if (!response.ok) {
-      const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
-      setError(toChineseError(message));
-      return;
+    let committed = false;
+    try {
+      const response = await fetch(`/api/admin/recharges/${id}/review`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus, note: reviewNotes[id] ?? "" })
+      });
+      const data = (await response.json().catch(() => ({}))) as { id?: string; status?: string; message?: string | string[] };
+      if (!response.ok) {
+        const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
+        throw new Error(toChineseError(message));
+      }
+      if (data.id !== id || data.status !== nextStatus) throw new Error("未收到本笔操作的有效结果");
+      committed = true;
+      setRecharges((current) => current.map((row) => row.id === id ? { ...row, status: nextStatus } : row));
+      setReviewNotes((current) => ({ ...current, [id]: "" }));
+      setStatus(`本笔充值已${action}：${id}，¥${formatMoney(item.amount)}`);
+      await loadRecharges();
+    } catch (err) {
+      if (!committed) setUncertainIds((current) => [...current, id]);
+      setError(committed ? "本笔操作已成功，但列表刷新失败；请刷新核对，勿重复操作"
+        : `本笔结果待核对，备注已保留；请刷新列表核对后再操作。${err instanceof Error ? err.message : "请求失败"}`);
+    } finally {
+      inFlight.current.delete(id);
+      setPendingIds((current) => current.filter((value) => value !== id));
     }
-
-    setReviewNote("");
-    setStatus(nextStatus === "APPROVED" ? "充值已通过，客户余额已增加" : "充值已拒绝");
-    await loadRecharges();
   }
 
   const stats = useMemo(() => {
@@ -104,8 +121,9 @@ export default function RechargesPage() {
     </StatusBadge>,
     item.status === "PENDING" ? (
       <div key={`${item.id}-actions`} className="flex flex-wrap gap-2">
-        <ActionButton onClick={() => void reviewRecharge(item.id, "APPROVED")}>通过</ActionButton>
-        <ActionButton tone="danger" onClick={() => void reviewRecharge(item.id, "REJECTED")}>拒绝</ActionButton>
+        {item.status === "PENDING" || item.status === "APPROVED" ? <input aria-label={`审核备注 ${item.id}`} value={reviewNotes[item.id] ?? ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [item.id]: event.target.value }))} className="input" placeholder="本笔审核备注（选填）" /> : null}
+        <ActionButton disabled={pendingIds.includes(item.id) || uncertainIds.includes(item.id)} onClick={() => void reviewRecharge(item, "APPROVED")}>通过</ActionButton>
+        <ActionButton tone="danger" disabled={pendingIds.includes(item.id) || uncertainIds.includes(item.id)} onClick={() => void reviewRecharge(item, "REJECTED")}>拒绝</ActionButton>
       </div>
     ) : (
       <span key={`${item.id}-done`} className="text-xs text-dfc-muted">
@@ -127,15 +145,7 @@ export default function RechargesPage() {
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
-      <section className="admin-panel mb-5">
-        <div className="grid gap-3 lg:grid-cols-[1fr_320px] lg:items-end">
-          <div>
-            <h2 className="text-base font-black text-white">审核备注</h2>
-            <p className="mt-1 text-xs text-dfc-muted">通过或拒绝时会随审核动作提交，可留空。</p>
-          </div>
-          <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} className="input" placeholder="例如：客服已确认到账，金额一致" />
-        </div>
-      </section>
+      <div className="mb-4"><ActionButton onClick={() => void loadRecharges().catch(() => setError("刷新失败，请保留原操作上下文"))}>刷新并核对状态</ActionButton></div>
 
       <DataTable columns={["编号", "客户", "金额", "凭证", "状态", "操作"]} rows={rows} />
     </AdminShell>

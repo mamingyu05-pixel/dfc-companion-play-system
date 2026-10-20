@@ -4,10 +4,22 @@ import { AuthService } from "./auth.service";
 import { AuthenticatedUser } from "./auth.types";
 import { CurrentUser } from "./current-user.decorator";
 import { JwtAuthGuard } from "./jwt-auth.guard";
+import { WechatAuthService } from "./wechat-auth.service";
 
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(private readonly auth: AuthService, private readonly wechat: WechatAuthService) {}
+
+  @Get("wechat/config")
+  wechatConfig() {
+    return this.wechat.publicConfig();
+  }
+
+  @Post("wechat/login")
+  @UseGuards(AuthRateLimitGuard)
+  wechatLogin(@Body() body: unknown) {
+    return this.wechat.login(body);
+  }
 
   @Post("email-verification-code")
   @UseGuards(AuthRateLimitGuard)
@@ -22,16 +34,19 @@ export class AuthController {
   }
 
   @Post("password-reset")
+  @UseGuards(AuthRateLimitGuard)
   resetCustomerPassword(@Body() body: { email: string; emailCode: string; password: string }) {
     return this.auth.resetCustomerPassword(body);
   }
 
   @Post("register/customer")
+  @UseGuards(AuthRateLimitGuard)
   registerCustomer(@Body() body: { email: string; password: string; displayName: string; emailCode: string; referralCode?: string }) {
     return this.auth.registerCustomer(body);
   }
 
   @Post("register/companion")
+  @UseGuards(AuthRateLimitGuard)
   registerCompanion(@Body() body: { email: string; password: string; displayName: string; emailCode: string }) {
     return this.auth.registerCompanion(body);
   }

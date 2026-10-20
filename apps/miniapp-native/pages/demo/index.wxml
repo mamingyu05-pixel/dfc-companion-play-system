@@ -1,0 +1,38 @@
+<view class="page">
+  <block wx:if="{{realMode}}">
+    <view class="notice">微信登录 · 订单与支付尚未接通</view>
+    <view class="card">
+      <text class="title">登录 DFC</text>
+      <text class="muted">使用当前微信身份登录客户账户。新微信身份会创建独立账户，不会自动合并已有网页账户。</text>
+      <text wx:if="{{wechatUser}}">{{wechatUser.displayName}}</text>
+      <button wx:if="{{!wechatUser}}" bindtap="loginWechat" loading="{{busy}}" disabled="{{busy}}">微信登录</button>
+      <button wx:else bindtap="logoutWechat" disabled="{{busy}}">退出登录</button>
+      <text wx:if="{{wechatMessage}}" class="muted">{{wechatMessage}}</text>
+      <text class="muted">此入口暂未开放订单、充值或微信支付。</text>
+    </view>
+  </block>
+  <block wx:else>
+  <view class="notice">{{simulation ? '本机模拟 · 虚构数据 · 重开重置 · 不发送消息或订单' : '隔离 API 测试 · 无真实资金 · 未完成平台联调'}}</view>
+  <view class="card">
+    <text class="label">本机 TEST 连接 · 不登录微信 · 无真实资金</text>
+    <input value="{{testBaseUrl}}" bindinput="changeTestAddress" placeholder="粘贴本次控制台的 127.0.0.1 TEST 地址" disabled="{{busy || sessionStage !== 'idle'}}" />
+    <button wx:if="{{sessionStage === 'idle'}}" bindtap="connectTest" disabled="{{busy}}">申请临时 TEST 会话</button>
+    <text wx:if="{{pairingCode}}">本次配对码 {{pairingCode}} · 30 秒内批准</text>
+    <button wx:if="{{sessionStage === 'pending'}}" bindtap="claimTest" disabled="{{busy}}">核对本机授权</button>
+    <text wx:if="{{sessionMessage}}" class="muted">{{sessionMessage}}</text>
+    <button wx:if="{{sessionStage !== 'idle'}}" bindtap="disconnectTest" disabled="{{busy}}">断开 TEST 会话</button>
+  </view>
+  <text class="title">一起，打好这一局</text>
+  <view class="tabs"><button bindtap="switchTab" data-tab="service">选服务</button><button bindtap="switchTab" data-tab="orders">订单</button><button bindtap="switchTab" data-tab="wallet">钱包</button></view>
+  <view wx:if="{{receipt}}" class="card"><text class="status">{{simulation ? '模拟订单' : '已取得订单回执'}} {{receipt.orderNo}}</text><text>{{receipt.nextStep}}</text></view>
+  <view wx:if="{{message}}" class="notice">{{message}}</view>
+  <button wx:if="{{!simulation}}" bindtap="refresh" loading="{{busy}}" disabled="{{busy}}">刷新核对</button>
+  <block wx:if="{{tab === 'service'}}">
+    <text wx:if="{{!companions.length}}" class="muted">暂无可选陪玩，请刷新或联系管理员。</text>
+    <view wx:for="{{companions}}" wx:key="id" class="card {{selectedId === item.id ? 'selected' : ''}}"><view class="row"><text>{{item.nickname}}</text><text>参考 ¥{{item.price}} / 小时</text></view><button bindtap="select" data-id="{{item.id}}" disabled="{{busy || pending}}">{{selectedId === item.id ? '已选择' : '选择 TA'}}</button></view>
+    <view class="card"><text class="label">服务模式</text><picker range="{{modes}}" value="{{modeIndex}}" bindchange="changeMode" disabled="{{busy || pending}}">{{modes[modeIndex]}}</picker><text class="label">服务时长</text><picker range="{{durations}}" value="{{hoursIndex}}" bindchange="changeHours" disabled="{{busy || pending}}">{{durations[hoursIndex]}} 小时</picker><text class="money">参考金额 ¥{{totalAmount}}</text><text class="muted">{{simulation ? '仅模拟冻结' : '下一步核对报价，确认后冻结测试余额'}}</text><button bindtap="pay" loading="{{busy}}" disabled="{{busy || pending || !selectedId}}">{{pending ? '请先刷新核对原申请' : simulation ? '确认订单 · 模拟余额付款' : '获取报价并确认'}}</button></view>
+  </block>
+  <block wx:elif="{{tab === 'orders'}}"><button bindtap="guide">验收与售后说明</button><text wx:if="{{!store.orders.length}}" class="muted">暂无订单列表；已取得的回执会保留在上方。</text><view wx:for="{{store.orders}}" wx:key="id" class="card"><text class="status">{{item.statusLabel || item.status}}</text><text class="orderid">{{item.orderNo || item.id}}</text><text>{{item.mode}} · {{item.hours}} 小时 · ¥{{item.totalAmount}}</text><text class="muted">{{item.nextStep || '仅本机模拟，未连接业务 API。'}}</text></view></block>
+  <view wx:else class="card"><text class="label">{{simulation ? '演示余额' : '隔离测试余额'}}</text><text class="money">¥{{store.availableBalance}}</text><text>冻结 ¥{{store.frozenBalance}}</text><text class="muted">不代表充值到账；未接微信支付。</text></view>
+  </block>
+</view>

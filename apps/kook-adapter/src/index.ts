@@ -34,6 +34,7 @@ export class KookAdapter implements BotAdapter {
 
   async sendOrderNotification(order: OrderNotificationPayload): Promise<void> {
     if (!this.orderChannelId) throw new Error("KOOK_ORDER_CHANNEL_ID is required");
+    if (typeof order.dispatchVersion !== "number" || !Number.isSafeInteger(order.dispatchVersion) || order.dispatchVersion < 0) throw new Error("派单版本无效，请刷新订单");
 
     const content = [
       {
@@ -69,7 +70,7 @@ export class KookAdapter implements BotAdapter {
               {
                 type: "button",
                 theme: "primary",
-                value: `order.accept.${order.orderId}`,
+                value: `order.accept.${order.orderId}.${order.dispatchVersion}`,
                 click: "return-val",
                 text: {
                   type: "plain-text",

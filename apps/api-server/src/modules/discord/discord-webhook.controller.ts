@@ -19,12 +19,13 @@ export class DiscordWebhookController {
 
   @Post("orders/accept")
   @UseGuards(BotInternalGuard)
-  acceptOrder(@Body() body: { orderId: string; companionDiscordId: string; messageId?: string }) {
+  acceptOrder(@Body() body: { orderId: string; companionDiscordId: string; messageId?: string; dispatchVersion?: number }) {
     return this.orders.acceptOrderFromPlatform(
       BotPlatform.DISCORD,
       body.orderId,
       body.companionDiscordId,
-      body.messageId
+      body.messageId,
+      body.dispatchVersion
     );
   }
 

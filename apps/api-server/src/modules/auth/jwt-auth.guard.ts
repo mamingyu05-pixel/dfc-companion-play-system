@@ -1,3 +1,4 @@
+import { isolatedTestConfig, isolatedClaimsMatch } from "../../isolated-test-runtime";
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { UserStatus } from "@prisma/client";
@@ -29,9 +30,12 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException("JWT_SECRET is not configured");
     }
 
+    const isolated = isolatedTestConfig();
     let payload: JwtPayload;
     try {
-      payload = await this.jwt.verifyAsync<JwtPayload>(token, { secret });
+      payload = await this.jwt.verifyAsync<JwtPayload>(token, { secret,
+        ...(isolated ? { algorithms: ["HS256" as const], issuer: isolated.issuer, audience: isolated.audience } : {}) });
+      if (isolated && !isolatedClaimsMatch(payload, isolated)) throw new Error("Test identity mismatch");
     } catch {
       throw new UnauthorizedException("Invalid token");
     }
@@ -43,6 +47,10 @@ export class JwtAuthGuard implements CanActivate {
 
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException("User is not active");
+    }
+
+    if (isolated && (user.id !== isolated.subject || user.role !== "CUSTOMER" || !user.email.endsWith("@synthetic.invalid"))) {
+      throw new UnauthorizedException("Isolated test customer required");
     }
 
     request.user = { id: user.id, email: user.email, role: user.role };

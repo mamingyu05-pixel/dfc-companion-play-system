@@ -4,6 +4,7 @@ import { AdminAuthGate } from "./auth-gate";
 
 const navItems = [
   ["看板", "/dashboard"],
+  ["经营与绩效", "/operations"],
   ["用户", "/users"],
   ["陪玩", "/companions"],
   ["添加陪玩", "/companions/new"],
@@ -14,6 +15,7 @@ const navItems = [
   ["充值审核", "/recharges"],
   ["提现审核", "/withdrawals"],
   ["投诉", "/complaints"],
+  ["评价与验收", "/order-reviews"],
   ["财务", "/finance"],
   ["日志", "/logs"]
 ] as const;
@@ -150,14 +152,14 @@ export function StatusBadge({ children, tone = "default" }: { children: ReactNod
   return <span className={`rounded-dfc-control border px-2 py-1 text-xs font-bold ${styles[tone]}`}>{children}</span>;
 }
 
-export function ActionButton({ children, tone = "primary", onClick }: { children: ReactNode; tone?: "primary" | "danger" | "secondary"; onClick?: () => void }) {
+export function ActionButton({ children, tone = "primary", onClick, disabled = false }: { children: ReactNode; tone?: "primary" | "danger" | "secondary"; onClick?: () => void; disabled?: boolean }) {
   const styles = {
     primary: "border-cyan-300/60 bg-cyan-300 text-slate-950 hover:bg-cyan-200",
     secondary: "border-cyan-300/20 bg-[#101827] text-dfc-text hover:border-cyan-300/45 hover:text-cyan-100",
     danger: "border-dfc-danger/50 bg-dfc-danger text-white hover:bg-red-400"
   };
   return (
-    <button type="button" onClick={onClick} className={`rounded-dfc-control border px-3 py-2 text-xs font-black transition ${styles[tone]}`}>
+    <button type="button" onClick={onClick} disabled={disabled} className={`rounded-dfc-control border px-3 py-2 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${styles[tone]}`}>
       {children}
     </button>
   );

@@ -63,7 +63,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isButton()) return;
 
   if (interaction.customId.startsWith("order.accept.")) {
-    await handleOrderAccept(interaction, interaction.customId.replace("order.accept.", ""));
+    const action = /^order\.accept\.([A-Za-z0-9_-]+)\.(0|[1-9][0-9]*)$/.exec(interaction.customId);
+    if (!action || action[0] !== interaction.customId || !Number.isSafeInteger(Number(action[2]))) {
+      await interaction.reply({ content: "派单卡片已失效，请刷新订单后重试。", ephemeral: true }); return;
+    }
+    await handleOrderAccept(interaction, action[1], Number(action[2]));
     return;
   }
 
@@ -117,13 +121,14 @@ async function sendAccountBindingGuide(member: { displayName: string; user: { id
   });
 }
 
-async function handleOrderAccept(interaction: ButtonInteraction, orderId: string) {
+async function handleOrderAccept(interaction: ButtonInteraction, orderId: string, dispatchVersion?: number) {
   await interaction.deferReply({ ephemeral: true });
 
   try {
     const response = await callApi("/discord/orders/accept", {
       orderId,
       companionDiscordId: interaction.user.id,
+      dispatchVersion,
       messageId: interaction.message.id
     });
     if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
@@ -337,9 +342,10 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function buildOrderAcceptButton(orderId: string) {
+export function buildOrderAcceptButton(orderId: string, dispatchVersion: number) {
+  if (typeof dispatchVersion !== "number" || !Number.isSafeInteger(dispatchVersion) || dispatchVersion < 0) throw new Error("派单版本无效，请刷新订单");
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`order.accept.${orderId}`).setLabel("接单").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`order.accept.${orderId}.${dispatchVersion}`).setLabel("接单").setStyle(ButtonStyle.Primary)
   );
 }
 

@@ -521,20 +521,21 @@ export class AuthService {
       process.env.DISCORD_VOICE_WAITING_URL ||
       (process.env.DISCORD_GUILD_ID && process.env.DISCORD_VOICE_WAITING_CHANNEL_ID
         ? `https://discord.com/channels/${process.env.DISCORD_GUILD_ID}/${process.env.DISCORD_VOICE_WAITING_CHANNEL_ID}`
-        : process.env.SUPPORT_DISCORD_URL || "https://discord.gg/dX5prAZMPu");
+        : process.env.SUPPORT_DISCORD_URL?.trim() || null);
     const kookTrialUrl =
       process.env.KOOK_VOICE_WAITING_URL ||
       (process.env.KOOK_GUILD_ID && process.env.KOOK_VOICE_WAITING_CHANNEL_ID
         ? `https://www.kookapp.cn/app/channels/${process.env.KOOK_GUILD_ID}/${process.env.KOOK_VOICE_WAITING_CHANNEL_ID}`
-        : process.env.SUPPORT_KOOK_URL || "https://kook.vip/i0o2qA");
+        : process.env.SUPPORT_KOOK_URL?.trim() || null);
 
     return {
       pricing: {
         platformMatchUnitPrice: process.env.PLATFORM_MATCH_UNIT_PRICE || null
       },
       support: {
-        discordUrl: process.env.SUPPORT_DISCORD_URL || "https://discord.gg/dX5prAZMPu",
-        kookUrl: process.env.SUPPORT_KOOK_URL || "https://kook.vip/i0o2qA",
+        orderKookUrl: process.env.SUPPORT_KOOK_URL?.trim() || null,
+        discordUrl: process.env.SUPPORT_DISCORD_URL?.trim() || null,
+        kookUrl: process.env.SUPPORT_KOOK_URL?.trim() || null,
         voiceTrialDiscordUrl: discordTrialUrl,
         voiceTrialKookUrl: kookTrialUrl,
         wechatId: process.env.SUPPORT_WECHAT_ID || null,
@@ -606,6 +607,21 @@ export class AuthService {
         throw new UnauthorizedException("User is not active");
       }
 
+      // Claim once before changing identity; later failures roll back this claim.
+      const consumedAt = new Date();
+      const claimed = await tx.platformBindingCode.updateMany({
+        where: {
+          id: binding.id,
+          platform,
+          consumedAt: null,
+          expiresAt: { gt: consumedAt }
+        },
+        data: { consumedAt }
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException("绑定码无效或已过期");
+      }
+
       const existingExternal = await tx.userExternalAccount.findUnique({
         where: {
           platform_externalUserId: {
@@ -645,11 +661,6 @@ export class AuthService {
           select: { id: true, platform: true, externalUserId: true, displayName: true }
         }));
 
-      await tx.platformBindingCode.update({
-        where: { id: binding.id },
-        data: { consumedAt: new Date() }
-      });
-
       return {
         user: {
           id: binding.user.id,
@@ -664,7 +675,9 @@ export class AuthService {
 
   getOAuthStartUrl(platform: OAuthPlatform, portal: OAuthPortal) {
     if (platform === "kook") {
-      return process.env.SUPPORT_KOOK_URL || "https://kook.vip/i0o2qA";
+      const url = process.env.SUPPORT_KOOK_URL?.trim();
+      if (!url) throw new BadRequestException("KOOK 社区入口尚未配置，请联系管理员");
+      return url;
     }
     const config = this.getOAuthConfig(platform);
     const url = new URL(config.authorizeUrl);

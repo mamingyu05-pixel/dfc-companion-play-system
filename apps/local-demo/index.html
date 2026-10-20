@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'">
+<title>DFC 全角色本机演示 · 模拟 KOOK</title>
+<style>body{background:#0c1323;color:#edf5ff;font:16px/1.7 system-ui;max-width:1200px;margin:auto;padding:24px}h1{margin-bottom:4px}h2{font-size:21px}section,article{border:1px solid #405572;border-radius:12px;padding:18px;margin:14px 0}nav{display:flex;flex-wrap:wrap;gap:12px}a{color:#92e4ff}button,select{font:inherit;padding:8px 14px;margin:5px;border-radius:7px;border:1px solid #75cfe9;background:#17344a;color:white}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.badge{color:#ffe08a}#feedback{position:sticky;top:0;background:#17344a;padding:12px;z-index:1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:20px}p{margin:8px 0}</style>
+<h1>DFC 陪玩系统 · 全角色演示</h1>
+<p class="badge">全部是假账号、假订单、假付款；KOOK 完全本机模拟。刷新页面重置演示。</p>
+<p>客户自助下单或向客服提需求 → 客服建单、派单 → 指定陪玩接单、服务 → 客户验收。客服始终负责分配。</p>
+<p>此页是独立交互教学模拟，不连接业务数据库；演示中“完成服务”压缩了等待时间，正式系统仍校验约定时长、争议和资金。</p>
+<nav><a href="#customer">客户</a><a href="#desk">客服</a><a href="#companion">陪玩 / KOOK</a><a href="#admin">后台</a></nav>
+<p id="feedback" role="status" aria-live="polite">请选择下单方式开始演示。</p>
+<div class="grid"><section id="customer"><h2>客户 · 演示客户</h2><p>三角洲行动 / 娱乐 / 演示陪玩甲 / 1 小时</p>
+<button id="preview">核对订单金额</button><div id="bill" hidden><p>演示金额 ¥100.00，使用模拟余额。</p><button id="pay">确认下单并模拟付款 ¥100.00</button></div>
+<button id="demand">模拟 KOOK 提需求给客服</button><div id="customer-orders"></div></section>
+<section id="desk"><h2>客服 · 演示客服</h2><p>从客户需求建单；选陪玩后派单，未接单可直接换人。</p><div id="requests"></div><div id="dispatch"></div></section>
+<section id="companion"><h2>陪玩 · 模拟 KOOK 卡片</h2><p>卡片按钮由指定的演示陪玩点击。旧卡片保留，可验证换人后失效与重复点击。</p><div id="cards"></div><div id="service"></div></section>
+<section id="admin"><h2>后台 · 演示管理</h2><div id="roster"></div><div id="orders"></div></section></div>
+<script src="model.js"></script><script src="view.js"></script></html>

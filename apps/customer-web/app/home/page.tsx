@@ -15,11 +15,6 @@ type PublicConfig = {
   };
 };
 
-const DEFAULT_PLATFORM_URLS: Record<Platform, string> = {
-  DISCORD: "https://discord.gg/dX5prAZMPu",
-  KOOK: "https://kook.vip/i0o2qA"
-};
-
 type CustomerProfile = {
   user: {
     id: string;
@@ -63,6 +58,8 @@ type CustomerProfile = {
 };
 
 type ApiCompanion = {
+  averageRating?: number | null;
+  reviewCount?: number;
   id: string;
   nickname: string;
   avatarUrl?: string | null;
@@ -212,10 +209,10 @@ export default function CustomerHomePage() {
             {platformRouting.showChoice ? (
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <ActionLink href={platformRouting.kookHref ?? "/support"} external={Boolean(platformRouting.kookHref)} className="maycat-button-secondary px-3 py-2 text-center text-xs font-black">
-                  KOOK 社群
+                  {platformRouting.kookHref ? "KOOK 社群" : "KOOK 未配置，联系客服"}
                 </ActionLink>
                 <ActionLink href={platformRouting.discordHref ?? "/support"} external={Boolean(platformRouting.discordHref)} className="maycat-button-secondary px-3 py-2 text-center text-xs font-black">
-                  Discord 社群
+                  {platformRouting.discordHref ? "Discord 社群" : "Discord 未配置，联系客服"}
                 </ActionLink>
               </div>
             ) : (
@@ -272,7 +269,7 @@ export default function CustomerHomePage() {
 
       <section className="mt-10 grid gap-4 lg:grid-cols-2">
         <div className="maycat-card p-4">
-          <h2 className="text-base font-semibold">我的最近订单</h2>
+          <h2 className="text-base font-semibold">我的最近订单 <Link href="/orders" className="ml-3 text-sm text-cyan-200 underline">全部订单 / 验收服务</Link></h2>
           <div className="mt-4 space-y-3">
             {profile.recentOrders.length ? (
               profile.recentOrders.map((order) => (
@@ -392,9 +389,9 @@ function getPlatformRouting(accounts: CustomerProfile["externalAccounts"], confi
   const boundPlatforms = Array.from(
     new Set(accounts.map((account) => account.platform).filter((platform): platform is Platform => platform === "KOOK" || platform === "DISCORD"))
   );
-  const kookHref = config.support?.kookUrl || DEFAULT_PLATFORM_URLS.KOOK;
-  const discordHref = config.support?.discordUrl || DEFAULT_PLATFORM_URLS.DISCORD;
-  const hrefByPlatform: Record<Platform, string> = {
+  const kookHref = config.support?.kookUrl?.trim() || undefined;
+  const discordHref = config.support?.discordUrl?.trim() || undefined;
+  const hrefByPlatform: Record<Platform, string | undefined> = {
     KOOK: kookHref,
     DISCORD: discordHref
   };
@@ -438,8 +435,8 @@ function toCardCompanion(companion: ApiCompanion) {
     trial: companion.voicePreference === "TEXT_ONLY" ? "暂不支持试音" : "支持进语音频道试音",
     tags: companion.onlineStatus === "ONLINE" ? ["在线", "可接待"] : ["已上架"],
     intro: companion.bio || "该陪玩资料已通过后台上架，具体服务内容以群内沟通和后台记录为准。",
-    rating: "新陪玩",
-    orders: 0,
+    rating: companion.averageRating?.toFixed(1) ?? "暂无评价",
+    orders: companion.reviewCount ?? 0,
     accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue"
   };
 }

@@ -1,0 +1,77 @@
+{
+  "default_mode": "simulation; empty baseUrl; testApiSession=null in memory; no login or network on load",
+  "original_task5_modified": true,
+  "actual_platform_execution_verified": false,
+  "modes": {
+    "simulation": "Existing local model only; no wx.request and no live messages/orders/payments.",
+    "isolated-api": "Explicitly configured loopback API and ephemeral test session only; no real money. Missing session or invalid destination fails closed.",
+    "wechat-api": "Explicit environment=wechat, compiled HTTPS /api URL and matching appId. User-click login only: wx.login, backend code exchange, customer JWT and /auth/me verification. Native ordering/payment remain NOT_CONNECTED. No fallback to simulation or TEST."
+  },
+  "session_contract": "Only the explicitly approved temporary local TEST runtime may grant an in-memory customer JWT after an operator matches the native page pairing code using the local console. Subject/database/TEST store/issuer/audience are bound; one claim, expires with the short window. This is not WeChat login. No real account or persistent external credential is created; tokens and pairing request IDs are not persisted.",
+  "read_routes": [
+    "GET /api/orders/environment (CUSTOMER JWT; server verifies actual database connection)",
+    "GET /api/orders/companions?game=DELTA_FORCE",
+    "GET /api/wallet/customer-summary",
+    "GET /api/orders/my",
+    "GET /api/orders/requests/:requestId"
+  ],
+  "write_route": "POST /api/orders with existing requestId, selection, server-quoted expectedTotalAmount and testEnvironment=isolated-test; amount is recomputed by server before any debit.",
+  "backend_patch": "Environment handshake, server-owned TEST marking, and TEST list/receipt fields are applied to the original API source. No running API/PG or platform connection is claimed.",
+  "idempotency": {
+    "before_submit": "Save requestId/payload and test subject/endpoint, never tokens. Storage failure blocks POST.",
+    "unknown": "Keep original identity across page/client restart and deny new POST. Refresh reads original receipt; absence cannot authorize a replacement.",
+    "confirmed": "Display server orderNo and next step; subsequent refresh failure preserves the success receipt.",
+    "explicit_not_committed": "Only server requestOutcome=NOT_COMMITTED clears the pending request; invalidate quote and require a new quote and user confirmation.",
+    "account_change": "Clear visible prior identity data, preserve old scoped pending request, reject stale callbacks."
+  },
+  "not_implemented": [
+    "live WeChat login/platform verification (source implemented; synthetic tests only)",
+    "payment verification",
+    "actual production API configuration (configuration boundary implemented; nothing activated)",
+    "physical-device networking",
+    "native complaint/refund submission",
+    "platform IDE/device verification"
+  ],
+  "approval_needed": [
+    "approved existing test identity bootstrap",
+    "serial integration/IDE/recording slot",
+    "any new credentials/login/deployment or platform security configuration",
+    "parent-assigned isolated API/PG runtime window and exact execution scope"
+  ],
+  "recording": "Use actual native controls and actual isolated API responses after integration. Label isolated ledger and simulated sections. No deleted video recovery.",
+  "quote_route": "POST /api/orders/preview, read-only; require current subject/selection/TEST store, preserve exact amount as decimal text, show it before confirmation.",
+  "isolated_server_contract": {
+    "DFC_ISOLATED_API": "1",
+    "DFC_ISOLATED_DATABASE": "dfc_test_<reviewed fresh synthetic database name>",
+    "DFC_STORE_KEY": "TEST_<reviewed store>",
+    "guard": "Reject production NODE_ENV, malformed configuration, non-loopback database peer or current_database mismatch. TEST marking is not granted by client flags. Fresh isolated data and outbound configuration still require runtime verification.",
+    "disabled_default": true,
+    "migration_required_for_this_patch": false,
+    "NODE_ENV": "test",
+    "DFC_TEST_MODE": "1",
+    "API_HOST": "127.0.0.1",
+    "API_PORT": "explicit port 1..65535; distinct from PG",
+    "DFC_BACKGROUND_JOBS_ENABLED": "false",
+    "DFC_OUTBOUND_POLICY": "deny",
+    "DFC_TEST_SUBJECT": "UUID v4 of the approved fresh synthetic CUSTOMER; no real account",
+    "identity": "Ephemeral in-memory JWT; issuer dfc-isolated-local, audience dfc-native-isolated, subject/database/store claims match server-owned config. Existing live JWT behavior is unchanged.",
+    "network": "Application TCP/HTTP guards retain exact configured loopback ports. Only dns.lookup/dns.promises.lookup for exact 127.0.0.1 or ::1 uses the native literal-IP fast path; all other DNS, HTTPS/TLS/UDP/fetch are blocked. Native Prisma requires the validated fresh loopback TEST URL. No OS firewall changes.",
+    "preparation_status": "Short interactive mode now prepared in the existing guard/runner/cases; separate DFC_LOCAL_TEST_API_PG_INTERACTIVE scope and 15..90 seconds required. Actual new mode awaits a parent serial window.",
+    "host_normalization": "SQL host(inet_server_addr()) supplies the canonical address; only exact 127.0.0.1 or ::1 remains accepted. Diagnostic output contains naming/match flags and host classes, never URL or credential values."
+  },
+  "candidate_validation": "Historical eaabfd55: 9 synthetic groups, API/test noEmit and all 4 actual local HTTP/PG groups passed. Current interactive candidate: 9 new in-memory groups and 8 existing native UI groups passed. New real interactive PG/HTTP/console and WeChat runtime not yet executed.",
+  "status": "SOURCE_APPLIED_TO_EXISTING_NATIVE_PROJECT_RUNTIME_UNVERIFIED",
+  "native_source": ".",
+  "isolated_validation_entry": "Original API scripts/isolated-test-api/guard.py, with exact sealed manifest hash and a current parent-granted 150s window. Drives original Page/api-client via a synthetic wx HTTP adapter, actual Nest controllers/JWT guards/services, and fresh PostgreSQL persistence; not a real WeChat runtime claim.",
+  "versioned_source": "apps/miniapp-native; synchronized from the existing task-5/demo/miniapp-native source without removing or moving it",
+  "interactive_session": {
+    "default_config_unchanged": true,
+    "endpoint": "Only http://127.0.0.1:<fresh port>/api entered into the original page in memory",
+    "approval": "Page shows code; human enters APPROVE <code> in the same guarded console; page claims once",
+    "maximum_seconds": 90,
+    "stop": "STOP, deadline or resource gate; close owned API/PG only",
+    "wechat_login": false,
+    "actual_runtime_verified": false,
+    "no_persistent_credentials": true
+  }
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 
 type Withdrawal = {
@@ -22,8 +22,11 @@ type Withdrawal = {
 
 export default function WithdrawalsPage() {
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
-  const [reviewNote, setReviewNote] = useState("");
-  const [payoutReference, setPayoutReference] = useState("");
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const inFlight = useRef(new Set<string>());
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
+  const [uncertainIds, setUncertainIds] = useState<string[]>([]);
+  const [payoutReferences, setPayoutReferences] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
@@ -35,35 +38,53 @@ export default function WithdrawalsPage() {
     });
     if (!response.ok) throw new Error("无法加载提现申请");
     setWithdrawals((await response.json()) as Withdrawal[]);
+    setUncertainIds([]);
   }
 
   useEffect(() => {
     void loadWithdrawals().catch(() => setError("无法加载真实提现数据"));
   }, []);
 
-  async function reviewWithdrawal(id: string, nextStatus: "APPROVED" | "REJECTED" | "PAID") {
+  async function reviewWithdrawal(item: Withdrawal, nextStatus: "APPROVED" | "REJECTED" | "PAID") {
+    const id = item.id;
+    if (inFlight.current.has(id) || uncertainIds.includes(id) || (nextStatus === "PAID" ? item.status !== "APPROVED" : item.status !== "PENDING")) return;
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
+    const payoutReference = (payoutReferences[id] ?? "").trim();
+    if (nextStatus === "PAID" && !payoutReference) { setError("请填写本笔打款流水号"); return; }
+    const action = nextStatus === "APPROVED" ? "通过" : nextStatus === "REJECTED" ? "拒绝" : "确认已人工打款";
+    if (!window.confirm(`${action}本笔提现？\n编号：${id}\n用户：${item.companion.displayName} (${item.companion.email})\n金额：¥${formatMoney(item.amount)}${nextStatus === "PAID" ? `\n收款账户：${item.payoutAccount}\n打款流水号：${payoutReference}` : ""}\n备注：${reviewNotes[id] || "无"}`)) return;
+    inFlight.current.add(id);
+    setPendingIds((current) => [...current, id]);
     setError("");
     setStatus("");
-    const response = await fetch(`/api/admin/withdrawals/${id}/review`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ status: nextStatus, note: reviewNote, payoutReference })
-    });
-    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    if (!response.ok) {
-      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(toFriendlyError(message));
-      return;
+    let committed = false;
+    try {
+      const response = await fetch(`/api/admin/withdrawals/${id}/review`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus, note: reviewNotes[id] ?? "", payoutReference })
+      });
+      const data = (await response.json().catch(() => ({}))) as { id?: string; status?: string; message?: string | string[] };
+      if (!response.ok) {
+        const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
+        throw new Error(toFriendlyError(message));
+      }
+      if (data.id !== id || data.status !== nextStatus) throw new Error("未收到本笔操作的有效结果");
+      committed = true;
+      setWithdrawals((current) => current.map((row) => row.id === id ? { ...row, status: nextStatus } : row));
+      setReviewNotes((current) => ({ ...current, [id]: "" }));
+      setPayoutReferences((current) => ({ ...current, [id]: "" }));
+      setStatus(`本笔提现已${action}：${id}，¥${formatMoney(item.amount)}`);
+      await loadWithdrawals();
+    } catch (err) {
+      if (!committed) setUncertainIds((current) => [...current, id]);
+      setError(committed ? "本笔操作已成功，但列表刷新失败；请刷新核对，勿重复操作"
+        : `本笔结果待核对，备注已保留；请刷新列表核对后再操作。${err instanceof Error ? err.message : "请求失败"}`);
+    } finally {
+      inFlight.current.delete(id);
+      setPendingIds((current) => current.filter((value) => value !== id));
     }
-    setReviewNote("");
-    setPayoutReference("");
-    setStatus(nextStatus === "PAID" ? "提现已确认打款" : nextStatus === "APPROVED" ? "提现已通过" : "提现已拒绝");
-    await loadWithdrawals();
   }
 
   const stats = useMemo(() => {
@@ -86,18 +107,7 @@ export default function WithdrawalsPage() {
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
-      <section className="admin-panel mb-5">
-        <div className="grid gap-3 md:grid-cols-2">
-          <label>
-            <span className="mb-2 block text-xs font-black text-dfc-muted">审核备注</span>
-            <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} className="input" placeholder="拒绝原因或人工审核说明" />
-          </label>
-          <label>
-            <span className="mb-2 block text-xs font-black text-dfc-muted">打款流水号</span>
-            <input value={payoutReference} onChange={(event) => setPayoutReference(event.target.value)} className="input" placeholder="确认打款时填写人工转账流水号" />
-          </label>
-        </div>
-      </section>
+      <div className="mb-4"><ActionButton onClick={() => void loadWithdrawals().catch(() => setError("刷新失败，请保留原操作上下文"))}>刷新并核对状态</ActionButton></div>
 
       <DataTable
         columns={["ID", "陪玩", "金额", "收款账户", "状态", "操作"]}
@@ -117,9 +127,11 @@ export default function WithdrawalsPage() {
             {toWithdrawalStatus(item.status)}
           </StatusBadge>,
           <div key={`${item.id}-a`} className="flex flex-wrap gap-2">
-            {item.status === "PENDING" ? <ActionButton onClick={() => void reviewWithdrawal(item.id, "APPROVED")}>通过</ActionButton> : null}
-            {item.status === "PENDING" ? <ActionButton tone="danger" onClick={() => void reviewWithdrawal(item.id, "REJECTED")}>拒绝</ActionButton> : null}
-            {item.status === "APPROVED" ? <ActionButton tone="secondary" onClick={() => void reviewWithdrawal(item.id, "PAID")}>确认打款</ActionButton> : null}
+        {item.status === "PENDING" || item.status === "APPROVED" ? <input aria-label={`审核备注 ${item.id}`} value={reviewNotes[item.id] ?? ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [item.id]: event.target.value }))} className="input" placeholder="本笔审核备注（选填）" /> : null}
+        {item.status === "APPROVED" ? <input aria-label={`打款流水号 ${item.id}`} value={payoutReferences[item.id] ?? ""} onChange={(event) => setPayoutReferences((current) => ({ ...current, [item.id]: event.target.value }))} className="input" placeholder="本笔人工转账流水号" /> : null}
+            {item.status === "PENDING" ? <ActionButton disabled={pendingIds.includes(item.id) || uncertainIds.includes(item.id)} onClick={() => void reviewWithdrawal(item, "APPROVED")}>通过</ActionButton> : null}
+            {item.status === "PENDING" ? <ActionButton tone="danger" disabled={pendingIds.includes(item.id) || uncertainIds.includes(item.id)} onClick={() => void reviewWithdrawal(item, "REJECTED")}>拒绝</ActionButton> : null}
+            {item.status === "APPROVED" ? <ActionButton tone="secondary" disabled={pendingIds.includes(item.id) || uncertainIds.includes(item.id)} onClick={() => void reviewWithdrawal(item, "PAID")}>确认打款</ActionButton> : null}
           </div>
         ])}
       />

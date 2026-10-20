@@ -25,6 +25,7 @@ export enum OrderStatus {
   ASSIGNED = "ASSIGNED",
   ACCEPTED = "ACCEPTED",
   IN_PROGRESS = "IN_PROGRESS",
+  AWAITING_ACCEPTANCE = "AWAITING_ACCEPTANCE",
   COMPLETED = "COMPLETED",
   CANCELLED = "CANCELLED",
   REFUND_REQUESTED = "REFUND_REQUESTED",
@@ -41,6 +42,7 @@ export enum ReviewStatus {
 export type Money = string;
 
 export interface OrderNotificationPayload {
+  dispatchVersion: number;
   orderId: string;
   orderNo: string;
   mode: string;
@@ -55,4 +57,18 @@ export interface BotAdapter {
   sendDirectMessage(userId: string, message: string): Promise<void>;
   createVoiceRoom(orderId: string): Promise<string>;
   syncRole(userId: string, role: UserRole): Promise<void>;
+}
+
+export const DISPATCH_REFRESH_MESSAGE = "Dispatch changed; refresh the order. 派单卡片已失效，请刷新订单后重试。";
+
+export function parseOrderAcceptAction(value: string): { orderId: string; dispatchVersion: number } | null {
+  const match = /^order\.accept\.([A-Za-z0-9_-]+)\.(0|[1-9][0-9]*)$/.exec(value);
+  if (!match || match[0] !== value) return null;
+  const dispatchVersion = Number(match[2]);
+  return Number.isSafeInteger(dispatchVersion) ? { orderId: match[1], dispatchVersion } : null;
+}
+
+export function buildOrderAcceptAction(orderId: string, dispatchVersion: number): string {
+  if (typeof dispatchVersion !== "number" || !Number.isSafeInteger(dispatchVersion) || dispatchVersion < 0 || !/^[A-Za-z0-9_-]+$/.test(orderId)) throw new Error(DISPATCH_REFRESH_MESSAGE);
+  return `order.accept.${orderId}.${dispatchVersion}`;
 }

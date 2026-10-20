@@ -52,8 +52,8 @@ export default function FinancePage() {
       <SectionHeader eyebrow="Ledger Trace" title="财务流水" desc="读取 wallet_transactions，查看充值入账、订单支付、订单结算、提现和管理员调账。金额、操作者和余额变动必须可追溯。" />
 
       <section className="mb-5 grid gap-4 md:grid-cols-3">
-        <Signal label="入账合计" value={`¥${formatMoney(String(stats.credit))}`} hint="CREDIT 流水" tone="green" />
-        <Signal label="出账合计" value={`¥${formatMoney(String(stats.debit))}`} hint="DEBIT 流水" tone="gold" />
+        <Signal label="本页贷记流水合计" value={`¥${formatMoney(String(stats.credit))}`} hint="含冻结/解冻等内部流转，非营业收入" tone="green" />
+        <Signal label="本页借记流水合计" value={`¥${formatMoney(String(stats.debit))}`} hint="仅当前返回记录，非经营成本或全量出账" tone="gold" />
         <Signal label="人工操作" value={String(stats.manual)} hint="含管理员调账/审核" tone="cyan" />
       </section>
 

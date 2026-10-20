@@ -23,6 +23,8 @@ type ExternalAccount = {
 };
 
 type ApiCompanion = {
+  averageRating?: number | null;
+  reviewCount?: number;
   id: string;
   nickname: string;
   avatarUrl?: string | null;
@@ -217,8 +219,8 @@ function toCardCompanion(companion: ApiCompanion, publicConfig: PublicConfig) {
     trial: companion.voicePreference === "TEXT_ONLY" ? "暂不支持试音" : "支持进语音频道试音",
     tags: companion.onlineStatus === "ONLINE" ? ["在线", "可接待"] : ["已上架"],
     intro: companion.bio || "该陪玩资料已通过后台上架，具体服务内容以群内沟通和后台记录为准。",
-    rating: "新陪玩",
-    orders: 0,
+    rating: companion.averageRating?.toFixed(1) ?? "暂无评价",
+    orders: companion.reviewCount ?? 0,
     accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue",
     trialHref: companionTrialHref(companion, publicConfig),
     trialPlatform
@@ -234,8 +236,8 @@ function companionTrialPlatform(companion: ApiCompanion): "DISCORD" | "KOOK" | n
 
 function companionTrialHref(companion: ApiCompanion, publicConfig: PublicConfig) {
   const platform = companionTrialPlatform(companion);
-  if (platform === "DISCORD") return publicConfig.support?.voiceTrialDiscordUrl || publicConfig.support?.discordUrl || "https://discord.gg/dX5prAZMPu";
-  if (platform === "KOOK") return publicConfig.support?.voiceTrialKookUrl || publicConfig.support?.kookUrl || "https://kook.vip/i0o2qA";
+  if (platform === "DISCORD") return publicConfig.support?.voiceTrialDiscordUrl || publicConfig.support?.discordUrl || "/support";
+  if (platform === "KOOK") return publicConfig.support?.voiceTrialKookUrl || publicConfig.support?.kookUrl || "/support";
   return "/support";
 }
 

@@ -29,8 +29,8 @@ type Companion = {
 };
 
 export function CustomerShell({ children }: { children: ReactNode }) {
-  const kookUrl = process.env.NEXT_PUBLIC_SUPPORT_KOOK_URL || "https://kook.vip/i0o2qA";
-  const discordUrl = process.env.NEXT_PUBLIC_SUPPORT_DISCORD_URL || "https://discord.gg/dX5prAZMPu";
+  const kookUrl = process.env.NEXT_PUBLIC_SUPPORT_KOOK_URL?.trim() || "";
+  const discordUrl = process.env.NEXT_PUBLIC_SUPPORT_DISCORD_URL?.trim() || "";
 
   return (
     <main className="maycat-neon-bg min-h-screen text-dfc-text">
@@ -56,9 +56,9 @@ export function CustomerShell({ children }: { children: ReactNode }) {
             <ExternalNavLink href={discordUrl}>Discord</ExternalNavLink>
           </nav>
           <div className="flex items-center gap-2">
-            <Link href="/companion/" className="rounded-dfc-control border border-dfc-gold/45 bg-dfc-gold/10 px-3 py-2 text-xs font-black text-dfc-gold transition hover:bg-dfc-gold/20">
+            <a href="/companion/" className="rounded-dfc-control border border-dfc-gold/45 bg-dfc-gold/10 px-3 py-2 text-xs font-black text-dfc-gold transition hover:bg-dfc-gold/20">
               陪玩入口
-            </Link>
+            </a>
             <Link href="/recharge" className="maycat-button-secondary px-3 py-2 text-xs font-semibold">
               钱包
             </Link>
@@ -152,9 +152,9 @@ export function CompanionCard({ companion }: { companion: Companion }) {
 
       <div className="mt-5 flex items-end justify-between gap-3">
         <div>
-          <div className="text-xs text-dfc-muted">评分 / 成单</div>
+          <div className="text-xs text-dfc-muted">评分 / 评价条数</div>
           <div className="mt-1 text-sm text-dfc-subtext">
-            {companion.rating} / {companion.orders} 单
+            {companion.orders ? `${companion.rating} / ${companion.orders}条评价` : "暂无评价"}
           </div>
         </div>
         <div className="text-right">
@@ -168,10 +168,10 @@ export function CompanionCard({ companion }: { companion: Companion }) {
           详情
         </Link>
         <Link href={trialHref} target={trialIsExternal ? "_blank" : undefined} rel={trialIsExternal ? "noreferrer" : undefined} className="maycat-button-secondary px-3 py-2 text-center text-sm font-semibold">
-          试音
+          {trialIsExternal ? "试音" : "联系客服安排试音"}
         </Link>
-        <Link href="/order" className="maycat-button px-3 py-2 text-center text-sm font-black">
-          群下单
+        <Link href={`/order?companionId=${encodeURIComponent(companion.id)}`} className="maycat-button px-3 py-2 text-center text-sm font-black">
+          下单
         </Link>
       </div>
     </article>
@@ -237,6 +237,9 @@ function NavLink({ href, children }: { href: string; children: ReactNode }) {
 }
 
 function ExternalNavLink({ href, children }: { href: string; children: ReactNode }) {
+  if (!href) {
+    return <Link href="/support" className="rounded-dfc-control border border-cyan-300/25 px-3 py-2 text-sm text-dfc-subtext">{children} 未配置，联系客服</Link>;
+  }
   return (
     <a href={href} target="_blank" rel="noreferrer" className="rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-sm font-black text-cyan-100 transition hover:border-cyan-300/60 hover:bg-cyan-300/20">
       {children}

@@ -33,7 +33,7 @@ export default function LogsPage() {
   }, []);
 
   const stats = useMemo(() => {
-    const financeActions = logs.filter((log) => ["APPROVED_RECHARGE", "REJECTED_RECHARGE", "ADMIN_CREDIT_BALANCE", "ADMIN_DEBIT_BALANCE"].includes(log.action)).length;
+    const financeActions = logs.filter((log) => isFinanceAction(log.action)).length;
     const dispatchActions = logs.filter((log) => log.action === "ASSIGN_ORDER").length;
     const adminActions = logs.filter((log) => log.action === "CREATE_ADMIN").length;
     return { financeActions, dispatchActions, adminActions };
@@ -44,7 +44,7 @@ export default function LogsPage() {
       <SectionHeader eyebrow="Audit Trail" title="操作日志" desc="所有管理员操作都必须记录到 admin_logs。资金、派单、投诉和权限动作优先追踪。" />
 
       <section className="mb-5 grid gap-4 md:grid-cols-3">
-        <Signal label="资金相关" value={String(stats.financeActions)} hint="充值/调账/扣款" tone="gold" />
+        <Signal label="资金相关" value={String(stats.financeActions)} hint="最近100条日志中的充值审核/调账次数（非金额）" tone="gold" />
         <Signal label="派单动作" value={String(stats.dispatchActions)} hint="订单分配记录" tone="cyan" />
         <Signal label="权限动作" value={String(stats.adminActions)} hint="管理员创建" tone="green" />
       </section>
@@ -66,9 +66,13 @@ export default function LogsPage() {
   );
 }
 
+function isFinanceAction(action: string) {
+  return ["APPROVE_RECHARGE", "REJECT_RECHARGE", "APPROVED_RECHARGE", "REJECTED_RECHARGE", "ADMIN_CREDIT_BALANCE", "ADMIN_DEBIT_BALANCE"].includes(action);
+}
+
 function ActionBadge({ action }: { action: string }) {
-  const moneyActions = ["APPROVED_RECHARGE", "REJECTED_RECHARGE", "ADMIN_CREDIT_BALANCE", "ADMIN_DEBIT_BALANCE"];
-  const tone = moneyActions.includes(action) ? "warning" : action === "CREATE_ADMIN" ? "danger" : action === "ASSIGN_ORDER" ? "success" : "default";
+
+  const tone = isFinanceAction(action) ? "warning" : action === "CREATE_ADMIN" ? "danger" : action === "ASSIGN_ORDER" ? "success" : "default";
   return <StatusBadge tone={tone}>{formatAction(action)}</StatusBadge>;
 }
 
@@ -105,6 +109,7 @@ function toEntityType(type: string) {
     USER: "用户",
     ORDER: "订单",
     RECHARGE: "充值",
+    RECHARGE_REQUEST: "充值申请",
     WITHDRAWAL: "提现",
     COMPLAINT: "投诉",
     COMPANION: "陪玩",
@@ -115,6 +120,8 @@ function toEntityType(type: string) {
 
 function formatAction(action: string) {
   const map: Record<string, string> = {
+    APPROVE_RECHARGE: "审核充值",
+    REJECT_RECHARGE: "拒绝充值",
     APPROVED_RECHARGE: "审核充值",
     REJECTED_RECHARGE: "拒绝充值",
     ADMIN_CREDIT_BALANCE: "人工加余额",

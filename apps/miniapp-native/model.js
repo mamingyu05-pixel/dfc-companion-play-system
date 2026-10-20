@@ -1,0 +1,5 @@
+'use strict';
+const companions=[{id:'fictional-a',nickname:'演示 · 星河',price:50},{id:'fictional-b',nickname:'演示 · 北辰',price:80}];
+function initial(){return {availableBalance:500,frozenBalance:0,orders:[],requests:{}}}
+function createOrder(state,{companionId,hours,mode,clientRequestId}){if(!clientRequestId)throw Error('缺少演示请求编号');if(Object.prototype.hasOwnProperty.call(state.requests,clientRequestId))return state;const c=companions.find(c=>c.id===companionId);if(!c||!Number.isInteger(hours)||hours<1||hours>4||!['娱乐','排位'].includes(mode))throw Error('请选择有效服务与时长');const totalAmount=c.price*hours;if(state.availableBalance<totalAmount)throw Error('演示余额不足，订单未创建');const id='LOCAL-'+(state.orders.length+1);return {...state,availableBalance:state.availableBalance-totalAmount,frozenBalance:state.frozenBalance+totalAmount,requests:{...state.requests,[clientRequestId]:id},orders:[{id,nickname:c.nickname,hours,mode,totalAmount,status:'已模拟付款 · 待派单'},...state.orders]}}
+module.exports={companions,initial,createOrder};

@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { CustomerShell } from "../components";
+
+const MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024;
+const SCREENSHOT_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
 const amountPresets = ["100", "300", "500", "1000"];
 const rechargeBenefits: Record<string, string> = {
@@ -49,6 +52,11 @@ export default function RechargePage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isReadingScreenshot, setIsReadingScreenshot] = useState(false);
+  const screenshotVersion = useRef(0);
+  const screenshotInput = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => () => { screenshotVersion.current++; }, []);
 
   async function loadSummary() {
     const token = localStorage.getItem("dfc_customer_token");
@@ -76,25 +84,43 @@ export default function RechargePage() {
   }, []);
 
   async function handleScreenshot(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const input = event.target;
+    const file = input.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("请上传图片截图");
+    const version = ++screenshotVersion.current;
+    setScreenshotUrl("");
+    setScreenshotName("");
+    setIsReadingScreenshot(false);
+    setError("");
+    if (!SCREENSHOT_TYPES.has(file.type.toLowerCase())) {
+      input.value = "";
+      setError("凭证仅支持 PNG、JPEG、WebP 或 GIF 图片，请重新选择");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setError("截图不能超过 2MB");
+    if (file.size > MAX_SCREENSHOT_BYTES) {
+      input.value = "";
+      setError("截图不能超过 2 MiB，请压缩后重新选择");
       return;
     }
 
-    const dataUrl = await readFileAsDataUrl(file);
-    setScreenshotUrl(dataUrl);
-    setScreenshotName(file.name);
-    setError("");
+    setIsReadingScreenshot(true);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      if (version !== screenshotVersion.current) return;
+      setScreenshotUrl(dataUrl);
+      setScreenshotName(file.name);
+    } catch {
+      if (version !== screenshotVersion.current) return;
+      input.value = "";
+      setError("截图读取失败，请重新选择图片后重试");
+    } finally {
+      if (version === screenshotVersion.current) setIsReadingScreenshot(false);
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting || isReadingScreenshot) return;
     setError("");
     setStatus("");
 
@@ -116,17 +142,23 @@ export default function RechargePage() {
       });
       const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
       if (!response.ok) {
+        if (response.status === 413) throw new Error("本次提交超过服务器允许的大小，请压缩凭证图片后重试");
         const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
         throw new Error(toChineseError(message));
       }
 
+      if (screenshotInput.current) screenshotInput.current.value = "";
       setAmount("");
       setScreenshotUrl("");
       setScreenshotName("");
       setNote("");
       setPromotionCode("");
       setStatus("充值申请已提交，请等待管理员审核");
-      await loadSummary();
+      try {
+        await loadSummary();
+      } catch {
+        setStatus("充值申请已提交，请等待管理员审核。记录暂未刷新，请刷新页面查看，不要重复提交。");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "提交失败，请稍后重试");
     } finally {
@@ -136,7 +168,7 @@ export default function RechargePage() {
 
   const availableBalance = summary?.wallet?.availableBalance ?? "0";
   const pendingRechargeAmount = summary?.pendingRechargeAmount ?? "0";
-  const canSubmit = !isSubmitting && Number(amount) > 0;
+  const canSubmit = !isSubmitting && !isReadingScreenshot && Number(amount) > 0;
 
   return (
     <CustomerShell>
@@ -252,15 +284,15 @@ export default function RechargePage() {
 
           <label className="mt-4 block">
             <span className="text-sm font-semibold text-cyan-50/80">转账截图（选填）</span>
-            <input className="sr-only" type="file" accept="image/*" onChange={handleScreenshot} />
+            <input ref={screenshotInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={isSubmitting} onChange={handleScreenshot} />
             <div className={`maycat-upload-zone mt-2 ${screenshotName ? "maycat-upload-zone-ready" : ""}`}>
-              <div className="text-sm font-black text-white">{screenshotName ? `已选择：${screenshotName}` : "可选：上传转账截图"}</div>
-              <div className="mt-2 text-xs leading-5 text-dfc-muted">支持图片格式，不超过 2MB。没有截图也可以提交，客服确认到账后后台会处理。</div>
+              <div className="text-sm font-black text-white">{isReadingScreenshot ? "正在读取截图..." : screenshotName ? `已选择：${screenshotName}` : "可选：上传转账截图"}</div>
+              <div className="mt-2 text-xs leading-5 text-dfc-muted">支持 PNG、JPEG、WebP、GIF，不超过 2 MiB。没有截图也可以提交，客服确认到账后后台会处理。</div>
             </div>
           </label>
 
           <label className="mt-4 block">
-            <span className="text-sm font-semibold text-cyan-50/80">备注</span>
+            <span className="text-sm font-semibold text-cyan-50/80">备注（选填）</span>
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value)}
@@ -367,6 +399,7 @@ function readFileAsDataUrl(file: File) {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(new Error("截图读取失败"));
+    reader.onabort = () => reject(new Error("截图读取中断"));
     reader.readAsDataURL(file);
   });
 }
@@ -393,7 +426,8 @@ function toChineseError(message?: string) {
   if (message.includes("amount must be a valid amount")) return "请输入正确的充值金额";
   if (message.includes("amount must be greater than 0")) return "充值金额必须大于 0";
   if (message.includes("screenshotUrl is required")) return "截图不是必填，请刷新页面后重试";
-  if (message.includes("screenshotUrl is too large")) return "截图太大，请压缩到 2MB 以内";
+  if (message.includes("screenshotUrl is too large")) return "截图太大，请压缩到 2 MiB 以内后重试";
+  if (message.includes("request entity too large")) return "本次提交超过服务器允许的大小，请压缩凭证图片后重试";
   if (message.includes("Promotion code is invalid")) return "优惠码无效或已停用";
   if (message.includes("Promotion code is expired")) return "优惠码已过期";
   if (message.includes("Promotion code usage limit reached")) return "优惠码已被用完";
