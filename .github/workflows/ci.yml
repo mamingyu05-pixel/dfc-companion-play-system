@@ -45,4 +45,4 @@ jobs:
       - run: pnpm build
       - run: pnpm --filter @dfc/api-server test
       - run: pnpm --filter @dfc/customer-web test
-      - run: node --test --test-isolation=none scripts/community-config.test.cjs
+      - run: node --test --experimental-test-isolation=none scripts/community-config.test.cjs
