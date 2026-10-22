@@ -107,6 +107,7 @@ export default function OrderPage() {
       <Link className="maycat-button-secondary px-4 py-2" href="/orders">我的订单与验收</Link>
       <Link className="maycat-button-secondary px-4 py-2" href="/recharge">钱包与充值</Link>
       <Link className="maycat-button-secondary px-4 py-2" href="/support">让客服帮我下单</Link>
+      <Link className="maycat-button-secondary px-4 py-2" href="/guarantee">保底护航：达标才付</Link>
       <button className="text-sm text-cyan-100 underline" disabled={view.busy || view.pending} onClick={() => setShowDemand(true)}>先试音 / 预约：只生成需求</button>
     </div>
     {view.receipt ? <section role="status" className="maycat-card mt-5 p-5">

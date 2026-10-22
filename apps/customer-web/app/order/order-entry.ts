@@ -4,9 +4,10 @@ export const ORDER_MODES = ["烽火地带", "全面战场"];
 export const ORDER_HOURS = ["1", "2", "3", "4"];
 
 /** Prefill link only: the customer still previews the server quote and confirms the freeze. */
-export function reorderHref(order: { status: string; companionId?: string | null; mode: string; hours: string }) {
+export function reorderHref(order: { status: string; companionId?: string | null; mode: string; hours: string; serviceKind?: string }) {
   if (order.status !== "COMPLETED" || !order.companionId) return null;
   const query = new URLSearchParams({ companionId: order.companionId });
+  if (order.serviceKind === "GUARANTEE") return `/guarantee?${query}`;
   if (ORDER_MODES.includes(order.mode)) query.set("mode", order.mode);
   const hours = String(Number(order.hours));
   if (ORDER_HOURS.includes(hours)) query.set("hours", hours);

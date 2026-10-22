@@ -1,4 +1,5 @@
-import { customerOrderAction, validateCustomerOrderInput } from "./customer-order-input";
+import { customerOrderAction, validateCustomerOrderInput, validateGuaranteeInput } from "./customer-order-input";
+import { parseEvidenceInput } from "./guarantee";
 import { requireOrderRequestId } from "./order-request";
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { GameCode, UserRole } from "@prisma/client";
@@ -143,6 +144,48 @@ export class OrdersController {
         voiceTrialRequested: body.voiceTrialRequested
       });
     });
+  }
+
+  @Get("guarantee-packages")
+  listGuaranteePackages() {
+    return this.orders.listGuaranteePackages();
+  }
+
+  @Post("guarantee/preview")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  previewGuaranteeOrder(@CurrentUser() user: AuthenticatedUser, @Body() body: { packageId: string; companionId?: string; testEnvironment?: string }) {
+    return customerOrderAction(() => {
+      validateGuaranteeInput(body);
+      return this.orders.previewGuaranteeOrder(user.id, body);
+    });
+  }
+
+  @Post("guarantee")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  createGuaranteeOrder(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { requestId?: string; packageId: string; companionId?: string; expectedTotalAmount?: string; notes?: string; testEnvironment?: string }
+  ) {
+    return customerOrderAction(() => {
+      validateGuaranteeInput(body);
+      return this.orders.createGuaranteeOrder(user.id, { ...body, requestId: requireOrderRequestId(body.requestId) });
+    });
+  }
+
+  @Get(":id/evidence")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  listEvidence(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.orders.listOrderEvidence(id, user);
+  }
+
+  @Post(":id/evidence")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  addEvidence(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: unknown) {
+    return this.orders.addOrderEvidence(id, user, parseEvidenceInput(body));
   }
 
   @Patch(":id/start")

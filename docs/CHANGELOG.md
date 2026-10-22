@@ -2,6 +2,13 @@
 
 ## 2026-10-22
 
+- 新增三角洲「保底护航」：按仓库净增结果收费，复用冻结 → 待验收 → 结算流程。
+  - 迁移 `20261022090000_guarantee_escort`：`orders` 增加 `serviceKind / guaranteePlatform / guaranteeTargetWan`（下单时快照，后续改价不影响）；新表 `guarantee_packages`（端游 400/688/1288W ¥79/128/198，手游 ¥49/88/148，参照 2026-10-22 公开报价，后台可改）和 `order_evidence`。部署前需 `prisma migrate deploy`。
+  - 接口：`GET /api/orders/guarantee-packages`、`POST /api/orders/guarantee/preview`、`POST /api/orders/guarantee`（requestId 幂等、`expectedTotalAmount` 防变价）、`GET|POST /api/orders/:id/evidence`（仅本单客户、陪玩或管理员）、`GET|PATCH /api/admin/guarantee-packages`（改价写操作日志）。
+  - 结算门槛：保底单报完成前必须有开局、结束仓库截图，且「最早开局值 → 最新结束值」净增达到档位，否则拒绝报完成；不受小时时长限制。未达标走现有争议裁决，可全额或部分退回站内余额。
+  - 凭证：仓库截图只能在接单后、报完成前上传；录屏链接和其他截图可在验收和争议期间补充；每单最多 30 条，图片沿用充值凭证的格式与 2MiB 校验。
+  - 前端：客户端新增 `/guarantee` 下单页（护航规则写明不交号、不转移物资、不代充、不承诺零封号），首页和下单页有入口；「我的订单」和陪玩端订单增加凭证与净增进度面板；后台新增「保底档位」改价 / 上下架页，「经营与绩效」原单详情显示凭证。
+
 - 客户端新增「再来一单」：「我的订单」中已完成且有陪玩的订单显示入口，跳转 `/order?companionId=&mode=&hours=`；只带合法的模式（烽火地带 / 全面战场）和整数时长 1–4，其余忽略。下单页仍需客户点「核对订单金额」取服务端报价，再确认冻结，不会自动提交。
 - 下单页链接参数支持 `mode`、`hours`：非法值忽略并提示；陪玩暂不可下单时保留已带入的模式和时长并提示另选。
 - 客户端新增资金托管展示：`@dfc/ui` 的 `orderEscrowView` 只根据订单自身状态与 `refundAmount` 推导资金阶段（托管中 / 争议冻结 / 已结算 / 部分退回 / 已退回站内余额），未知状态显示“待核对”。

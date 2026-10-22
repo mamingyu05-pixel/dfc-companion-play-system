@@ -31,6 +31,20 @@ export function validateCustomerOrderInput(body: CustomerOrderInput, requireComp
   if (body.notes !== undefined && typeof body.notes !== "string") throw new BadRequestException("订单备注须为文字，请重新填写");
 }
 
+export function validateGuaranteeInput(body: { packageId?: unknown; companionId?: unknown; expectedTotalAmount?: unknown; notes?: unknown }) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new BadRequestException("订单内容无效，请刷新后重新选择");
+  if (typeof body.packageId !== "string" || !body.packageId.trim()) throw new BadRequestException("请选择保底档位");
+  if (body.companionId !== undefined && (typeof body.companionId !== "string" || !body.companionId.trim())) throw new BadRequestException("请选择有效的陪玩");
+  if (body.expectedTotalAmount !== undefined) {
+    try { fixedDecimal(body.expectedTotalAmount as string, "expectedTotalAmount"); }
+    catch (error) {
+      if (error instanceof BadRequestException) throw new BadRequestException("确认金额无效，请重新获取报价并确认");
+      throw error;
+    }
+  }
+  if (body.notes !== undefined && typeof body.notes !== "string") throw new BadRequestException("订单备注须为文字，请重新填写");
+}
+
 // Translate known user-facing failures only. Preserve status and the transaction's outcome marker.
 // A database/commit/transport failure must never gain NOT_COMMITTED from this presentation boundary.
 export async function customerOrderAction<T>(action: () => T | Promise<T>): Promise<T> {

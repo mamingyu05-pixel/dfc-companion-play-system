@@ -124,7 +124,8 @@ test('7/8: actual orders page gates review and countdown by order status; receip
   const p = harness('../app/orders/page.tsx', async url => ({ ok: true, json: async () => url.includes('public-config') ? {} : rows }));
   p.render('default'); p.mount(); await tick();
   const tree = p.render('default');
-  assert.deepEqual(nodes(tree).filter(n => n.props?.orderId).map(n => n.props.orderId), ['b']);
+  // ReviewForm is the node carrying both orderId and onSubmitted; evidence panels also receive orderId.
+  assert.deepEqual(nodes(tree).filter(n => n.props?.orderId && n.props?.onSubmitted).map(n => n.props.orderId), ['b']);
   assert.equal(nodes(tree).filter(n => n.props?.dueAt).length, 1);
   assert.match(text(tree), /已评价/);
   const receipt = fs.readFileSync(path.resolve(__dirname, '../app/order/page.tsx'), 'utf8');

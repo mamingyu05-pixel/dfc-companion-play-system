@@ -165,6 +165,9 @@ export default function CustomerHomePage() {
                 <Link href="/companions" className="maycat-button px-5 py-3 text-center text-sm font-black">
                   进入陪玩大厅
                 </Link>
+                <Link href="/guarantee" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
+                  保底护航 · 达标才付
+                </Link>
                 <Link href="/order" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
                   查看群下单方式
                 </Link>

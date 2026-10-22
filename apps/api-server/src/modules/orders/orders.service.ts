@@ -18,6 +18,8 @@ import {
   CompanionProfileStatus,
   GameCode,
   OrderAssignmentType,
+  OrderEvidenceKind,
+  OrderServiceKind,
   OrderSourcePlatform,
   OrderStatus,
   Order,
@@ -30,6 +32,7 @@ import {
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { BotNotificationService } from "../bot/bot-notification.service";
+import { EvidenceInput, guaranteeModeLabel, guaranteeProgress, MAX_EVIDENCE_PER_ORDER } from "./guarantee";
 
 type CreateOrderBody = {
       requestId?: string;
@@ -48,6 +51,7 @@ type CreateOrderBody = {
       sourceDraftId?: string;
       sourceChannelId?: string;
       sourceMessageId?: string;
+      guaranteePackageId?: string;
     };
 
 const CUSTOMER_SELECTED_DISPATCH = "CUSTOMER_SELECTED_DISPATCH:";
@@ -375,6 +379,105 @@ export class OrdersService {
       totalAmount: money(pricing.unitPrice.mul(hours), true).toString() };
   }
 
+  async listGuaranteePackages(includeInactive = false) {
+    const packages = await this.prisma.guaranteePackage.findMany({
+      where: includeInactive ? {} : { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { targetWan: "asc" }]
+    });
+    return packages.map(p => ({ id: p.id, game: p.game, platform: p.platform, targetWan: p.targetWan, price: p.price.toFixed(2),
+      isActive: p.isActive, sortOrder: p.sortOrder, label: guaranteeModeLabel(p.platform, p.targetWan) }));
+  }
+
+  async previewGuaranteeOrder(customerId: string, body: { packageId: string; companionId?: string; testEnvironment?: string }) {
+    const environment = await orderEnvironment(this.prisma, body.testEnvironment);
+    const customer = await this.prisma.user.findFirst({ where: { id: customerId, role: UserRole.CUSTOMER, status: UserStatus.ACTIVE }, select: { id: true } });
+    if (!customer) throw new BadRequestException("请使用有效的客户账号");
+    const guarantee = await this.activeGuaranteePackage(body.packageId);
+    const pricing = await this.guaranteePricing(guarantee, body.companionId, OrderSourcePlatform.WEB, this.prisma);
+    return { ...environment, customerId, companionId: body.companionId ?? null, packageId: guarantee.id, platform: guarantee.platform,
+      targetWan: guarantee.targetWan, mode: guaranteeModeLabel(guarantee.platform, guarantee.targetWan), totalAmount: pricing.unitPrice.toFixed(2) };
+  }
+
+  createGuaranteeOrder(customerId: string, body: { requestId: string; packageId: string; companionId?: string; expectedTotalAmount?: string; notes?: string; testEnvironment?: string }) {
+    return this.createOrder(customerId, { requestId: body.requestId, guaranteePackageId: body.packageId, companionId: body.companionId,
+      expectedTotalAmount: body.expectedTotalAmount, notes: body.notes, testEnvironment: body.testEnvironment, mode: "GUARANTEE", hours: "1" });
+  }
+
+  async addOrderEvidence(orderId: string, viewer: { id: string; role: UserRole }, input: EvidenceInput) {
+    return this.prisma.$transaction(async tx => {
+      await lockOrder(tx, orderId);
+      const order = await this.participantOrder(tx, orderId, viewer);
+      const vault = input.kind === OrderEvidenceKind.VAULT_START || input.kind === OrderEvidenceKind.VAULT_END;
+      if (vault && order.serviceKind !== OrderServiceKind.GUARANTEE) throw new BadRequestException("仓库凭证只用于保底单");
+      const open: OrderStatus[] = vault
+        ? [OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]
+        : [OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS, OrderStatus.AWAITING_ACCEPTANCE, OrderStatus.DISPUTED];
+      if (!open.includes(order.status)) throw new BadRequestException(vault ? "仓库凭证只能在接单后、报完成前上传" : "当前订单状态不能再补充凭证");
+      if (await tx.orderEvidence.count({ where: { orderId } }) >= MAX_EVIDENCE_PER_ORDER) throw new BadRequestException(`每单最多 ${MAX_EVIDENCE_PER_ORDER} 条凭证`);
+      return tx.orderEvidence.create({ data: { orderId, uploaderId: viewer.id, ...input },
+        select: { id: true, kind: true, vaultValueWan: true, linkUrl: true, note: true, createdAt: true } });
+    });
+  }
+
+  async listOrderEvidence(orderId: string, viewer: { id: string; role: UserRole }) {
+    const order = await this.participantOrder(this.prisma, orderId, viewer);
+    const evidence = await this.prisma.orderEvidence.findMany({ where: { orderId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      include: { uploader: { select: { id: true, role: true, displayName: true } } } });
+    const progress = order.serviceKind === OrderServiceKind.GUARANTEE ? guaranteeProgress(order.guaranteeTargetWan!, evidence) : null;
+    return {
+      orderId, serviceKind: order.serviceKind, targetWan: order.guaranteeTargetWan, progress,
+      evidence: evidence.map(e => ({ id: e.id, kind: e.kind, imageUrl: e.imageUrl, linkUrl: e.linkUrl, vaultValueWan: e.vaultValueWan, note: e.note, createdAt: e.createdAt,
+        uploader: e.uploaderId === order.customerId ? "客户" : e.uploaderId === order.companionId ? "陪玩"
+          : e.uploader.role === UserRole.ADMIN || e.uploader.role === UserRole.SUPER_ADMIN ? "客服" : "参与者" }))
+    };
+  }
+
+  async updateGuaranteePackage(adminId: string, id: string, body: { price?: string; isActive?: boolean; sortOrder?: number }) {
+    const data: Prisma.GuaranteePackageUpdateInput = {};
+    if (body.price !== undefined) data.price = money(fixedDecimal(body.price, "price"), true);
+    if (body.isActive !== undefined) {
+      if (typeof body.isActive !== "boolean") throw new BadRequestException("isActive must be boolean");
+      data.isActive = body.isActive;
+    }
+    if (body.sortOrder !== undefined) {
+      if (!Number.isSafeInteger(body.sortOrder)) throw new BadRequestException("sortOrder must be an integer");
+      data.sortOrder = body.sortOrder;
+    }
+    if (!Object.keys(data).length) throw new BadRequestException("没有需要修改的内容");
+    return this.prisma.$transaction(async tx => {
+      const before = await tx.guaranteePackage.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException("保底档位不存在");
+      const updated = await tx.guaranteePackage.update({ where: { id }, data });
+      await tx.adminLog.create({ data: { actorId: adminId, action: "UPDATE_GUARANTEE_PACKAGE", entityType: "GUARANTEE_PACKAGE", entityId: id,
+        detail: { before: { price: before.price.toFixed(2), isActive: before.isActive, sortOrder: before.sortOrder },
+          after: { price: updated.price.toFixed(2), isActive: updated.isActive, sortOrder: updated.sortOrder } } } });
+      return { id: updated.id, price: updated.price.toFixed(2), isActive: updated.isActive, sortOrder: updated.sortOrder };
+    });
+  }
+
+  private async participantOrder(db: Prisma.TransactionClient, orderId: string, viewer: { id: string; role: UserRole }) {
+    const admin = viewer.role === UserRole.ADMIN || viewer.role === UserRole.SUPER_ADMIN;
+    // Authorize in the query predicate so non-participants cannot probe order existence.
+    const order = await db.order.findFirst({ where: { id: orderId, ...(admin ? {} : { OR: [{ customerId: viewer.id }, { companionId: viewer.id }] }) },
+      select: { id: true, status: true, customerId: true, companionId: true, serviceKind: true, guaranteeTargetWan: true } });
+    if (!order) throw new NotFoundException("订单不存在或无权查看");
+    return order;
+  }
+
+  private async activeGuaranteePackage(id: string, db: Prisma.TransactionClient = this.prisma) {
+    if (typeof id !== "string" || !id.trim()) throw new BadRequestException("请选择保底档位");
+    const guarantee = await db.guaranteePackage.findFirst({ where: { id, isActive: true } });
+    if (!guarantee) throw new BadRequestException("保底档位不存在或已下架，请刷新后重新选择");
+    return guarantee;
+  }
+
+  private async guaranteePricing(guarantee: { game: GameCode; price: Prisma.Decimal }, companionId: string | undefined,
+    sourcePlatform: OrderSourcePlatform, db: Prisma.TransactionClient) {
+    // Package price is the whole order; only the commission comes from the chosen companion.
+    const pricing = companionId ? await this.resolvePricing(companionId, guarantee.game, sourcePlatform, ServicePriceTier.CUSTOM, {}, db) : null;
+    return { unitPrice: guarantee.price, commissionRate: pricing?.commissionRate ?? this.defaultPlatformCommissionRate(), rankTierKey: null, rankTierName: null };
+  }
+
   async createOrder(customerId: string, body: CreateOrderBody) {
     return this.prisma.$transaction(tx => this.createOrderInTransaction(tx, customerId, body)).catch(rejectUncommittedOrderRequest);
   }
@@ -386,19 +489,23 @@ export class OrdersService {
       const receipt = await beginOrderRequest(tx, "ORDER", customerId, body);
       if (receipt.resourceId) return tx.order.findUniqueOrThrow({ where: { id: receipt.resourceId } });
       if (body.sourceDraftId) await this.lockUnconvertedDraft(tx, body.sourceDraftId, customerId);
-      const game = body.game ?? GameCode.DELTA_FORCE;
-      const hours = this.positiveDecimal(body.hours, "hours");
+      const guarantee = body.guaranteePackageId ? await this.activeGuaranteePackage(body.guaranteePackageId, tx) : null;
+      const game = guarantee?.game ?? body.game ?? GameCode.DELTA_FORCE;
+      // A guarantee order is one outcome-priced unit, not billed by the hour.
+      const hours = guarantee ? new Prisma.Decimal(1) : this.positiveDecimal(body.hours, "hours");
       const maxHours = this.positiveDecimal(process.env.ORDER_MAX_HOURS ?? "8", "ORDER_MAX_HOURS");
-      if (hours.gt(maxHours)) throw new BadRequestException(`hours cannot be greater than ${maxHours.toString()}`);
+      if (!guarantee && hours.gt(maxHours)) throw new BadRequestException(`hours cannot be greater than ${maxHours.toString()}`);
 
       const assignmentType = body.companionId ? OrderAssignmentType.DIRECT_COMPANION : OrderAssignmentType.PLATFORM_MATCH;
 
       const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
-      const priceTier = this.normalizePriceTier(body.priceTier, body.mode);
-      const pricing = await this.resolvePricing(body.companionId, game, sourcePlatform, priceTier, {
-        rankTierKey: body.rankTierKey,
-        customUnitPrice: body.customUnitPrice
-      }, tx);
+      const priceTier = guarantee ? ServicePriceTier.CUSTOM : this.normalizePriceTier(body.priceTier, body.mode);
+      const pricing = guarantee
+        ? await this.guaranteePricing(guarantee, body.companionId, sourcePlatform, tx)
+        : await this.resolvePricing(body.companionId, game, sourcePlatform, priceTier, {
+          rankTierKey: body.rankTierKey,
+          customUnitPrice: body.customUnitPrice
+        }, tx);
       const totalAmount = money(pricing.unitPrice.mul(hours), true);
       if (body.expectedTotalAmount !== undefined) {
         const confirmedAmount = fixedDecimal(body.expectedTotalAmount, "expectedTotalAmount");
@@ -438,9 +545,10 @@ export class OrdersService {
           companionId: body.companionId,
           assignmentType,
           game,
-          mode: body.mode,
+          mode: guarantee ? guaranteeModeLabel(guarantee.platform, guarantee.targetWan) : body.mode,
           hours,
           priceTier,
+          ...(guarantee ? { serviceKind: OrderServiceKind.GUARANTEE, guaranteePlatform: guarantee.platform, guaranteeTargetWan: guarantee.targetWan } : {}),
           rankTierKey: pricing.rankTierKey,
           rankTierNameSnapshot: pricing.rankTierName,
           unitPrice: pricing.unitPrice,
@@ -980,7 +1088,15 @@ export class OrdersService {
       const actor = await tx.user.findUniqueOrThrow({ where: { id: actorId } });
       if (order.companionId !== actorId && actor.role !== UserRole.ADMIN && actor.role !== UserRole.SUPER_ADMIN) throw new BadRequestException("Only assigned companion or admin can report completion");
       if (order.status !== OrderStatus.IN_PROGRESS || !order.companionId) throw new BadRequestException("Only an in-progress assigned order can report completion");
-      if (!order.startedAt || Date.now() - order.startedAt.getTime() < order.hours.mul(3_600_000).toNumber()) throw new BadRequestException("Agreed service duration has not elapsed; use a documented dispute resolution for early termination");
+      if (order.serviceKind === OrderServiceKind.GUARANTEE) {
+        // Outcome-priced: the evidenced vault gain, not elapsed time, decides when completion may be reported.
+        const evidence = await tx.orderEvidence.findMany({ where: { orderId, kind: { in: [OrderEvidenceKind.VAULT_START, OrderEvidenceKind.VAULT_END] } },
+          select: { kind: true, vaultValueWan: true, createdAt: true } });
+        const progress = guaranteeProgress(order.guaranteeTargetWan!, evidence);
+        if (!progress.reached) throw new BadRequestException(progress.gainWan === null
+          ? "保底单需先上传开局和结束仓库截图"
+          : `保底未达成：当前净增 ${progress.gainWan} 万 / 目标 ${order.guaranteeTargetWan} 万，可继续服务或由客服按争议处理`);
+      } else if (!order.startedAt || Date.now() - order.startedAt.getTime() < order.hours.mul(3_600_000).toNumber()) throw new BadRequestException("Agreed service duration has not elapsed; use a documented dispute resolution for early termination");
       if (await tx.complaint.count({ where: { orderId, status: { in: ["OPEN", "IN_REVIEW"] } } })) throw new BadRequestException("An unresolved complaint blocks completion");
       const split = commissionSplit(order.totalAmount, order.commissionRateSnapshot);
       const changed = await tx.order.updateMany({ where: { id: orderId, status: OrderStatus.IN_PROGRESS }, data: { status: OrderStatus.AWAITING_ACCEPTANCE, reportedCompletedAt: new Date(), ...split } });
@@ -1775,6 +1891,9 @@ export class OrdersService {
   }
 
   private serializeOrder(order: {
+    serviceKind?: OrderServiceKind;
+    guaranteePlatform?: string | null;
+    guaranteeTargetWan?: number | null;
     isTest?: boolean;
     storeKey?: string;
     id: string;
@@ -1830,6 +1949,9 @@ export class OrdersService {
     return {
       id: order.id,
       orderNo: order.orderNo,
+      serviceKind: order.serviceKind ?? OrderServiceKind.HOURLY,
+      guaranteePlatform: order.guaranteePlatform ?? null,
+      guaranteeTargetWan: order.guaranteeTargetWan ?? null,
       isTest: order.isTest === true,
       storeKey: order.storeKey,
       customerId: order.customerId,

@@ -62,6 +62,20 @@ export class AdminController {
     return this.orders.getWorkQueue();
   }
 
+  @Get("guarantee-packages")
+  guaranteePackages() {
+    return this.orders.listGuaranteePackages(true);
+  }
+
+  @Patch("guarantee-packages/:id")
+  updateGuaranteePackage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { price?: string; isActive?: boolean; sortOrder?: number }
+  ) {
+    return this.orders.updateGuaranteePackage(user.id, id, body ?? {});
+  }
+
   @Get("dashboard")
   async getDashboard() {
     const today = new Date();

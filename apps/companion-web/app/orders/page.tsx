@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createOrderRecordClient, orderRecordView, type OrderRecordState } from "@dfc/ui";
 import { ActionButton, CompanionShell, MetricCard, SectionHeader, StatusBadge } from "../components";
+import { GuaranteeEvidencePanel } from "../guarantee-evidence";
 
 type Order = {
   id: string;
@@ -12,6 +13,7 @@ type Order = {
   hours: string;
   totalAmount: string;
   status: string;
+  serviceKind?: string;
   customer?: { displayName: string; email: string };
 };
 
@@ -208,7 +210,7 @@ export default function CompanionOrdersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="break-words text-base font-black text-white">{order.orderNo}</h2>
-                    <p className="mt-1 text-sm leading-6 text-dfc-subtext">{order.mode} / {order.hours} 小时</p>
+                    <p className="mt-1 text-sm leading-6 text-dfc-subtext">{order.serviceKind === "GUARANTEE" ? `${order.mode} / 达标后报完成` : `${order.mode} / ${order.hours} 小时`}</p>
                     {order.customer ? <p className="mt-1 break-words text-xs text-dfc-muted">{order.customer.displayName} / {order.customer.email}</p> : null}
                   </div>
                   <StatusBadge tone={orderStatusTone(order.status)}>{orderStatusLabel(order.status)}</StatusBadge>
@@ -230,6 +232,7 @@ export default function CompanionOrdersPage() {
                   {expanded ? "收起订单记录" : "查看订单记录"}
                 </button>
                 {expanded ? <OrderRecordDetails id={panelId} state={recordState} onReload={() => void loadRecord(order.id)} /> : null}
+                <GuaranteeEvidencePanel orderId={order.id} status={order.status} tokenKey="dfc_companion_token" defaultKind="VAULT_END" guarantee={order.serviceKind === "GUARANTEE"} />
               </article>
             );
           })

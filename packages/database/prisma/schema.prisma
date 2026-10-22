@@ -131,6 +131,23 @@ enum ServicePriceTier {
   CUSTOM
 }
 
+enum OrderServiceKind {
+  HOURLY
+  GUARANTEE
+}
+
+enum GamePlatform {
+  PC
+  MOBILE
+}
+
+enum OrderEvidenceKind {
+  VAULT_START
+  VAULT_END
+  RECORDING
+  OTHER
+}
+
 enum OrderDraftStatus {
   OPEN
   TRIALING
@@ -299,6 +316,7 @@ model User {
   withdrawalRequests         WithdrawalRequest[] @relation("WithdrawalCompanion")
   withdrawalReviews          WithdrawalRequest[] @relation("WithdrawalReviewer")
   complaintsFiled            Complaint[]         @relation("ComplaintReporter")
+  orderEvidence              OrderEvidence[]     @relation("OrderEvidenceUploader")
   complaintsResolved         Complaint[]         @relation("ComplaintResolver")
   adminLogs                  AdminLog[]          @relation("AdminLogActor")
   targetAdminLogs            AdminLog[]          @relation("AdminLogTarget")
@@ -429,6 +447,11 @@ model Wallet {
 
 model Order {
   review OrderReview?
+  // Guarantee orders snapshot the package at purchase; later price edits never change them.
+  serviceKind OrderServiceKind @default(HOURLY)
+  guaranteePlatform GamePlatform?
+  guaranteeTargetWan Int?
+  evidence OrderEvidence[]
   @@index([status, reportedCompletedAt])
   @@index([status, acceptanceDeadline])
   dispatchVersion Int @default(0)
@@ -815,6 +838,39 @@ model GameRankPrice {
   @@unique([game, tierKey])
   @@index([game, sortOrder])
   @@map("game_rank_prices")
+}
+
+model GuaranteePackage {
+  id        String       @id @default(cuid())
+  game      GameCode     @default(DELTA_FORCE)
+  platform  GamePlatform
+  targetWan Int
+  price     Decimal      @db.Decimal(12, 2)
+  sortOrder Int          @default(0)
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([game, platform, targetWan])
+  @@map("guarantee_packages")
+}
+
+model OrderEvidence {
+  id            String            @id @default(cuid())
+  orderId       String
+  uploaderId    String
+  kind          OrderEvidenceKind
+  imageUrl      String?
+  linkUrl       String?
+  vaultValueWan Int?
+  note          String?           @db.VarChar(200)
+  createdAt     DateTime          @default(now())
+
+  order         Order             @relation(fields: [orderId], references: [id])
+  uploader      User              @relation("OrderEvidenceUploader", fields: [uploaderId], references: [id])
+
+  @@index([orderId, createdAt])
+  @@map("order_evidence")
 }
 
 model AiSupportConversation {

@@ -13,6 +13,7 @@ const navItems = [
   ["草稿台", "/order-drafts"],
   ["单人派单", "/dispatch"],
   ["优惠", "/promotions"],
+  ["保底档位", "/guarantee-packages"],
   ["充值审核", "/recharges"],
   ["提现审核", "/withdrawals"],
   ["投诉", "/complaints"],

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createOrderRecordClient, orderRecordView, type OrderRecordState } from "@dfc/ui";
 import { CustomerShell } from "../components";
 import { EscrowProgress, EscrowPromise } from "../escrow";
+import { GuaranteeEvidencePanel } from "../guarantee-evidence";
 import { reorderHref } from "../order/order-entry";
 import { AcceptanceCountdown } from "./acceptance-countdown";
 import { ReviewForm } from "./review-form";
@@ -19,6 +20,7 @@ type Order = {
   hours: string;
   totalAmount: string;
   refundAmount?: string;
+  serviceKind?: string;
   companionId?: string | null;
   companion?: { displayName: string } | null;
 };
@@ -211,10 +213,11 @@ export default function OrdersPage() {
               <span>{labels[order.status] || order.status}</span>
             </div>
             <p className="my-3 text-sm text-dfc-subtext">
-              {order.mode} · {order.hours} 小时 · ¥
+              {order.mode}{order.serviceKind === "GUARANTEE" ? "" : ` · ${order.hours} 小时`} · ¥
               {order.totalAmount}
             </p>
             <EscrowProgress order={order} />
+            <GuaranteeEvidencePanel orderId={order.id} status={order.status} tokenKey="dfc_customer_token" defaultKind="VAULT_START" guarantee={order.serviceKind === "GUARANTEE"} />
             <p className="mt-3">陪玩：{order.companion?.displayName || "待分配"}</p>
             <p className="my-3 text-sm text-dfc-subtext">{nextSteps[order.status] || "订单状态待核对，请刷新；仍不明确请联系客服。"}</p>
             {kookUrl && !["COMPLETED", "REFUNDED", "CANCELLED"].includes(order.status) ? <a href={kookUrl} target="_blank" rel="noopener noreferrer" className="mb-3 inline-block text-sm text-cyan-200 underline">去 KOOK 找陪玩</a> : null}

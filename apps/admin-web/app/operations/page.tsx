@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { evidenceKindLabel, guaranteeProgressText, type OrderEvidenceView } from "@dfc/ui";
 import { NotificationReconciliation } from "./notification-reconciliation";
 import {
   AdminShell,
@@ -136,6 +137,7 @@ export default function OperationsPage() {
   const [focus, setFocus] = useState<string[] | null>(null);
   const [draftFocus, setDraftFocus] = useState<string[] | null>(null);
   const [detail, setDetail] = useState<Detail>();
+  const [evidence, setEvidence] = useState<OrderEvidenceView>();
   const [note, setNote] = useState("");
   const [refund, setRefund] = useState("");
   const [notice, setNotice] = useState("");
@@ -187,8 +189,10 @@ export default function OperationsPage() {
     setRefund("");
     setNotice("");
     setDetail(undefined);
+    setEvidence(undefined);
     try {
       setDetail(await api(`/api/admin/operations/orders/${id}`));
+      setEvidence(await api(`/api/orders/${id}/evidence`));
     } catch (e) {
       setError(e instanceof Error ? e.message : "无法读取原单");
     }
@@ -591,6 +595,30 @@ export default function OperationsPage() {
               此订单属于组合单，下方 ORDER_GROUP
               流水包含同组其他订单，不能全部归入本单。
             </p>
+          )}
+          {evidence && evidence.evidence.length > 0 && (
+            <div className="mb-4">
+              <h3 className="mb-2 font-bold">服务凭证</h3>
+              {evidence.progress && (
+                <p className={evidence.progress.reached ? "mb-2 text-green-200" : "mb-2 text-amber-200"}>
+                  {guaranteeProgressText(evidence.targetWan, evidence.progress)}
+                </p>
+              )}
+              <DataTable
+                columns={["时间", "类型", "仓库（万）", "上传方", "凭证", "备注"]}
+                rows={evidence.evidence.map((e) => [
+                  new Date(e.createdAt).toLocaleString("zh-CN"),
+                  evidenceKindLabel[e.kind],
+                  e.vaultValueWan ?? "—",
+                  e.uploader,
+                  <span key={e.id} className="flex gap-2">
+                    {e.imageUrl && <a className="text-cyan-200 underline" href={e.imageUrl} target="_blank" rel="noreferrer">截图</a>}
+                    {e.linkUrl && <a className="text-cyan-200 underline" href={e.linkUrl} target="_blank" rel="noopener noreferrer">录屏</a>}
+                  </span>,
+                  e.note || "—",
+                ])}
+              />
+            </div>
           )}
           {detail.order.complaints.length > 0 && (
             <DataTable
