@@ -5,6 +5,9 @@ import { normalizeDisplayNameKey } from "../auth/display-name.util";
 import { createPasswordHash } from "../auth/password.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderDraftsService } from "../orders/order-drafts.service";
+import { extractiveAnswer, groundedInstruction, KnowledgeDoc, retrieveKnowledge } from "./knowledge";
+
+const KNOWLEDGE_CACHE_MS = 60_000;
 
 type SupportRule = {
   topic: string;
@@ -188,6 +191,7 @@ const SUPPORTED_PRICE_LIST_GAME_SET = new Set<GameCode>(SUPPORTED_PRICE_LIST_GAM
 @Injectable()
 export class PlatformSupportService {
   private readonly logger = new Logger(PlatformSupportService.name);
+  private knowledgeCache: { loadedAt: number; docs: KnowledgeDoc[] } | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -405,6 +409,11 @@ export class PlatformSupportService {
       return { answer: `${this.buildDispatchCollectionReply(facts)}${scope.platform ? "" : " 网站聊天不会代你下单，请在下单页核对陪玩、时长和总额后提交。"}`,
         matchedTopic: facts.missing.length ? "需求收集" : "需求待确认", handoffRequired: false };
     }
+    // Guarantee packages are priced per tier, so their questions go to the knowledge base before hourly pricing.
+    if (/(保底|护航)/.test(message)) {
+      const knowledge = await this.tryKnowledgeAnswer(message, history);
+      if (knowledge) return knowledge;
+    }
     try {
       if (this.isPriceQuestion(message)) {
         const game = this.buildDemandFacts(message, history).game;
@@ -415,8 +424,42 @@ export class PlatformSupportService {
     } catch {
       return { answer: "当前查询没成功，暂时不能确认实时信息。可以稍后重试，急用的话请联系人工客服。", matchedTopic: "查询失败", handoffRequired: true };
     }
+    const knowledge = await this.tryKnowledgeAnswer(message, history);
+    if (knowledge) return knowledge;
     const matched = SUPPORT_RULES.find(rule => rule.keywords.some(word => message.toLowerCase().includes(word.toLowerCase())));
     return { answer: matched?.answer ?? this.buildContextualFallback(message), matchedTopic: matched?.topic ?? "继续确认", handoffRequired: matched?.handoffRequired ?? false };
+  }
+
+  /** RAG: retrieve operator knowledge, then let the model rephrase only that material; fall back to the text itself. */
+  private async tryKnowledgeAnswer(message: string, history: SupportHistoryTurn[]): Promise<SupportResult | null> {
+    let docs: KnowledgeDoc[];
+    try { docs = await this.loadKnowledge(); }
+    catch { return null; }
+    const hits = retrieveKnowledge(message, docs);
+    if (!hits.length) return null;
+    const generated = await this.tryOpenAiSupportAnswer(message, history, undefined, groundedInstruction(hits));
+    return { answer: generated ?? extractiveAnswer(hits[0]), matchedTopic: `知识库:${hits[0].doc.title}`, handoffRequired: false };
+  }
+
+  private async loadKnowledge(): Promise<KnowledgeDoc[]> {
+    if (this.knowledgeCache && Date.now() - this.knowledgeCache.loadedAt < KNOWLEDGE_CACHE_MS) return this.knowledgeCache.docs;
+    const [rows, packages] = await Promise.all([
+      this.prisma.supportKnowledge.findMany({ where: { isActive: true }, select: { id: true, title: true, content: true, keywords: true } }),
+      this.prisma.guaranteePackage.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { targetWan: "asc" }] })
+    ]);
+    // Live prices are generated from the price table so the assistant never quotes a stale number.
+    const live: KnowledgeDoc[] = packages.length ? [{
+      id: "live-guarantee-prices", title: "保底护航当前档位价格",
+      content: `当前保底护航档位：${packages.map(p => `${p.platform === "MOBILE" ? "手游" : "端游"} ${p.targetWan}W ¥${p.price.toFixed(2)}`).join("；")}。以下单页核对的金额为准。`,
+      keywords: ["保底价格", "护航价格", "档位", "多少钱", "几档"]
+    }] : [];
+    const docs = [...rows, ...live];
+    this.knowledgeCache = { loadedAt: Date.now(), docs };
+    return docs;
+  }
+
+  invalidateKnowledgeCache() {
+    this.knowledgeCache = null;
   }
 
   private identifyAssistant(answer: string, history: SupportHistoryTurn[]) {
@@ -561,7 +604,8 @@ export class PlatformSupportService {
       };
     }
 
-    if (/(你能干什么|能做什么|怎么用|如何使用|你是谁|客服能干嘛)/i.test(message)) {
+    // Only questions about the assistant itself; "X怎么用" must reach the knowledge base instead.
+    if (/(你能干什么|你能做什么|你是谁|客服能干嘛)/i.test(message) || /^(能做什么|怎么用|如何使用)[？?。!！]*$/.test(message)) {
       return {
         matchedTopic: "客服能力",
         answer:

@@ -26,9 +26,10 @@ export const navGroups: Array<{ title: string; items: Item[] }> = [
     { label: "添加陪玩", href: "/companions/new" },
     { label: "用户", href: "/users" }
   ] },
-  { title: "价格与优惠", items: [
+  { title: "配置", items: [
     { label: "价格设置", href: "/pricing" },
-    { label: "优惠", href: "/promotions" }
+    { label: "优惠", href: "/promotions" },
+    { label: "AI 客服知识库", href: "/knowledge" }
   ] },
   { title: "数据与记录", items: [
     { label: "经营与绩效", href: "/operations" },

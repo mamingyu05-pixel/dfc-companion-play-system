@@ -4,10 +4,11 @@ import { OrdersModule } from "../orders/orders.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { PlatformSupportService } from "./platform-support.service";
 import { SupportController } from "./support.controller";
+import { SupportKnowledgeController } from "./support-knowledge.controller";
 
 @Module({
   imports: [PrismaModule, JwtModule.register({}), OrdersModule],
-  controllers: [SupportController],
+  controllers: [SupportController, SupportKnowledgeController],
   providers: [PlatformSupportService],
   exports: [PlatformSupportService]
 })

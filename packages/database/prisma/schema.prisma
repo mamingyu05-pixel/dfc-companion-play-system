@@ -839,6 +839,20 @@ model GameRankPrice {
   @@map("game_rank_prices")
 }
 
+// Operator-maintained answers the AI support retrieves before replying (RAG).
+model SupportKnowledge {
+  id        String   @id @default(cuid())
+  title     String   @db.VarChar(80)
+  content   String   @db.VarChar(1200)
+  keywords  String[] @default([])
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("support_knowledge")
+}
+
 model GuaranteePackage {
   id        String       @id @default(cuid())
   game      GameCode     @default(DELTA_FORCE)
