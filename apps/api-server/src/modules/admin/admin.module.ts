@@ -7,10 +7,12 @@ import { PrismaModule } from "../prisma/prisma.module";
 import { WalletModule } from "../wallet/wallet.module";
 import { OperationsService } from "./operations.service";
 import { OperationsController } from "./operations.controller";
+import { AnalyticsService } from "./analytics.service";
+import { AnalyticsController } from "./analytics.controller";
 
 @Module({
   imports: [AuthModule, OrdersModule, PrismaModule, WalletModule],
-  controllers: [AdminController, OperationsController],
-  providers: [CompanionExternalAccountsService, OperationsService]
+  controllers: [AdminController, OperationsController, AnalyticsController],
+  providers: [CompanionExternalAccountsService, OperationsService, AnalyticsService]
 })
 export class AdminModule {}

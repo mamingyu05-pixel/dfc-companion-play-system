@@ -5,6 +5,7 @@ import { AdminAuthGate } from "./auth-gate";
 const navItems = [
   ["看板", "/dashboard"],
   ["经营与绩效", "/operations"],
+  ["客户/陪玩数据", "/analytics"],
   ["用户", "/users"],
   ["陪玩", "/companions"],
   ["添加陪玩", "/companions/new"],
