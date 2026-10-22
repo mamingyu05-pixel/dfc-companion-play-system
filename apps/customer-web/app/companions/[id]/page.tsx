@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Badge, CompanionAvatar, CustomerShell, SafeMediaImage, mediaUrl } from "../../components";
 import { games } from "../../data";
+import { EscrowPromise } from "../../escrow";
 
 type ApiCompanion = {
   averageRating?: number | null;
@@ -146,7 +147,8 @@ export default function CompanionDetailPage() {
               <DetailMetric label="语音" value={canVoice ? "支持" : "文字"} />
               <DetailMetric label="状态" value={toOnlineStatus(companion.onlineStatus)} />
             </div>
-            <Link href={`/order?companionId=${encodeURIComponent(companion.id)}`} className="maycat-button mt-5 block px-4 py-3 text-center text-sm font-black">
+            <div className="mt-5"><EscrowPromise compact /></div>
+            <Link href={`/order?companionId=${encodeURIComponent(companion.id)}`} className="maycat-button mt-3 block px-4 py-3 text-center text-sm font-black">
               下单
             </Link>
             <Link
@@ -200,7 +202,7 @@ export default function CompanionDetailPage() {
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <TrustPoint title="先试音再决定" desc={canVoice ? "可申请进入临时语音频道，确认声音、沟通和节奏。" : "该陪玩偏文字沟通，群内发单前请把需求写清楚。"} />
               <TrustPoint title="后台真实上架" desc="只有管理员审核上架后的陪玩会出现在客户列表。" />
-              <TrustPoint title="客服后台扣费" desc="前端只展示资料和单价，最终金额由客服确认后从钱包余额扣费。" />
+              <TrustPoint title="平台托管资金" desc="下单只冻结余额，你验收后才结算给陪玩；有异议可在验收前申诉，由客服裁决退回或结算。" />
               <TrustPoint title="异常可找客服" desc="接单前后如需改时间、沟通异常，可走客服处理。" />
             </div>
           </section>

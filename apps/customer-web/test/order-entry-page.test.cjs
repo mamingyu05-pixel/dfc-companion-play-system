@@ -43,7 +43,8 @@ function harness(search = '', initial = ready(), config = {}, orders = [], entry
       if (id === './order-client') return { createOrderClient: () => client };
       if (id === './order-entry') return load('../app/order/order-entry.ts');
       if (id === './selection-draft') return load('../app/order/selection-draft.ts');
-      if (id === '@dfc/ui') return load('../../../packages/ui/src/order-record-client.ts');
+      if (id === '@dfc/ui') return { ...load('../../../packages/ui/src/order-record-client.ts'), ...load('../../../packages/ui/src/order-escrow.ts') };
+      if (id.endsWith('/escrow')) return load('../app/escrow.tsx');
       if (id === './acceptance-countdown') return load('../app/orders/acceptance-countdown.tsx');
       if (id === './review-form') return load('../app/orders/review-form.tsx');
       if (id.endsWith('/components')) return new Proxy({}, { get: () => stub });

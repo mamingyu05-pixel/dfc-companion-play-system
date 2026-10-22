@@ -13,3 +13,5 @@ export const dfcCardClassName = "rounded-dfc border border-dfc-border bg-dfc-sur
 
 export { createOrderRecordClient, orderRecordView } from "./order-record-client";
 export type { OrderRecord, OrderRecordState } from "./order-record-client";
+export { ESCROW_PROMISE, orderEscrowView } from "./order-escrow";
+export type { EscrowStep, EscrowTone, EscrowView } from "./order-escrow";

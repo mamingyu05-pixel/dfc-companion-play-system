@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { CustomerShell } from "../components";
+import { EscrowProgress, EscrowPromise } from "../escrow";
 import DemandGuide from "./demand-guide";
 import { createOrderClient, type OrderView, type Selection } from "./order-client";
 import { balanceShortfall, onlineLabel, sortedCompanions } from "./order-entry";
@@ -111,6 +112,7 @@ export default function OrderPage() {
     {view.receipt ? <section role="status" className="maycat-card mt-5 p-5">
       <h2 className="text-lg font-black">订单 {view.receipt.orderNo}</h2>
       <p className="mt-2">{statusLabels[view.receipt.status] || "状态待核对"} · ¥{Number(view.receipt.totalAmount).toFixed(2)}</p>
+      <EscrowProgress order={view.receipt} />
       <p className="mt-2">{nextSteps[view.receipt.status] || "请刷新核对；仍不明确时联系管理员，不重复下单。"}</p>
       <Link href={`/orders?record=${encodeURIComponent(view.receipt.id)}`} className="mt-3 inline-block text-sm text-cyan-200 underline">查看本单记录与时间线</Link>
       {kookUrl && !["COMPLETED", "REFUNDED", "CANCELLED"].includes(view.receipt.status) ? <a href={kookUrl} target="_blank" rel="noopener noreferrer" className="mt-3 block text-sm text-cyan-200 underline">去 KOOK 找陪玩</a> : null}
@@ -140,6 +142,7 @@ export default function OrderPage() {
       <p className="text-sm text-dfc-subtext">无需再填账号、游戏和个人资料。可用余额 ¥{view.availableBalance || "待核对"}；最终金额以核对区为准。</p>
       {!view.preview ? <button className="maycat-button px-4 py-3" disabled={!selected || !view.connected || view.busy || view.pending} onClick={() => void perform(() => client.current!.prepare(selection), true)}>核对订单金额</button> : <div className="rounded-dfc border border-cyan-300/30 p-4">
         <h3 className="font-black">提交前确认</h3>
+        <div className="mt-3"><EscrowPromise /></div>
         <p className="mt-2">{selected?.nickname} · {view.preview.mode} · {view.preview.hours} 小时</p>
         <p>单价 ¥{view.preview.unitPrice}/时 · 总额 ¥{view.preview.totalAmount}</p>
         <p className="mt-2 text-sm text-amber-100">点击下方按钮会创建正式订单，并从钱包余额冻结以上金额。不是充值或微信支付；试音须另行安排。价格变化时会停止提交，要求重新核对。</p>

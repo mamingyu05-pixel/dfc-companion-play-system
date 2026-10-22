@@ -156,6 +156,7 @@ export class OrdersService {
       }
     });
     return orders.map((order) => ({ ...this.serializeOrder(order, false),
+      refundAmount: order.refundAmount.toString(),
       hasReview: Boolean(order.review),
       autoAcceptanceDueAt: order.status === OrderStatus.AWAITING_ACCEPTANCE && !order.complaints.length
         ? acceptanceDueAt(order.reportedCompletedAt, hours) : null,

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createOrderRecordClient, orderRecordView, type OrderRecordState } from "@dfc/ui";
 import { CustomerShell } from "../components";
+import { EscrowProgress, EscrowPromise } from "../escrow";
 import { AcceptanceCountdown } from "./acceptance-countdown";
 import { ReviewForm } from "./review-form";
 
@@ -16,6 +17,7 @@ type Order = {
   mode: string;
   hours: string;
   totalAmount: string;
+  refundAmount?: string;
   companion?: { displayName: string } | null;
 };
 const labels: Record<string, string> = {
@@ -184,6 +186,7 @@ export default function OrdersPage() {
       <p className="my-4 text-sm text-dfc-subtext">
         陪玩报完成后，请核对服务与时长。确认验收会释放对应收益；有异议可先提交投诉，等待人工处理。
       </p>
+      <EscrowPromise compact />
       {error && (
         <p role="alert" className="my-4 text-red-200">
           {error}
@@ -209,6 +212,7 @@ export default function OrdersPage() {
               {order.mode} · {order.hours} 小时 · ¥
               {order.totalAmount}
             </p>
+            <EscrowProgress order={order} />
             <p className="mt-3">陪玩：{order.companion?.displayName || "待分配"}</p>
             <p className="my-3 text-sm text-dfc-subtext">{nextSteps[order.status] || "订单状态待核对，请刷新；仍不明确请联系客服。"}</p>
             {kookUrl && !["COMPLETED", "REFUNDED", "CANCELLED"].includes(order.status) ? <a href={kookUrl} target="_blank" rel="noopener noreferrer" className="mb-3 inline-block text-sm text-cyan-200 underline">去 KOOK 找陪玩</a> : null}
