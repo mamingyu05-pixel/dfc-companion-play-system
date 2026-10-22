@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 
@@ -19,16 +20,6 @@ type PromotionCode = {
   maxBonusAmount?: string | null;
   usageLimit?: number | null;
   usedCount: number;
-  isActive: boolean;
-};
-
-type GameRankPrice = {
-  id: string;
-  game: string;
-  tierKey: string;
-  tierName: string;
-  unitPrice: string;
-  sortOrder: number;
   isActive: boolean;
 };
 
@@ -78,9 +69,7 @@ const labels: Record<string, { label: string; hint: string }> = {
 export default function PromotionsPage() {
   const [settings, setSettings] = useState<PromotionSetting[]>([]);
   const [codes, setCodes] = useState<PromotionCode[]>([]);
-  const [rankPrices, setRankPrices] = useState<GameRankPrice[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
-  const [rankPriceValues, setRankPriceValues] = useState<Record<string, { tierName: string; unitPrice: string; isActive: boolean }>>({});
   const [newCode, setNewCode] = useState({ code: "", title: "", minRecharge: "", bonusAmount: "", bonusRate: "", maxBonusAmount: "", usageLimit: "" });
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -107,20 +96,8 @@ export default function PromotionsPage() {
     setCodes((await response.json()) as PromotionCode[]);
   }
 
-  async function loadRankPrices() {
-    const token = localStorage.getItem("dfc_admin_token");
-    if (!token) return;
-    const response = await fetch("/api/admin/game-rank-prices", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) throw new Error("load rank prices failed");
-    const data = (await response.json()) as GameRankPrice[];
-    setRankPrices(data);
-    setRankPriceValues(Object.fromEntries(data.map((item) => [item.id, { tierName: item.tierName, unitPrice: item.unitPrice, isActive: item.isActive }])));
-  }
-
   useEffect(() => {
-    void Promise.all([loadSettings(), loadPromotionCodes(), loadRankPrices()]).catch(() => setError("无法加载优惠配置"));
+    void Promise.all([loadSettings(), loadPromotionCodes()]).catch(() => setError("无法加载优惠配置"));
   }, []);
 
   async function saveSettings() {
@@ -199,31 +176,6 @@ export default function PromotionsPage() {
     await loadPromotionCodes();
   }
 
-  async function saveRankPrice(id: string) {
-    const token = localStorage.getItem("dfc_admin_token");
-    if (!token) return;
-    const value = rankPriceValues[id];
-    if (!value) return;
-    setError("");
-    setStatus("");
-    const response = await fetch(`/api/admin/game-rank-prices/${id}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(value)
-    });
-    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    if (!response.ok) {
-      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(toFriendlyError(message));
-      return;
-    }
-    setStatus("段位价已保存，后续成单会立即按新价格计算");
-    await loadRankPrices();
-  }
-
   const stats = useMemo(() => {
     const active = codes.filter((item) => item.isActive).length;
     const used = codes.reduce((sum, item) => sum + item.usedCount, 0);
@@ -262,45 +214,7 @@ export default function PromotionsPage() {
         </button>
       </section>
 
-      <section className="admin-panel mt-6">
-        <h2 className="text-base font-black text-white">游戏段位价目</h2>
-        <p className="mt-1 text-xs leading-5 text-dfc-muted">成单台按这里的游戏 × 段位/档位读取平台单价；修改保存后，后续新订单立即生效。</p>
-        <div className="mt-5">
-          <DataTable
-            columns={["游戏", "档位 key", "档位名", "平台单价", "状态", "操作"]}
-            rows={rankPrices.map((item) => {
-              const value = rankPriceValues[item.id] ?? { tierName: item.tierName, unitPrice: item.unitPrice, isActive: item.isActive };
-              return [
-                gameName(item.game),
-                <span key={`${item.id}-key`} className="font-mono text-xs text-dfc-muted">{item.tierKey}</span>,
-                <input
-                  key={`${item.id}-name`}
-                  value={value.tierName}
-                  onChange={(event) => setRankPriceValues({ ...rankPriceValues, [item.id]: { ...value, tierName: event.target.value } })}
-                  className="input min-w-28"
-                />,
-                <input
-                  key={`${item.id}-price`}
-                  value={value.unitPrice}
-                  onChange={(event) => setRankPriceValues({ ...rankPriceValues, [item.id]: { ...value, unitPrice: event.target.value } })}
-                  className="input w-28"
-                  inputMode="decimal"
-                />,
-                <label key={`${item.id}-active`} className="inline-flex items-center gap-2 text-xs font-semibold text-dfc-subtext">
-                  <input
-                    type="checkbox"
-                    checked={value.isActive}
-                    onChange={(event) => setRankPriceValues({ ...rankPriceValues, [item.id]: { ...value, isActive: event.target.checked } })}
-                    className="accent-cyan-300"
-                  />
-                  启用
-                </label>,
-                <ActionButton key={`${item.id}-save`} tone="secondary" onClick={() => void saveRankPrice(item.id)}>保存</ActionButton>
-              ];
-            })}
-          />
-        </div>
-      </section>
+      <p className="mt-6 text-sm text-dfc-subtext">段位小时价和保底护航档位已统一到 <Link className="text-cyan-200 underline" href="/pricing">价格设置</Link>。</p>
 
       <section className="admin-panel mt-6">
         <h2 className="text-base font-black text-white">充值优惠码</h2>
@@ -362,20 +276,6 @@ function Signal({ label, value, hint, tone }: { label: string; value: string; hi
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
   const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
   return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
-}
-
-function gameName(code: string) {
-  const map: Record<string, string> = {
-    DELTA_FORCE: "三角洲行动",
-    LEAGUE_OF_LEGENDS: "英雄联盟",
-    VALORANT: "无畏契约",
-    COUNTER_STRIKE_2: "CS2",
-    PUBG: "PUBG",
-    APEX_LEGENDS: "Apex 英雄",
-    NARAKA_BLADEPOINT: "永劫无间",
-    CALL_OF_DUTY: "塔科夫 / COD"
-  };
-  return map[code] ?? code;
 }
 
 function formatMoney(value: string) {

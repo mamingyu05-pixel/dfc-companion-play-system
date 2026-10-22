@@ -222,6 +222,9 @@ export default function CompanionOrdersPage() {
                   </div>
                   {nextAction ? <ActionButton onClick={nextAction === "开始" ? () => void updateOrder(order.id, "start") : () => void updateOrder(order.id, "complete")}>{nextAction}</ActionButton> : null}
                 </div>
+                {order.serviceKind === "GUARANTEE" && ["ACCEPTED", "IN_PROGRESS"].includes(order.status) ? (
+                  <p className="mt-2 text-xs leading-5 text-dfc-warning">保底单：老板先传开局仓库截图；打完你传结束仓库截图，净增达标后才能点「完成」。</p>
+                ) : null}
                 <button
                   type="button"
                   aria-expanded={expanded}

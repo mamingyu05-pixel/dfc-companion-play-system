@@ -44,6 +44,14 @@ type DashboardData = {
   recentLogs: DashboardLog[];
 };
 
+// Metric labels come from GET /api/admin/dashboard; each card opens the queue that clears it.
+const metricHref: Record<string, string> = {
+  今日订单: "/dispatch",
+  待充值审核: "/recharges",
+  待提现审核: "/withdrawals",
+  未结投诉: "/complaints"
+};
+
 const emptyDashboard: DashboardData = {
   metrics: [
     { label: "今日订单", value: "0", hint: "0 个待派单" },
@@ -125,7 +133,7 @@ export default function AdminDashboardPage() {
       </nav>
       <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {loaded ? dashboard.metrics.map((metric) => (
-          <MetricCard key={metric.label} {...metric} />
+          <MetricCard key={metric.label} {...metric} href={metricHref[metric.label]} />
         )) : <p className="text-sm text-dfc-subtext">统计尚未核实。</p>}
       </section>
 

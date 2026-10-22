@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
+import { DataTable, StatusBadge } from "../components";
 
 type Package = { id: string; platform: "PC" | "MOBILE"; targetWan: number; price: string; isActive: boolean; sortOrder: number; label: string };
 
@@ -14,7 +14,7 @@ async function api(path: string, init: RequestInit = {}) {
   return data;
 }
 
-export default function GuaranteePackagesPage() {
+export function GuaranteePackageSection() {
   const [packages, setPackages] = useState<Package[]>();
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -42,9 +42,9 @@ export default function GuaranteePackagesPage() {
   }
 
   return (
-    <AdminShell>
-      <SectionHeader title="保底护航档位" eyebrow="Guarantee Packages"
-        desc="客户按档位下单、按仓库净增结算。改价只影响之后的新订单；下架后客户不可再选该档位。" />
+    <section className="admin-panel">
+      <h2 className="text-base font-black text-white">保底护航 · 档位价格</h2>
+      <p className="mb-4 mt-1 text-xs leading-5 text-dfc-muted">客户按档位下单、按仓库净增结算。改价只影响之后的新订单；下架后客户不可再选该档位。</p>
       {error ? <p role="alert" className="mb-4 rounded border border-red-300 p-3 text-red-200">{error}</p> : null}
       {notice ? <p role="status" className="mb-4 text-green-200">{notice}</p> : null}
       {!packages && !error ? <p className="text-sm text-dfc-muted">加载中…</p> : null}
@@ -67,6 +67,6 @@ export default function GuaranteePackagesPage() {
           ])}
         />
       ) : null}
-    </AdminShell>
+    </section>
   );
 }

@@ -62,6 +62,20 @@ export class AdminController {
     return this.orders.getWorkQueue();
   }
 
+  // Counts only, for navigation badges on every admin page; keep it to cheap indexed counts.
+  @Get("pending-counts")
+  async pendingCounts() {
+    const [drafts, dispatch, recharges, withdrawals, complaints, disputes] = await this.prisma.$transaction([
+      this.prisma.orderDraft.count({ where: { status: { in: ["OPEN", "TRIALING", "SELECTED", "CUSTOMER_CONFIRMED"] } } }),
+      this.prisma.order.count({ where: { status: { in: [OrderStatus.PAID, OrderStatus.ASSIGNED] } } }),
+      this.prisma.rechargeRequest.count({ where: { status: ReviewStatus.PENDING } }),
+      this.prisma.withdrawalRequest.count({ where: { status: { in: [WithdrawalStatus.PENDING, WithdrawalStatus.APPROVED] } } }),
+      this.prisma.complaint.count({ where: { status: { in: [ComplaintStatus.OPEN, ComplaintStatus.IN_REVIEW] } } }),
+      this.prisma.order.count({ where: { status: OrderStatus.DISPUTED } })
+    ]);
+    return { drafts, dispatch, recharges, withdrawals, complaints, disputes, checkedAt: new Date().toISOString() };
+  }
+
   @Get("guarantee-packages")
   guaranteePackages() {
     return this.orders.listGuaranteePackages(true);

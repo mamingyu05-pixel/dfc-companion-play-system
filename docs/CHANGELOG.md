@@ -2,6 +2,12 @@
 
 ## 2026-10-22
 
+- 后台操作简化：
+  - 导航从 17 个平铺入口改为 5 组（今日处理 / 订单 / 人员 / 价格与优惠 / 数据与记录），当前页高亮；草稿台、派单、充值审核、提现审核、投诉与争议显示待办数量角标（新接口 `GET /api/admin/pending-counts`，只做计数；读取失败时不显示角标，不显示成 0）。
+  - 新增「价格设置」页 `/admin/pricing/`：小时陪玩段位价（从「优惠」页移出）和保底护航档位集中在一页，并指向陪玩页的个人价和优惠页的充值赠送；原 `/admin/guarantee-packages/` 页并入。
+  - 看板的今日订单、待充值、待提现、未结投诉卡片可直接点进对应处理页。
+- 陪玩端保底单在接单和服务中显示「先传开局 / 结束仓库截图、净增达标才能完成」的提示。
+
 - 新增三角洲「保底护航」：按仓库净增结果收费，复用冻结 → 待验收 → 结算流程。
   - 迁移 `20261022090000_guarantee_escort`：`orders` 增加 `serviceKind / guaranteePlatform / guaranteeTargetWan`（下单时快照，后续改价不影响）；新表 `guarantee_packages`（端游 400/688/1288W ¥79/128/198，手游 ¥49/88/148，参照 2026-10-22 公开报价，后台可改）和 `order_evidence`。部署前需 `prisma migrate deploy`。
   - 接口：`GET /api/orders/guarantee-packages`、`POST /api/orders/guarantee/preview`、`POST /api/orders/guarantee`（requestId 幂等、`expectedTotalAmount` 防变价）、`GET|POST /api/orders/:id/evidence`（仅本单客户、陪玩或管理员）、`GET|PATCH /api/admin/guarantee-packages`（改价写操作日志）。

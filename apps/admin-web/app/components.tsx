@@ -1,26 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AdminAuthGate } from "./auth-gate";
-
-const navItems = [
-  ["看板", "/dashboard"],
-  ["经营与绩效", "/operations"],
-  ["客户/陪玩数据", "/analytics"],
-  ["用户", "/users"],
-  ["陪玩", "/companions"],
-  ["添加陪玩", "/companions/new"],
-  ["订单", "/orders"],
-  ["草稿台", "/order-drafts"],
-  ["单人派单", "/dispatch"],
-  ["优惠", "/promotions"],
-  ["保底档位", "/guarantee-packages"],
-  ["充值审核", "/recharges"],
-  ["提现审核", "/withdrawals"],
-  ["投诉", "/complaints"],
-  ["评价与验收", "/order-reviews"],
-  ["财务", "/finance"],
-  ["日志", "/logs"]
-] as const;
+import { AdminMobileNav, AdminSidebarNav } from "./admin-nav";
 
 export function AdminShell({ children }: { children: ReactNode }) {
   return (
@@ -32,13 +13,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <div className="mt-2 text-xl font-black text-white">May猫饼后台</div>
             <div className="mt-1 text-xs text-dfc-muted">电竞陪玩运营控制台</div>
           </div>
-          <nav className="space-y-1 p-3" aria-label="后台导航">
-            {navItems.map(([label, href]) => (
-              <Link key={href} href={href} className="admin-nav-item">
-                {label}
-              </Link>
-            ))}
-          </nav>
+          <AdminSidebarNav />
         </aside>
 
         <section className="min-w-0">
@@ -57,13 +32,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </header>
 
           <nav className="border-b border-cyan-300/15 bg-[#0a1020]/88 px-3 py-2 xl:hidden" aria-label="移动端后台导航">
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {navItems.map(([label, href]) => (
-                <Link key={href} href={href} className="shrink-0 rounded-dfc-control border border-cyan-300/20 bg-[#050711]/80 px-3 py-2 text-xs font-semibold text-dfc-subtext">
-                  {label}
-                </Link>
-              ))}
-            </div>
+            <AdminMobileNav />
           </nav>
 
           <div className="px-4 py-6 md:px-6">
@@ -85,14 +54,17 @@ export function SectionHeader({ title, desc, eyebrow }: { title: string; desc?: 
   );
 }
 
-export function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div className="admin-metric-card">
+export function MetricCard({ label, value, hint, href }: { label: string; value: string; hint: string; href?: string }) {
+  const body = (
+    <>
       <div className="text-xs font-semibold text-dfc-muted">{label}</div>
       <div className="mt-3 text-3xl font-black tabular-nums text-white">{value}</div>
-      <div className="mt-2 text-xs leading-5 text-dfc-subtext">{hint}</div>
-    </div>
+      <div className="mt-2 text-xs leading-5 text-dfc-subtext">{hint}{href ? " · 去处理 →" : ""}</div>
+    </>
   );
+  return href
+    ? <Link href={href} className="admin-metric-card block transition hover:border-cyan-300/50">{body}</Link>
+    : <div className="admin-metric-card">{body}</div>;
 }
 
 export function DataTable({
