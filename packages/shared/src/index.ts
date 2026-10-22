@@ -12,32 +12,37 @@ export const SUPPORTED_GAMES = [
 export const SUPPORTED_GAME = "DELTA_FORCE" as const;
 export type GameCode = (typeof SUPPORTED_GAMES)[number]["code"];
 
-export enum UserRole {
-  CUSTOMER = "CUSTOMER",
-  COMPANION = "COMPANION",
-  ADMIN = "ADMIN",
-  SUPER_ADMIN = "SUPER_ADMIN"
-}
+// Const objects instead of `enum`: services load this source file directly at runtime, and Node's
+// built-in type stripping cannot execute enums. Values and type names stay the same for callers.
+export const UserRole = {
+  CUSTOMER: "CUSTOMER",
+  COMPANION: "COMPANION",
+  ADMIN: "ADMIN",
+  SUPER_ADMIN: "SUPER_ADMIN"
+} as const;
+export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
-export enum OrderStatus {
-  PENDING_PAYMENT = "PENDING_PAYMENT",
-  PAID = "PAID",
-  ASSIGNED = "ASSIGNED",
-  ACCEPTED = "ACCEPTED",
-  IN_PROGRESS = "IN_PROGRESS",
-  AWAITING_ACCEPTANCE = "AWAITING_ACCEPTANCE",
-  COMPLETED = "COMPLETED",
-  CANCELLED = "CANCELLED",
-  REFUND_REQUESTED = "REFUND_REQUESTED",
-  REFUNDED = "REFUNDED",
-  DISPUTED = "DISPUTED"
-}
+export const OrderStatus = {
+  PENDING_PAYMENT: "PENDING_PAYMENT",
+  PAID: "PAID",
+  ASSIGNED: "ASSIGNED",
+  ACCEPTED: "ACCEPTED",
+  IN_PROGRESS: "IN_PROGRESS",
+  AWAITING_ACCEPTANCE: "AWAITING_ACCEPTANCE",
+  COMPLETED: "COMPLETED",
+  CANCELLED: "CANCELLED",
+  REFUND_REQUESTED: "REFUND_REQUESTED",
+  REFUNDED: "REFUNDED",
+  DISPUTED: "DISPUTED"
+} as const;
+export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 
-export enum ReviewStatus {
-  PENDING = "PENDING",
-  APPROVED = "APPROVED",
-  REJECTED = "REJECTED"
-}
+export const ReviewStatus = {
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED"
+} as const;
+export type ReviewStatus = (typeof ReviewStatus)[keyof typeof ReviewStatus];
 
 export type Money = string;
 
