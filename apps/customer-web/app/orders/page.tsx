@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createOrderRecordClient, orderRecordView, type OrderRecordState } from "@dfc/ui";
 import { CustomerShell } from "../components";
 import { EscrowProgress, EscrowPromise } from "../escrow";
+import { reorderHref } from "../order/order-entry";
 import { AcceptanceCountdown } from "./acceptance-countdown";
 import { ReviewForm } from "./review-form";
 
@@ -18,6 +19,7 @@ type Order = {
   hours: string;
   totalAmount: string;
   refundAmount?: string;
+  companionId?: string | null;
   companion?: { displayName: string } | null;
 };
 const labels: Record<string, string> = {
@@ -238,6 +240,7 @@ export default function OrdersPage() {
               </div>
             )}
             {order.status === "AWAITING_ACCEPTANCE" && <AcceptanceCountdown dueAt={order.autoAcceptanceDueAt} />}
+            {reorderHref(order) ? <Link href={reorderHref(order)!} className="maycat-button mb-3 inline-block px-4 py-2 text-sm font-black">再来一单（{order.companion?.displayName || "同一陪玩"}）</Link> : null}
             {order.status === "COMPLETED" && (order.hasReview ? <p className="my-3 text-sm">已评价</p> : <ReviewForm orderId={order.id} onSubmitted={load} />)}
             <Link
               href={`/complaints?orderId=${encodeURIComponent(order.id)}`}

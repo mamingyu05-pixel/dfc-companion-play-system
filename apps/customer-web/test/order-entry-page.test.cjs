@@ -41,7 +41,7 @@ function harness(search = '', initial = ready(), config = {}, orders = [], entry
       if (id === 'next/link') return 'a';
       if (id === 'next/navigation') return { useParams: () => ({ id: 'a&b' }) };
       if (id === './order-client') return { createOrderClient: () => client };
-      if (id === './order-entry') return load('../app/order/order-entry.ts');
+      if (id === './order-entry' || id === '../order/order-entry') return load('../app/order/order-entry.ts');
       if (id === './selection-draft') return load('../app/order/selection-draft.ts');
       if (id === '@dfc/ui') return { ...load('../../../packages/ui/src/order-record-client.ts'), ...load('../../../packages/ui/src/order-escrow.ts') };
       if (id.endsWith('/escrow')) return load('../app/escrow.tsx');
@@ -96,6 +96,43 @@ test('invalid entry gives a clear message which clears after manual selection', 
   assert.match(p.htmlText(), /这位陪玩暂时不能下单，请另选/);
   p.select().props.onChange({ target: { value: 'on' } });
   assert.doesNotMatch(p.htmlText(), /这位陪玩暂时不能下单/);
+});
+
+test('reorder entry prefills companion, mode and hours but still waits for explicit preview', async () => {
+  const p = harness(`?companionId=on&mode=${encodeURIComponent('全面战场')}&hours=3`); p.mount(); await tick();
+  const field = label => p.all().find(n => n.type === 'select' && n.props['aria-label'] === label);
+  assert.equal(p.select().props.value, 'on');
+  assert.equal(field('模式').props.value, '全面战场');
+  assert.equal(field('时长').props.value, '3');
+  assert.match(p.htmlText(), /已带入上一单的陪玩、模式和时长，请重新核对状态与金额/);
+  assert.deepEqual(p.calls, ['refresh']);
+  p.button('核对订单金额').props.onClick(); await tick();
+  assert.equal(p.calls.at(-1)[1].mode, '全面战场');
+  assert.equal(p.calls.at(-1)[1].hours, '3');
+  assert.ok(!p.calls.includes('submit'));
+});
+
+test('reorder entry keeps valid mode and hours when the companion is unavailable and ignores invalid options', async () => {
+  const gone = harness(`?companionId=missing&mode=${encodeURIComponent('全面战场')}&hours=2`); gone.mount(); await tick();
+  const field = (p, label) => p.all().find(n => n.type === 'select' && n.props['aria-label'] === label);
+  assert.equal(gone.select().props.value, '');
+  assert.equal(field(gone, '模式').props.value, '全面战场');
+  assert.equal(field(gone, '时长').props.value, '2');
+  assert.match(gone.htmlText(), /这位陪玩暂时不能下单，请另选；模式和时长已带入/);
+  const bad = harness('?companionId=on&mode=hack&hours=9'); bad.mount(); await tick();
+  assert.equal(bad.select().props.value, 'on');
+  assert.equal(field(bad, '模式').props.value, '烽火地带');
+  assert.equal(field(bad, '时长').props.value, '1');
+  assert.match(bad.htmlText(), /已带入当前入口的陪玩，请重新核对状态与金额；链接中的部分选项无效，已忽略。/);
+});
+
+test('my orders shows reorder link only on completed orders', async () => {
+  const orders = ['COMPLETED', 'AWAITING_ACCEPTANCE', 'REFUNDED'].map((status, i) => ({ id: `o${i}`, orderNo: `n${i}`, status, companionId: 'on', companion: { displayName: '小鹿' }, mode: '烽火地带', hours: '2', totalAmount: '60' }));
+  const p = harness('', ready(), {}, orders, '../app/orders/page.tsx'); p.mount(); await tick();
+  const links = p.all().filter(n => n.type === 'a' && p.text(n).startsWith('再来一单'));
+  assert.equal(links.length, 1);
+  assert.equal(p.text(links[0]), '再来一单（小鹿）');
+  assert.equal(links[0].props.href, `/order?companionId=on&mode=${encodeURIComponent('烽火地带')}&hours=2`);
 });
 
 test('no entry preserves placeholder and pending recovery never auto-selects later', async () => {

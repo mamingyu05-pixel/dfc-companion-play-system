@@ -1,4 +1,5 @@
 import type { OrderView, Selection } from "./order-client";
+import { ORDER_HOURS, ORDER_MODES } from "./order-entry";
 
 type DraftStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const defaults = (): Selection => ({ companionId: "", mode: "烽火地带", hours: "1" });
@@ -8,7 +9,7 @@ const validSelection = (value: unknown): value is Selection => {
   const selection = value as Selection;
   return typeof selection.companionId === "string" && selection.companionId.length <= 128 &&
     !/[\u0000-\u001f\u007f]/.test(selection.companionId) &&
-    ["烽火地带", "全面战场"].includes(selection.mode) && ["1", "2", "3", "4"].includes(selection.hours);
+    ORDER_MODES.includes(selection.mode) && ORDER_HOURS.includes(selection.hours);
 };
 const selectionOnly = (selection: Selection): Selection => ({
   companionId: selection.companionId, mode: selection.mode, hours: selection.hours
@@ -57,11 +58,26 @@ export function createSelectionDraft({ storage, scope, now = () => Date.now() }:
           }
         }
       } catch { message = "上次选择暂时无法读取，请重新选择。"; }
-      const requested = new URLSearchParams(search).get("companionId");
+      const params = new URLSearchParams(search);
+      const requested = params.get("companionId"), mode = params.get("mode"), hours = params.get("hours");
+      const prefilled: string[] = [];
+      let ignored = false;
+      if (mode !== null) {
+        if (ORDER_MODES.includes(mode)) { selection.mode = mode; prefilled.push("模式"); } else ignored = true;
+      }
+      if (hours !== null) {
+        if (ORDER_HOURS.includes(hours)) { selection.hours = hours; prefilled.push("时长"); } else ignored = true;
+      }
+      const carried = prefilled.join("和");
       if (requested) {
         selection.companionId = view.companions.some(companion => companion.id === requested) ? requested : "";
-        message = selection.companionId ? "已带入当前入口的陪玩，请重新核对状态与金额。" : "这位陪玩暂时不能下单，请另选";
+        message = selection.companionId
+          ? carried ? `已带入上一单的陪玩、${carried}，请重新核对状态与金额。` : "已带入当前入口的陪玩，请重新核对状态与金额。"
+          : carried ? `这位陪玩暂时不能下单，请另选；${carried}已带入。` : "这位陪玩暂时不能下单，请另选";
+      } else if (carried) {
+        message = `已带入${carried}，请选择陪玩并核对金额。`;
       }
+      if (ignored) message = `${message.replace(/。$/, "")}${message ? "；" : ""}链接中的部分选项无效，已忽略。`;
       return { selection, message };
     }
   };

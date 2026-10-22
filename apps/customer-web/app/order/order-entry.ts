@@ -1,5 +1,18 @@
 import type { Companion, OrderView } from "./order-client";
 
+export const ORDER_MODES = ["烽火地带", "全面战场"];
+export const ORDER_HOURS = ["1", "2", "3", "4"];
+
+/** Prefill link only: the customer still previews the server quote and confirms the freeze. */
+export function reorderHref(order: { status: string; companionId?: string | null; mode: string; hours: string }) {
+  if (order.status !== "COMPLETED" || !order.companionId) return null;
+  const query = new URLSearchParams({ companionId: order.companionId });
+  if (ORDER_MODES.includes(order.mode)) query.set("mode", order.mode);
+  const hours = String(Number(order.hours));
+  if (ORDER_HOURS.includes(hours)) query.set("hours", hours);
+  return `/order?${query}`;
+}
+
 export function entrySelection(search: string, view: OrderView) {
   if (!view.connected || view.busy || view.error || view.pending || view.receipt) return null;
   const id = new URLSearchParams(search).get("companionId");

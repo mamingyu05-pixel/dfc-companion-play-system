@@ -53,3 +53,16 @@ test('unavailable or malformed balance does not invent a shortfall', async () =>
   }
   assert.equal(balanceShortfall('0', ''), null);
 });
+test('reorder link only for completed orders with a companion, carrying only valid mode and hours', async () => {
+  const { reorderHref } = await helpers;
+  const done = { status: 'COMPLETED', companionId: 'a&b', mode: '全面战场', hours: '2' };
+  const parse = href => Object.fromEntries(new URL(href, 'http://x').searchParams);
+  assert.ok(reorderHref(done).startsWith('/order?'));
+  assert.deepEqual(parse(reorderHref(done)), { companionId: 'a&b', mode: '全面战场', hours: '2' });
+  assert.deepEqual(parse(reorderHref({ ...done, hours: '3.00' })), { companionId: 'a&b', mode: '全面战场', hours: '3' });
+  for (const hours of ['1.5', '5', '0', 'abc']) assert.deepEqual(parse(reorderHref({ ...done, hours })), { companionId: 'a&b', mode: '全面战场' });
+  assert.deepEqual(parse(reorderHref({ ...done, mode: '护航单' })), { companionId: 'a&b', hours: '2' });
+  for (const patch of [{ status: 'AWAITING_ACCEPTANCE' }, { status: 'REFUNDED' }, { companionId: null }, { companionId: '' }]) {
+    assert.equal(reorderHref({ ...done, ...patch }), null);
+  }
+});
