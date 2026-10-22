@@ -148,9 +148,11 @@ export class OrdersService {
 
   async listCustomerOrders(customerId: string) {
     const hours = await this.autoAcceptanceHours();
+    // Latest 200 keeps long-time customers' pages fast; open orders are always recent in practice.
     const orders = await this.prisma.order.findMany({
       where: { customerId },
       orderBy: { createdAt: "desc" },
+      take: 200,
       include: {
         review: { select: { id: true } },
         complaints: { where: { status: { notIn: ["RESOLVED", "REJECTED"] } }, select: { id: true } },
@@ -267,6 +269,7 @@ export class OrdersService {
     const orders = await this.prisma.order.findMany({
       where: { companionId },
       orderBy: { createdAt: "desc" },
+      take: 200,
       include: {
         customer: { select: { id: true, email: true, displayName: true } },
         companion: { select: { id: true, email: true, displayName: true } },
@@ -421,15 +424,25 @@ export class OrdersService {
 
   async listOrderEvidence(orderId: string, viewer: { id: string; role: UserRole }) {
     const order = await this.participantOrder(this.prisma, orderId, viewer);
+    // Images (up to ~2.7MB each as data URLs) are fetched one at a time via orderEvidenceImage, never in the list.
     const evidence = await this.prisma.orderEvidence.findMany({ where: { orderId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      include: { uploader: { select: { id: true, role: true, displayName: true } } } });
+      select: { id: true, kind: true, linkUrl: true, vaultValueWan: true, note: true, createdAt: true, uploaderId: true,
+        uploader: { select: { role: true } } } });
+    const withImage = new Set((await this.prisma.orderEvidence.findMany({ where: { orderId, imageUrl: { not: null } }, select: { id: true } })).map(e => e.id));
     const progress = order.serviceKind === OrderServiceKind.GUARANTEE ? guaranteeProgress(order.guaranteeTargetWan!, evidence) : null;
     return {
       orderId, serviceKind: order.serviceKind, targetWan: order.guaranteeTargetWan, progress,
-      evidence: evidence.map(e => ({ id: e.id, kind: e.kind, imageUrl: e.imageUrl, linkUrl: e.linkUrl, vaultValueWan: e.vaultValueWan, note: e.note, createdAt: e.createdAt,
+      evidence: evidence.map(e => ({ id: e.id, kind: e.kind, hasImage: withImage.has(e.id), linkUrl: e.linkUrl, vaultValueWan: e.vaultValueWan, note: e.note, createdAt: e.createdAt,
         uploader: e.uploaderId === order.customerId ? "客户" : e.uploaderId === order.companionId ? "陪玩"
           : e.uploader.role === UserRole.ADMIN || e.uploader.role === UserRole.SUPER_ADMIN ? "客服" : "参与者" }))
     };
+  }
+
+  async orderEvidenceImage(orderId: string, evidenceId: string, viewer: { id: string; role: UserRole }) {
+    await this.participantOrder(this.prisma, orderId, viewer);
+    const item = await this.prisma.orderEvidence.findFirst({ where: { id: evidenceId, orderId }, select: { id: true, imageUrl: true } });
+    if (!item?.imageUrl) throw new NotFoundException("凭证截图不存在");
+    return { id: item.id, imageUrl: item.imageUrl };
   }
 
   async updateGuaranteePackage(adminId: string, id: string, body: { price?: string; isActive?: boolean; sortOrder?: number }) {

@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
+import { LazyImage } from "../lazy-image";
 
 type RechargeRequest = {
   id: string;
   amount: string;
   screenshotUrl: string;
+  screenshotInline?: boolean;
   note?: string | null;
   status: string;
   reviewNote?: string | null;
@@ -107,7 +109,9 @@ export default function RechargesPage() {
       <div className="mt-1 text-xs text-dfc-muted">当前余额 ¥{formatMoney(item.customer.availableBalance)}</div>
     </div>,
     <span key={`${item.id}-amount`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(item.amount)}</span>,
-    hasRechargeScreenshot(item.screenshotUrl) ? (
+    item.screenshotInline ? (
+      <LazyImage key={`${item.id}-shot`} path={`/api/admin/recharges/${encodeURIComponent(item.id)}/screenshot`} field="screenshotUrl" label="查看截图" />
+    ) : hasRechargeScreenshot(item.screenshotUrl) ? (
       <a key={`${item.id}-shot`} href={item.screenshotUrl} target="_blank" rel="noreferrer" className="font-bold text-cyan-200 hover:text-white">
         查看截图
       </a>

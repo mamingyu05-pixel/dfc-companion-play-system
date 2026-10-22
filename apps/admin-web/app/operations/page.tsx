@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { evidenceKindLabel, guaranteeProgressText, type OrderEvidenceView } from "@dfc/ui";
 import { NotificationReconciliation } from "./notification-reconciliation";
+import { LazyImage } from "../lazy-image";
 import {
   AdminShell,
   DataTable,
@@ -612,7 +613,7 @@ export default function OperationsPage() {
                   e.vaultValueWan ?? "—",
                   e.uploader,
                   <span key={e.id} className="flex gap-2">
-                    {e.imageUrl && <a className="text-cyan-200 underline" href={e.imageUrl} target="_blank" rel="noreferrer">截图</a>}
+                    {e.hasImage && <LazyImage path={`/api/orders/${encodeURIComponent(evidence.orderId)}/evidence/${encodeURIComponent(e.id)}/image`} field="imageUrl" label="查看截图" />}
                     {e.linkUrl && <a className="text-cyan-200 underline" href={e.linkUrl} target="_blank" rel="noopener noreferrer">录屏</a>}
                   </span>,
                   e.note || "—",

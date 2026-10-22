@@ -513,7 +513,6 @@ model Order {
   @@index([orderGroupId])
   @@index([customerId])
   @@index([companionId])
-  @@index([sourceDraftId])
   @@map("orders")
 }
 

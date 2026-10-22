@@ -181,6 +181,13 @@ export class OrdersController {
     return this.orders.listOrderEvidence(id, user);
   }
 
+  @Get(":id/evidence/:evidenceId/image")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  evidenceImage(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Param("evidenceId") evidenceId: string) {
+    return this.orders.orderEvidenceImage(id, evidenceId, user);
+  }
+
   @Post(":id/evidence")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)

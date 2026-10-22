@@ -12,6 +12,7 @@ type Props = { orderId: string; status: string; tokenKey: string; defaultKind: E
 export function GuaranteeEvidencePanel({ orderId, status, tokenKey, defaultKind, guarantee }: Props) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<OrderEvidenceView | null>(null);
+  const [images, setImages] = useState<Record<string, string>>({});
   const [kind, setKind] = useState<EvidenceKind>(guarantee && canUploadVault(status) ? defaultKind : "RECORDING");
   const [value, setValue] = useState("");
   const [image, setImage] = useState("");
@@ -22,11 +23,11 @@ export function GuaranteeEvidencePanel({ orderId, status, tokenKey, defaultKind,
   const [notice, setNotice] = useState("");
   const vault = kind === "VAULT_START" || kind === "VAULT_END";
 
-  async function call(method: "GET" | "POST", body?: unknown) {
+  async function call(method: "GET" | "POST", body?: unknown, suffix = "") {
     let token: string | null = null;
     try { token = localStorage.getItem(tokenKey); } catch { /* handled below */ }
     if (!token) throw new Error("请先登录");
-    const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/evidence`, {
+    const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/evidence${suffix}`, {
       method, cache: "no-store",
       headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined
@@ -34,6 +35,14 @@ export function GuaranteeEvidencePanel({ orderId, status, tokenKey, defaultKind,
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join("；") : data.message || "操作未完成，请重试");
     return data;
+  }
+  // The list only flags images; each screenshot is fetched when someone asks to see it.
+  async function showImage(id: string) {
+    setError("");
+    try {
+      const data = await call("GET", undefined, `/${encodeURIComponent(id)}/image`);
+      if (typeof data.imageUrl === "string") setImages(current => ({ ...current, [id]: data.imageUrl }));
+    } catch (e) { setError(e instanceof Error ? e.message : "截图读取失败"); }
   }
   async function load() {
     setBusy(true); setError("");
@@ -89,7 +98,9 @@ export function GuaranteeEvidencePanel({ orderId, status, tokenKey, defaultKind,
                   <li key={item.id} className="min-w-0 break-words rounded-dfc-control border border-cyan-300/15 p-2">
                     <p className="font-bold">{evidenceKindLabel[item.kind]}{item.vaultValueWan !== null ? ` · ${item.vaultValueWan} 万` : ""}</p>
                     <p className="text-xs text-dfc-muted">{item.uploader} · {new Date(item.createdAt).toLocaleString("zh-CN")}</p>
-                    {item.imageUrl ? <a href={item.imageUrl} target="_blank" rel="noreferrer"><img src={item.imageUrl} alt={evidenceKindLabel[item.kind]} className="mt-2 max-h-40 rounded" /></a> : null}
+                    {item.hasImage ? (images[item.id]
+                      ? <img src={images[item.id]} alt={evidenceKindLabel[item.kind]} className="mt-2 max-h-60 rounded" />
+                      : <button type="button" className="mt-1 text-cyan-200 underline" onClick={() => void showImage(item.id)}>查看截图</button>) : null}
                     {item.linkUrl ? <a href={item.linkUrl} target="_blank" rel="noopener noreferrer" className="mt-1 block text-cyan-200 underline">打开录屏链接</a> : null}
                     {item.note ? <p className="mt-1 whitespace-pre-wrap">{item.note}</p> : null}
                   </li>

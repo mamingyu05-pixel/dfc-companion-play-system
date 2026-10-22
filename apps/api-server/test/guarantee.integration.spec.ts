@@ -86,6 +86,11 @@ test("guarantee: completion requires evidenced net gain, then settles through no
   const view = await orders.listOrderEvidence(order.id, actor(customer));
   expect(view.progress).toEqual({ startWan: 1000, endWan: 1000 + p.targetWan, gainWan: p.targetWan, reached: true });
   expect(view.evidence.map(e => e.uploader)).toEqual(["客户", "陪玩", "陪玩", "陪玩"]);
+  // The list carries flags only; each image is fetched on demand by a participant.
+  expect(view.evidence.every(e => e.hasImage && !("imageUrl" in e))).toBe(true);
+  expect(await orders.orderEvidenceImage(order.id, view.evidence[0].id, actor(companion))).toEqual({ id: view.evidence[0].id, imageUrl: PNG });
+  await expect(orders.orderEvidenceImage(order.id, view.evidence[0].id, actor(outsider))).rejects.toBeInstanceOf(NotFoundException);
+  await expect(orders.orderEvidenceImage(order.id, "missing", actor(customer))).rejects.toBeInstanceOf(NotFoundException);
 
   const reported = await orders.completeOrder(order.id, companion.id);
   expect(reported.status).toBe("AWAITING_ACCEPTANCE");

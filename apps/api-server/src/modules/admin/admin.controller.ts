@@ -1,5 +1,5 @@
 import { requireOrderRequestId } from "../orders/order-request";
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import {
   BotPlatform,
   ComplaintStatus,
@@ -510,26 +510,31 @@ export class AdminController {
   }
 
   @Get("recharges")
-  listRechargeRequests() {
-    return this.prisma.rechargeRequest.findMany({
-      where: { NOT: { screenshotUrl: { startsWith: PROVIDER_RECHARGE_EVIDENCE_PREFIX } } },
-      orderBy: { createdAt: "desc" },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            email: true,
-            displayName: true,
-            wallet: { select: { availableBalance: true } }
-          }
-        },
-        reviewedBy: { select: { id: true, email: true, displayName: true } }
-      }
-    }).then((requests) =>
-      requests.map((request) => ({
+  async listRechargeRequests() {
+    const manual = { NOT: { screenshotUrl: { startsWith: PROVIDER_RECHARGE_EVIDENCE_PREFIX } } };
+    const select = {
+      id: true, amount: true, note: true, status: true, reviewNote: true, reviewedAt: true, createdAt: true,
+      customer: { select: { id: true, email: true, displayName: true, wallet: { select: { availableBalance: true } } } },
+      reviewedBy: { select: { id: true, email: true, displayName: true } }
+    } as const;
+    // Every pending request stays visible; processed history is capped. Inline images are loaded one at a time.
+    const [pending, processed] = await Promise.all([
+      this.prisma.rechargeRequest.findMany({ where: { ...manual, status: ReviewStatus.PENDING }, orderBy: { createdAt: "desc" }, take: 500, select }),
+      this.prisma.rechargeRequest.findMany({ where: { ...manual, status: { not: ReviewStatus.PENDING } }, orderBy: { createdAt: "desc" }, take: 200, select })
+    ]);
+    const requests = [...pending, ...processed];
+    const ids = requests.map(request => request.id);
+    const [inline, linked] = await Promise.all([
+      this.prisma.rechargeRequest.findMany({ where: { id: { in: ids }, screenshotUrl: { startsWith: "data:" } }, select: { id: true } }),
+      this.prisma.rechargeRequest.findMany({ where: { id: { in: ids }, NOT: { screenshotUrl: { startsWith: "data:" } } }, select: { id: true, screenshotUrl: true } })
+    ]);
+    const inlineIds = new Set(inline.map(row => row.id));
+    const links = new Map(linked.map(row => [row.id, row.screenshotUrl]));
+    return requests.map((request) => ({
         id: request.id,
         amount: request.amount.toString(),
-        screenshotUrl: request.screenshotUrl,
+        screenshotUrl: links.get(request.id) ?? "",
+        screenshotInline: inlineIds.has(request.id),
         note: request.note,
         status: request.status,
         reviewNote: request.reviewNote,
@@ -548,8 +553,17 @@ export class AdminController {
               displayName: request.reviewedBy.displayName
             }
           : null
-      }))
-    );
+      }));
+  }
+
+  @Get("recharges/:id/screenshot")
+  async rechargeScreenshot(@Param("id") id: string) {
+    const request = await this.prisma.rechargeRequest.findFirst({
+      where: { id, NOT: { screenshotUrl: { startsWith: PROVIDER_RECHARGE_EVIDENCE_PREFIX } } },
+      select: { id: true, screenshotUrl: true }
+    });
+    if (!request?.screenshotUrl) throw new NotFoundException("充值凭证不存在");
+    return request;
   }
 
   @Get("wallet-transactions")

@@ -73,5 +73,19 @@ test("supported body still requires customer authentication", async () => {
 test("manual verification without an image stays supported", async () => { await check({ amount: "100" }, 201); });
 test("small valid image works after rejected requests", async () => { await check({ amount: "100", screenshotUrl: image(png.length) }, 201); });
 
+test("order evidence accepts a full 2MiB screenshot over real HTTP and keeps the bounded envelope", async () => {
+  const pkg = await prisma.guaranteePackage.create({ data: { platform: "PC", targetWan: 900_000 + Math.floor(Math.random() * 99_999), price: "1" } });
+  const order = await prisma.order.create({ data: { customerId, orderNo: randomUUID(), mode: "synthetic", hours: "1", unitPrice: "1", totalAmount: "1",
+    status: "ACCEPTED", serviceKind: "GUARANTEE", guaranteePlatform: pkg.platform, guaranteeTargetWan: pkg.targetWan } });
+  const route = `/api/orders/${order.id}/evidence`;
+  const count = () => prisma.orderEvidence.count({ where: { orderId: order.id } });
+  expect((await post({ kind: "VAULT_START", vaultValueWan: 1000, image: image(2097152) }, route)).status).toBe(201);
+  const tooLarge = await post({ kind: "VAULT_START", vaultValueWan: 1000, image: image(2097152), note: "x".repeat(32768) }, route);
+  expect(tooLarge.status).toBe(413);
+  expect(tooLarge.body.message).toContain("2MiB");
+  expect((await post({ kind: "VAULT_START", vaultValueWan: 1000, image: image(262144) }, route, false)).status).toBe(401);
+  expect(await count()).toBe(1);
+});
+
 test("text disguised as PNG is rejected before persistence", async () => { await check({ amount: "100", screenshotUrl: "data:image/png;base64," + Buffer.from("not an image").toString("base64") }, 400); });
 test("declared JPEG with a PNG signature is rejected before persistence", async () => { await check({ amount: "100", screenshotUrl: image(png.length).replace("image/png", "image/jpeg") }, 400); });

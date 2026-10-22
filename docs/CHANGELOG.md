@@ -2,6 +2,13 @@
 
 ## 2026-10-22
 
+- 深度检查修复：
+  - 修复订单凭证上传在生产会被 100KB 默认请求体限制拒绝（413）的问题：`POST /api/orders/:id/evidence` 与充值申请共用 2MiB 图片的有界解析器，超限返回中文 413；补真实 HTTP 测试。
+  - 充值审核列表和订单凭证列表不再返回整张 data URL 图片，改为标记「有图」，图片按需单独读取（`GET /api/admin/recharges/:id/screenshot`、`GET /api/orders/:id/evidence/:evidenceId/image`）并在页面内直接显示（浏览器会拦截新标签打开 data URL）。
+  - 充值审核列表改为全部待审核（最多 500）+ 最近 200 条已处理；客户、陪玩「我的订单」返回最近 200 单。
+  - 去掉 `orders.sourceDraftId` 重复的普通索引声明（已有唯一索引），迁移与 schema 比对归零。
+  - `docs/KNOWN_ISSUES.md` 按当前实际状态重写。
+
 - 后台操作简化：
   - 导航从 17 个平铺入口改为 5 组（今日处理 / 订单 / 人员 / 价格与优惠 / 数据与记录），当前页高亮；草稿台、派单、充值审核、提现审核、投诉与争议显示待办数量角标（新接口 `GET /api/admin/pending-counts`，只做计数；读取失败时不显示角标，不显示成 0）。
   - 新增「价格设置」页 `/admin/pricing/`：小时陪玩段位价（从「优惠」页移出）和保底护航档位集中在一页，并指向陪玩页的个人价和优惠页的充值赠送；原 `/admin/guarantee-packages/` 页并入。

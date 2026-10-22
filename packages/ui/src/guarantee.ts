@@ -3,7 +3,7 @@ export type EvidenceKind = "VAULT_START" | "VAULT_END" | "RECORDING" | "OTHER";
 export type GuaranteeProgress = { startWan: number | null; endWan: number | null; gainWan: number | null; reached: boolean };
 export type OrderEvidenceView = {
   orderId: string; serviceKind: string; targetWan: number | null; progress: GuaranteeProgress | null;
-  evidence: Array<{ id: string; kind: EvidenceKind; imageUrl: string | null; linkUrl: string | null; vaultValueWan: number | null; note: string | null; createdAt: string; uploader: string }>;
+  evidence: Array<{ id: string; kind: EvidenceKind; hasImage: boolean; linkUrl: string | null; vaultValueWan: number | null; note: string | null; createdAt: string; uploader: string }>;
 };
 
 export const EVIDENCE_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
