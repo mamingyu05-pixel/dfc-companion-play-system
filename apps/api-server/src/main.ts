@@ -8,6 +8,7 @@ import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./modules/app.module";
 
 import { configureRechargeBodyParser } from "./recharge-body-parser";
+import { ChineseErrorFilter } from "./modules/chinese-error.filter";
 
 async function bootstrap() {
   const isolated = isolatedTestConfig();
@@ -20,6 +21,7 @@ async function bootstrap() {
     const trustedProxies = process.env.TRUSTED_PROXY_CIDRS?.split(",").map((entry) => entry.trim()).filter(Boolean);
     if (trustedProxies?.length) app.getHttpAdapter().getInstance().set("trust proxy", trustedProxies);
     app.setGlobalPrefix("api");
+    app.useGlobalFilters(new ChineseErrorFilter(app.getHttpAdapter()));
     app.enableCors({
       origin: [process.env.CUSTOMER_WEB_URL, process.env.ADMIN_WEB_URL, process.env.COMPANION_WEB_URL].filter((origin): origin is string => Boolean(origin)),
       credentials: true,

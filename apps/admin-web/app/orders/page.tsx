@@ -72,6 +72,24 @@ export default function OrdersPage() {
     void loadOrders().catch(() => setError("无法加载订单数据，请确认已登录"));
   }, []);
 
+  // The list holds the latest 200 orders; a search also asks the server, so older orders can be found.
+  const [serverMatches, setServerMatches] = useState<AdminOrder[] | null>(null);
+  useEffect(() => {
+    const q = search.trim();
+    setServerMatches(null);
+    if (q.length < 2) return;
+    let live = true;
+    const timer = setTimeout(() => {
+      const token = localStorage.getItem("dfc_admin_token");
+      if (!token) return;
+      void fetch(`/api/admin/orders?q=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => (r.ok ? r.json() : null))
+        .then(data => { if (live && Array.isArray(data)) setServerMatches(data as AdminOrder[]); })
+        .catch(() => undefined);
+    }, 350);
+    return () => { live = false; clearTimeout(timer); };
+  }, [search]);
+
   async function cancelOrder(order: AdminOrder) {
     if (!canCancelOrder(order)) return;
     const message = order.orderGroup
@@ -108,8 +126,9 @@ export default function OrdersPage() {
   const counts = useMemo(() => Object.fromEntries(TABS.map(t => [t.key, t.statuses ? orders.filter(o => t.statuses!.includes(o.status)).length : orders.length])), [orders]);
   const term = search.trim().toLowerCase();
   const statuses = TABS.find(t => t.key === tab)?.statuses ?? null;
-  const visible = orders.filter(order => (!statuses || statuses.includes(order.status)) &&
-    (!term || [order.orderNo, order.customer?.displayName, order.companion?.displayName, order.notes, order.mode].some(v => v?.toLowerCase().includes(term))));
+  const searchable = term && serverMatches ? serverMatches : orders;
+  const visible = searchable.filter(order => (!statuses || statuses.includes(order.status)) &&
+    (!term || [order.orderNo, order.customer?.displayName, order.companion?.displayName, order.customer?.email, order.notes, order.mode].some(v => v?.toLowerCase().includes(term))));
   const todayAmount = useMemo(() => {
     const today = new Date().toDateString();
     return orders.filter(o => new Date(o.createdAt).toDateString() === today && !["CANCELLED", "REFUNDED"].includes(o.status))

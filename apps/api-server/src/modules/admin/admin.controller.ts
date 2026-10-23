@@ -1,5 +1,5 @@
 import { requireOrderRequestId } from "../orders/order-request";
-import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import {
   BotPlatform,
   ComplaintStatus,
@@ -719,8 +719,8 @@ export class AdminController {
   }
 
   @Get("orders")
-  listOrders() {
-    return this.orders.listAdminOrders();
+  listOrders(@Query("q") q?: string) {
+    return this.orders.listAdminOrders(q);
   }
 
   @Post("orders/direct")

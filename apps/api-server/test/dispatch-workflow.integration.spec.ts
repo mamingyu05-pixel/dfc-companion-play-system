@@ -27,7 +27,7 @@ test.each(["customer", "service-desk"])("local closed loop: %s entry, immediate 
   const order = entry === "customer" ? created.body : created.body.orders[0];
   expect(order.status).toBe("PAID");
   expect(outbound).toHaveLength(0);
-  expect((await call("GET", "/admin/orders", admin)).body.some((row: any) => row.id === order.id && row.status === "PAID")).toBe(true);
+  expect((await call("GET", `/admin/orders?q=${encodeURIComponent(order.orderNo)}`, admin)).body.some((row: any) => row.id === order.id && row.status === "PAID")).toBe(true);
   expect((await call("POST", path, actor, requestBody)).status).toBe(201);
   expect(await prisma.order.count({ where: { customerId: customer.id } })).toBe(1);
   const assign = (companionId: string, version: number) => call("PATCH", `/admin/orders/${order.id}/dispatch`, admin,

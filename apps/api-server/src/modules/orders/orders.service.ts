@@ -345,10 +345,18 @@ export class OrdersService {
     return customers;
   }
 
-  async listAdminOrders() {
+  /** Latest 200 orders, or with a search term up to 200 matches across all orders (order no., people, notes). */
+  async listAdminOrders(search?: string) {
+    const term = typeof search === "string" ? search.trim().slice(0, 64) : "";
+    const contains = { contains: term, mode: Prisma.QueryMode.insensitive };
     const orders = await this.prisma.order.findMany({
+      where: term ? { OR: [
+        { orderNo: contains }, { notes: contains }, { mode: contains },
+        { customer: { displayName: contains } }, { companion: { displayName: contains } },
+        { customer: { email: term.toLowerCase() } }
+      ] } : undefined,
       orderBy: { createdAt: "desc" },
-      take: 100,
+      take: 200,
       include: {
         customer: { select: { id: true, email: true, displayName: true } },
         companion: { select: { id: true, email: true, displayName: true } },

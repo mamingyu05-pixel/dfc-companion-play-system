@@ -9,6 +9,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AuthService } from "../auth/auth.service";
 import { getCustomerMembershipLevel } from "../customer-membership";
 import { requireKookActor } from "./kook-flow-identity";
+import { toChineseError } from "../error-messages";
 import { kookOnboardingCard, parseKookOnboardingAction, createConfirmedKookCustomer, fetchKookNickname } from "./kook-customer-onboarding";
 import { entryButton, flowCard, FlowCard, FlowButton, orderFlowCard, parseEntryAction, parseFlowAction, parseOrderFlowAction, webButton } from "./kook-flow-card";
 import { KOOK_FLOW_PORT, KookFlowPort } from "./kook-flow-port";
@@ -360,7 +361,8 @@ export class KookOrderFlowService {
       "An unresolved complaint blocks completion": "本单有待处理投诉，暂不能提交完成，请联系管理员。"
     };
     const known = error instanceof BadRequestException;
-    const message = translated[raw] ?? (known && /[\u4e00-\u9fff]/.test(raw) ? raw : "操作结果需要核对。请先发送“我的订单”、“我的需求”或“下单”刷新原记录，不要重复付款；仍无法确认请联系管理员。");
+    const plain = toChineseError(raw);
+    const message = translated[raw] ?? (known && /[\u4e00-\u9fff]/.test(plain) ? plain : "操作结果需要核对。请先发送“我的订单”、“我的需求”或“下单”刷新原记录，不要重复付款；仍无法确认请联系管理员。");
     // Binding help only when the binding is the problem, not e.g. a service-time rule.
     const bindingProblem = !known || /绑定|档案|权限/.test(message);
     return flowCard("本次操作回执", bindingProblem ? [message, "回执仅发送到当前 KOOK 私聊。未完成绑定请在已登录网页的账号绑定入口生成绑定码，再私聊发送“绑定 绑定码”；没有网页账号可发送“首次使用”，由本人明确确认建立客户档案。"] : [message]);
