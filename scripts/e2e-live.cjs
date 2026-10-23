@@ -196,6 +196,8 @@ main()
   .finally(async () => {
     // Keep e2e orders out of business dashboards.
     if (createdOrders.length) await prisma.order.updateMany({ where: { id: { in: createdOrders } }, data: { isTest: true } }).catch(() => undefined);
+    // The synthetic companion must not stay on the public list real customers pick from.
+    await prisma.companionProfile.updateMany({ where: { user: { email: `e2e-companion-${run}@synthetic.invalid` } }, data: { status: "UNLISTED", onlineStatus: "OFFLINE" } }).catch(() => undefined);
     await prisma.$disconnect();
     const failed = results.filter(r => !r.ok);
     for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}${r.detail ? `  —  ${r.detail}` : ""}`);
