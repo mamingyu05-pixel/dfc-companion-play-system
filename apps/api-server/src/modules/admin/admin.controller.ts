@@ -957,6 +957,8 @@ export class AdminController {
         games: profile.games.length ? profile.games : [profile.game],
         status: profile.status,
         onlineStatus: profile.onlineStatus,
+        verified: profile.verified,
+        badges: profile.badges,
         activeServiceCount: profile.user._count.companionOrders,
         deltaForceRank: profile.deltaForceRank,
         skillModes: profile.skillModes,

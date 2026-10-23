@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AdminShell, DataTable, StatusBadge } from "../components";
-import { ExportButton } from "../batch-tools";
+import { adminApi, ExportButton } from "../batch-tools";
 
 type AdminOrder = {
   id: string;
@@ -17,6 +17,8 @@ type AdminOrder = {
   originalAmount?: string | null;
   totalAmount: string;
   status: string;
+  dispatchVersion?: number;
+  companionId?: string | null;
   notes?: string | null;
   sourcePlatform?: string | null;
   serviceKind?: string | null;
@@ -54,6 +56,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [actioningOrderId, setActioningOrderId] = useState("");
+  const [swapping, setSwapping] = useState<AdminOrder | null>(null);
 
   async function loadOrders() {
     const token = localStorage.getItem("dfc_admin_token");
@@ -150,6 +153,8 @@ export default function OrdersPage() {
 
       {error ? <div className="mb-4 rounded-[12px] border border-[#f6c3c4] bg-[#fff1f1] px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
 
+      {swapping ? <SwapCompanionPanel order={swapping} onClose={() => setSwapping(null)} onDone={() => { setSwapping(null); void loadOrders().catch(() => undefined); }} /> : null}
+
       {openDrafts ? (
         <Link href="/order-drafts" className="mb-4 flex items-center justify-between rounded-[12px] border border-[#ffd8b5] bg-[#fff7ef] px-4 py-3 text-sm">
           <span className="text-dfc-text"><b>{openDrafts} 条 KOOK / Discord 需求</b> 还没转成订单（AI 客服整理的派单草稿）</span>
@@ -181,7 +186,7 @@ export default function OrdersPage() {
           order.customer?.displayName ?? "-",
           order.companion ? order.companion.displayName : <span key={`${order.id}-none`} className="text-dfc-muted">未指定</span>,
           <div key={`${order.id}-content`} className="max-w-[260px] whitespace-normal">
-            <div>{gameName(order.game)} · {order.mode}{order.serviceKind === "GUARANTEE" ? "" : ` · ${Number(order.hours)} 小时`}</div>
+            <div>{gameName(order.game)} · {order.mode}{order.serviceKind === "GUARANTEE" || order.serviceKind === "PACKAGE" ? " · 一口价" : ` · ${Number(order.hours)} 小时`}</div>
             {order.notes ? <div className="mt-0.5 line-clamp-1 text-xs text-dfc-muted">{order.notes}</div> : null}
             {order.orderGroup ? <div className="mt-0.5 text-xs text-dfc-muted">多人单 {order.orderGroup.groupNo} · {order.orderGroup.companionCount} 人</div> : null}
             {order.voiceTrialRequested ? <div className="mt-0.5 text-xs text-dfc-warning">需要试音</div> : null}
@@ -190,6 +195,10 @@ export default function OrdersPage() {
           <StatusBadge key={`${order.id}-status`} tone={statusTone(order.status)}>{toOrderStatus(order.status)}</StatusBadge>,
           <div key={`${order.id}-actions`} className="flex flex-wrap gap-2">
             {["PAID", "ASSIGNED"].includes(order.status) ? <Link href={`/dispatch?orderId=${encodeURIComponent(order.id)}`} className="rounded-[9px] bg-brand px-3 py-1.5 text-xs font-black text-white hover:bg-brand-ink">{order.status === "PAID" ? "派单" : "换人"}</Link> : null}
+            {canSwapCompanion(order) ? (
+              <button type="button" onClick={() => setSwapping(order)}
+                className="rounded-[9px] border border-[#e6e8ef] bg-white px-3 py-1.5 text-xs font-bold text-dfc-text hover:border-brand">中途换人</button>
+            ) : null}
             {canCancelOrder(order) ? (
               <button type="button" disabled={actioningOrderId === order.id} onClick={() => void cancelOrder(order)}
                 className="rounded-[9px] border border-[#f6c3c4] bg-white px-3 py-1.5 text-xs font-bold text-dfc-danger hover:bg-[#fdecec] disabled:cursor-not-allowed disabled:opacity-45">
@@ -201,6 +210,80 @@ export default function OrdersPage() {
       />
     </AdminShell>
   );
+}
+
+type SwapCandidate = { userId: string; nickname: string; status: string; onlineStatus: string; game: string; games?: string[] };
+
+// Settles the hours already played to the first companion, then hands the rest to the new one as a follow-on order.
+function SwapCompanionPanel({ order, onClose, onDone }: { order: AdminOrder; onClose: () => void; onDone: () => void }) {
+  const [candidates, setCandidates] = useState<SwapCandidate[]>([]);
+  const [newCompanionId, setNewCompanionId] = useState("");
+  const [servedHours, setServedHours] = useState("0");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const hourly = order.serviceKind !== "GUARANTEE" && order.serviceKind !== "PACKAGE";
+  const started = order.status === "IN_PROGRESS";
+
+  useEffect(() => {
+    adminApi<SwapCandidate[]>("/api/admin/companions")
+      .then(list => setCandidates(list.filter(c => c.status === "LISTED" && c.userId !== order.companionId)))
+      .catch(e => setError(e instanceof Error ? e.message : "无法加载陪玩"));
+  }, [order.companionId]);
+
+  const served = Number(servedHours || 0);
+  const remaining = Math.max(0, Number(order.hours) - served);
+  const chosen = candidates.find(c => c.userId === newCompanionId);
+
+  async function submit() {
+    if (!chosen) { setError("请选择新的陪玩"); return; }
+    if (!reason.trim()) { setError("请填写换人原因"); return; }
+    const settle = served > 0 ? `已服务 ${served} 小时按 ¥${formatMoney(String(served * Number(order.unitPrice)))} 结给原陪玩，剩余 ${remaining} 小时转给「${chosen.nickname}」` : `整单转给「${chosen.nickname}」`;
+    if (!window.confirm(`${order.orderNo}：${settle}？`)) return;
+    setBusy(true); setError("");
+    try {
+      await adminApi(`/api/admin/orders/${encodeURIComponent(order.id)}/swap-companion`, { method: "POST", body: JSON.stringify({
+        newCompanionId, servedHours: served > 0 ? servedHours.trim() : "0", reason: reason.trim(), dispatchVersion: order.dispatchVersion ?? 0
+      }) });
+      onDone();
+    } catch (e) { setError(e instanceof Error ? e.message : "换人失败"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section className="admin-panel mb-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-black">中途换人 · {order.orderNo}（现陪玩：{order.companion?.displayName ?? "未指定"}）</h2>
+        <button type="button" className="text-xs text-dfc-muted underline" onClick={onClose}>关闭</button>
+      </div>
+      {error ? <div role="alert" className="mt-2 text-sm text-dfc-danger">{error}</div> : null}
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <label className="text-xs font-semibold">新陪玩
+          <select className="input mt-1 w-full" value={newCompanionId} onChange={e => setNewCompanionId(e.target.value)}>
+            <option value="">请选择</option>
+            {candidates.map(c => <option key={c.userId} value={c.userId}>{c.nickname}{c.onlineStatus === "ONLINE" ? " · 在线" : c.onlineStatus === "BUSY" ? " · 忙碌" : ""}</option>)}
+          </select>
+        </label>
+        {hourly && started ? (
+          <label className="text-xs font-semibold">原陪玩已服务（小时，按 0.5 填）
+            <input className="input mt-1 w-full" inputMode="decimal" value={servedHours} onChange={e => setServedHours(e.target.value)} />
+            <span className="mt-1 block font-normal text-dfc-muted">共 {Number(order.hours)} 小时，剩余 {remaining} 小时给新陪玩</span>
+          </label>
+        ) : <p className="self-center text-xs text-dfc-muted">{hourly ? "还没开始服务，整单直接转给新陪玩。" : "一口价订单整单转给新陪玩。"}</p>}
+        <label className="text-xs font-semibold">换人原因（会记日志）
+          <input className="input mt-1 w-full" maxLength={200} placeholder="如：原陪玩掉线 / 客户要求换人" value={reason} onChange={e => setReason(e.target.value)} />
+        </label>
+      </div>
+      <div className="mt-3">
+        <button type="button" disabled={busy} onClick={() => void submit()}
+          className="rounded-[9px] bg-brand px-4 py-2 text-xs font-black text-white hover:bg-brand-ink disabled:opacity-50">{busy ? "处理中" : "确认换人"}</button>
+      </div>
+    </section>
+  );
+}
+
+function canSwapCompanion(order: AdminOrder) {
+  return ["ACCEPTED", "IN_PROGRESS"].includes(order.status) && Boolean(order.companion) && !order.orderGroup;
 }
 
 function OrderAmount({ order }: { order: AdminOrder }) {

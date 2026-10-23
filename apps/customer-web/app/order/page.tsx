@@ -146,6 +146,7 @@ export default function OrderPage() {
         <div className="mt-3"><EscrowPromise /></div>
         <p className="mt-2">{selected?.nickname} · {view.preview.mode} · {view.preview.hours} 小时</p>
         <p>单价 ¥{view.preview.unitPrice}/时 · 总额 ¥{view.preview.totalAmount}</p>
+        {view.preview.member ? <MemberPriceNote member={view.preview.member} /> : null}
         <p className="mt-2 text-sm text-amber-100">点击下方按钮会创建正式订单，并从钱包余额冻结以上金额。不是充值或微信支付；试音须另行安排。价格变化时会停止提交，要求重新核对。</p>
         {shortfall ? <p role="status" className="mt-3 text-amber-100">余额还差 ¥{shortfall}，先去充值 <Link href="/recharge" className="underline">去充值</Link></p> : null}
         <button className="maycat-button mt-4 px-4 py-3" disabled={view.busy || view.pending || shortfall !== null} onClick={() => { if (shortfall === null) void perform(() => client.current!.submit(), true); }}>确认提交并冻结 ¥{view.preview.totalAmount}</button>
@@ -153,4 +154,15 @@ export default function OrderPage() {
       </div>}
     </section>}
   </CustomerShell>;
+}
+
+// A member price shows what the customer saved, so the discount is felt, not just applied.
+function MemberPriceNote({ member }: { member: { originalTotalAmount: string; name: string; rate: string } }) {
+  const off = (Number(member.rate) * 10).toFixed(1).replace(/.0$/, "");
+  return (
+    <p className="mt-1 text-sm">
+      <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand-ink">{member.name} · {off} 折</span>
+      <span className="ml-2 text-dfc-muted line-through">原价 ¥{member.originalTotalAmount}</span>
+    </p>
+  );
 }

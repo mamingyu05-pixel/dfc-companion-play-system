@@ -13,6 +13,8 @@ type Companion = {
   games?: string[];
   status: string;
   onlineStatus: string;
+  verified?: boolean;
+  badges?: string[];
   deltaForceRank: string;
   pricePerHour: string;
   kookPricePerHour?: string | null;
@@ -98,6 +100,29 @@ export default function CompanionsPage() {
       return;
     }
     setStatus(`陪玩状态已更新为 ${toCompanionStatus(nextStatus)}`);
+    await loadCompanions();
+  }
+
+  async function updateCredentials(userId: string, verified: boolean, badges: string[]) {
+    const token = localStorage.getItem("dfc_admin_token");
+    if (!token) return;
+    setError("");
+    setStatus("");
+    const response = await fetch(`/api/admin/companions/${userId}/credentials`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ verified, badges })
+    });
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    if (!response.ok) {
+      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      setError(message ?? "更新认证标签失败");
+      return;
+    }
+    setStatus("认证与标签已更新，客户端陪玩卡片会显示");
     await loadCompanions();
   }
 
@@ -249,6 +274,11 @@ export default function CompanionsPage() {
             <div>
               <div className="font-semibold text-white">{item.nickname}</div>
               <div className="mt-1 max-w-56 truncate text-xs text-dfc-muted">{platformSummary(item.externalAccounts)}</div>
+              <CompanionCredentialsEditor
+                verified={Boolean(item.verified)}
+                badges={item.badges ?? []}
+                onSave={(verified, badges) => updateCredentials(item.userId, verified, badges)}
+              />
             </div>
           </div>,
           <CompanionGamesEditor
@@ -295,6 +325,55 @@ export default function CompanionsPage() {
         <BatchButton tone="plain" disabled={batchBusy || !batchCommission} onClick={() => void applyBatch({ commissionRate: String(Number(batchCommission) / 100) }, `统一改抽成为 ${batchCommission}%`)}>改抽成</BatchButton>
       </BatchBar>
     </AdminShell>
+  );
+}
+
+// Trust marks customers see on the companion card: identity is checked offline, nothing about it is stored.
+function CompanionCredentialsEditor({ verified, badges, onSave }: { verified: boolean; badges: string[]; onSave: (verified: boolean, badges: string[]) => Promise<void> | void }) {
+  const [nextVerified, setNextVerified] = useState(verified);
+  const [text, setText] = useState(badges.join("，"));
+  const [isSaving, setIsSaving] = useState(false);
+  const [hint, setHint] = useState("");
+
+  useEffect(() => {
+    setNextVerified(verified);
+    setText(badges.join("，"));
+  }, [verified, badges]);
+
+  async function save() {
+    const list = [...new Set(text.split(/[,，、\s]+/).map((item) => item.trim()).filter(Boolean))];
+    if (list.length > 4 || list.some((item) => item.length > 8)) {
+      setHint("最多 4 个标签，每个不超过 8 个字");
+      return;
+    }
+    setHint("");
+    setIsSaving(true);
+    try {
+      await onSave(nextVerified, list);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-1 text-xs">
+      <div className="flex flex-wrap gap-1">
+        {verified ? <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 font-bold text-emerald-200">✓ 已实名</span> : null}
+        {badges.map((badge) => <span key={badge} className="rounded-full bg-amber-300/15 px-2 py-0.5 font-bold text-amber-100">{badge}</span>)}
+      </div>
+      <details className="mt-1">
+        <summary className="cursor-pointer text-cyan-200 hover:text-cyan-100">认证 / 标签</summary>
+        <div className="mt-2 space-y-2 rounded-dfc-control border border-cyan-300/15 bg-[#050711]/70 p-2">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={nextVerified} onChange={(event) => setNextVerified(event.target.checked)} />
+            已线下核实身份（实名）
+          </label>
+          <input className="input w-full" value={text} placeholder="如：金牌护航，零炸单，语音甜" onChange={(event) => setText(event.target.value)} />
+          {hint ? <div className="text-dfc-danger">{hint}</div> : null}
+          <ActionButton disabled={isSaving} onClick={() => void save()}>{isSaving ? "保存中..." : "保存"}</ActionButton>
+        </div>
+      </details>
+    </div>
   );
 }
 

@@ -49,6 +49,7 @@ function harness(search = '', initial = ready(), config = {}, orders = [], entry
       if (id === '../guarantee-evidence') return load('../app/guarantee-evidence.tsx');
       if (id === './acceptance-countdown') return load('../app/orders/acceptance-countdown.tsx');
       if (id === './review-form') return load('../app/orders/review-form.tsx');
+      if (id === './tip-form') return load('../app/orders/tip-form.tsx');
       if (id.endsWith('/components')) return new Proxy({}, { get: () => stub });
       if (id.endsWith('/data')) return { games: [] };
       if (id === './auth-gate') return { CustomerAuthGate: stub };

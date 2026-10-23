@@ -63,7 +63,13 @@ const labels: Record<string, { label: string; hint: string }> = {
   MULTI_COMPANION_DISCOUNT_FLOOR_PRICE: {
     label: "多陪玩折扣地板价",
     hint: "折后单价最低不能低于该金额，默认 68。"
-  }
+  },
+  MEMBER_LV3_DISCOUNT_RATE: { label: "会员 Lv.3 折扣", hint: "累计充值满 ¥500 起。填 0.98 表示 98 折，1 表示不打折。多人单不叠加。" },
+  MEMBER_LV5_DISCOUNT_RATE: { label: "会员 Lv.5 折扣", hint: "累计充值满 ¥2000 起。填 0.95 表示 95 折。" },
+  MEMBER_LV8_DISCOUNT_RATE: { label: "会员 Lv.8 折扣", hint: "累计充值满 ¥8000 起。填 0.92 表示 92 折。" },
+  MEMBER_LV10_DISCOUNT_RATE: { label: "会员 Lv.10 折扣", hint: "累计充值满 ¥20000 起。填 0.9 表示 9 折。不能低于 0.5。" },
+  GUARANTEE_BLOWN_RUN_BONUS_WAN: { label: "炸单补保底（万）", hint: "保底单每记录一次炸单，目标增加多少万，可累计。填 0 关闭。只影响之后的新订单。" },
+  TIP_COMMISSION_RATE: { label: "小费平台抽成", hint: "填 0 表示小费全给陪玩；填 0.1 表示平台抽 10%。" }
 };
 
 export default function PromotionsPage() {

@@ -98,6 +98,7 @@ function toTransactionType(type: string) {
     ORDER_PENDING_RELEASE: "验收或裁决后，转出待结算",
     ORDER_SETTLEMENT: "订单结算",
     REFERRAL_REWARD: "推广分成",
+    TIP_INCOME: "客户小费",
     WITHDRAWAL: "提现",
     WITHDRAWAL_FREEZE: "提现申请，冻结收益",
     WITHDRAWAL_REJECTED: "提现被拒绝，退回收益",

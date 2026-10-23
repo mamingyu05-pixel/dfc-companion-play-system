@@ -7,7 +7,8 @@ import { CustomerShell } from "../components";
 import { EscrowProgress, EscrowPromise } from "../escrow";
 
 type Companion = { id: string; nickname: string; onlineStatus: string };
-type Preview = { totalAmount: string; mode: string; packageId: string; companionId: string | null };
+type Preview = { totalAmount: string; mode: string; packageId: string; companionId: string | null;
+  originalTotalAmount?: string; memberDiscount?: { level: number; name: string; rate: string } | null };
 type Receipt = { id: string; orderNo: string; status: string; totalAmount: string };
 
 function tokenNow() { try { return localStorage.getItem("dfc_customer_token"); } catch { return null; } }
@@ -124,6 +125,9 @@ export default function GuaranteePage() {
       {!preview ? <button className="maycat-button px-4 py-3" disabled={busy || !packageId} onClick={() => void quote()}>核对金额</button> : <div className="rounded-dfc border border-cyan-300/30 p-4">
         <h3 className="font-black">提交前确认</h3>
         <p className="mt-2">{preview.mode} · 总额 ¥{preview.totalAmount}</p>
+        {preview.memberDiscount && preview.originalTotalAmount ? (
+          <p className="mt-1 text-sm"><span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand-ink">{preview.memberDiscount.name} · {(Number(preview.memberDiscount.rate) * 10).toFixed(1).replace(/\.0$/, "")} 折</span><span className="ml-2 text-dfc-muted line-through">原价 ¥{preview.originalTotalAmount}</span></p>
+        ) : null}
         <p className="mt-2 text-sm text-amber-100">点击后从钱包冻结以上金额。净增达标、你确认验收后才结算给陪玩；未达标可申请客服裁决。</p>
         {shortfall ? <p role="status" className="mt-3 text-amber-100">余额还差 ¥{shortfall}，<Link href="/recharge" className="underline">去充值</Link></p> : null}
         <button className="maycat-button mt-4 px-4 py-3" disabled={busy || shortfall !== null} onClick={() => void submit()}>确认提交并冻结 ¥{preview.totalAmount}</button>

@@ -168,6 +168,9 @@ export default function CustomerHomePage() {
                 <Link href="/guarantee" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
                   保底护航 · 达标才付
                 </Link>
+                <Link href="/packages" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
+                  套餐 · 一口价
+                </Link>
                 <Link href="/order" className="maycat-button-secondary px-5 py-3 text-center text-sm font-black">
                   查看群下单方式
                 </Link>

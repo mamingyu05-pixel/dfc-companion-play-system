@@ -1,7 +1,8 @@
 // Uses the validated native client's requestId journal/recovery protocol, with the existing web session.
 // Requests are same-origin; tokens are never persisted in the journal or substituted with test identities.
 export type Selection = { companionId: string; mode: string; hours: string };
-export type Preview = Selection & { customerId: string; game: string; unitPrice: string; totalAmount: string };
+export type MemberPrice = { originalTotalAmount: string; level: number; name: string; rate: string };
+export type Preview = Selection & { customerId: string; game: string; unitPrice: string; totalAmount: string; member?: MemberPrice | null };
 export type OrderReceipt = { id: string; orderNo: string; status: string; totalAmount: string; mode?: string; hours?: string };
 export type Companion = { id: string; nickname: string; pricePerHour: string; onlineStatus: string };
 export type OrderView = { busy: boolean; connected: boolean; pending: boolean; error: string; companions: Companion[]; preview: Preview | null; receipt: OrderReceipt | null; orders: OrderReceipt[]; availableBalance: string };
@@ -12,6 +13,8 @@ type Transport = (path: string, init: RequestInit) => Promise<{ ok: boolean; sta
 type Fault = Error & { notCommitted?: boolean };
 const empty = (): OrderView => ({ busy: false, connected: false, pending: false, error: "", companions: [], preview: null, receipt: null, orders: [], availableBalance: "" });
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" ? value as Record<string, unknown> : {};
+// Shown only when the server applied a member rate; totalAmount is already the discounted one.
+const memberOf = (data: Record<string, unknown>) => { const m = object(data.memberDiscount); return data.memberDiscount && amount(String(data.originalTotalAmount ?? "")) ? { originalTotalAmount: String(data.originalTotalAmount), level: Number(m.level), name: String(m.name), rate: String(m.rate) } : null; };
 const amount = (value: unknown) => typeof value === "string" && /^\d+(?:\.\d{1,2})?$/.test(value) && Number.isFinite(Number(value));
 const requestIdValid = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9_-]{16,96}$/.test(value);
 export function createOrderClient({ fetcher, storage, getToken, makeRequestId, scope }: {
@@ -117,7 +120,8 @@ export function createOrderClient({ fetcher, storage, getToken, makeRequestId, s
       const data = object(await request(identity,"POST","/orders/preview",{...selection,game:"DELTA_FORCE"}));
       if (data.customerId !== identity.subject || data.companionId !== selection.companionId || data.mode !== selection.mode || String(data.hours) !== selection.hours
         || data.game !== "DELTA_FORCE" || !amount(data.totalAmount) || !amount(data.unitPrice)) throw new Error("未取得可核对的价格，订单尚未提交。");
-      view.preview = { ...selection, customerId: identity.subject, game: "DELTA_FORCE", unitPrice: String(data.unitPrice), totalAmount: String(data.totalAmount) }; previewAt = Date.now();
+      view.preview = { ...selection, customerId: identity.subject, game: "DELTA_FORCE", unitPrice: String(data.unitPrice), totalAmount: String(data.totalAmount),
+        member: memberOf(data) }; previewAt = Date.now();
     }); },
     submit() { return run(async () => {
       const preview = view.preview;

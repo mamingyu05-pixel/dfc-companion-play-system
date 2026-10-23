@@ -27,6 +27,8 @@ type Companion = {
   accent: string;
   trialHref?: string;
   trialPlatform?: "DISCORD" | "KOOK" | null;
+  verified?: boolean;
+  badges?: string[];
 };
 
 export function CustomerShell({ children }: { children: ReactNode }) {
@@ -113,6 +115,8 @@ export function CompanionCard({ companion }: { companion: Companion }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-base font-black text-white">{companion.nickname}</h2>
+            {companion.verified ? <Badge tone="gold">✓ 已实名</Badge> : null}
+            {companion.badges?.map(badge => <Badge key={badge} tone="gold">{badge}</Badge>)}
             {isRecommended ? <Badge tone="gold">推荐</Badge> : null}
             <StatusBadge status={companion.onlineStatus} />
           </div>

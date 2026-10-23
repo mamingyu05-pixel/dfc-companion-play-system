@@ -39,6 +39,9 @@ type ApiCompanion = {
   voicePreference: string;
   bio?: string | null;
   externalAccounts?: ExternalAccount[];
+  verified?: boolean;
+  badges?: string[];
+  completedOrders?: number;
 };
 
 type PublicConfig = {
@@ -143,6 +146,8 @@ export default function CompanionsPage() {
         ))}
       </section>
 
+      <Leaderboard companions={companions} />
+
       <section className="mt-7 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <SectionHeader title="陪玩大厅" desc={`共 ${companions.length} 位陪玩，${onlineCount} 位在线，${voiceCount} 位支持语音。`} />
         <div className="rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 px-3 py-2 text-sm text-dfc-subtext">
@@ -223,7 +228,9 @@ function toCardCompanion(companion: ApiCompanion, publicConfig: PublicConfig) {
     orders: companion.reviewCount ?? 0,
     accent: companion.onlineStatus === "ONLINE" ? "gold" : "blue",
     trialHref: companionTrialHref(companion, publicConfig),
-    trialPlatform
+    trialPlatform,
+    verified: companion.verified === true,
+    badges: companion.badges ?? []
   };
 }
 
@@ -299,5 +306,35 @@ function CompanionSkeleton() {
         </div>
       ))}
     </>
+  );
+}
+
+// Top companions by finished orders, then rating; shown only once there is a real record to rank.
+function Leaderboard({ companions }: { companions: ApiCompanion[] }) {
+  const ranked = [...companions]
+    .filter(c => (c.completedOrders ?? 0) > 0 || (c.reviewCount ?? 0) > 0)
+    .sort((a, b) => (b.completedOrders ?? 0) - (a.completedOrders ?? 0) || (b.averageRating ?? 0) - (a.averageRating ?? 0))
+    .slice(0, 5);
+  if (!ranked.length) return null;
+  return (
+    <section className="maycat-card mt-7 p-4 md:p-5" aria-label="打手排行榜">
+      <div className="flex items-end justify-between gap-3">
+        <h2 className="text-lg font-black text-white">打手排行榜</h2>
+        <span className="text-xs text-dfc-muted">按完成单数和评分</span>
+      </div>
+      <ol className="mt-3 grid gap-2 md:grid-cols-5">
+        {ranked.map((c, i) => (
+          <li key={c.id}>
+            <Link href={`/companions/${c.id}`} className="flex items-center gap-3 rounded-dfc-control border border-cyan-300/20 p-3 transition hover:border-cyan-300/60">
+              <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-black ${i === 0 ? "bg-dfc-gold text-white" : i < 3 ? "bg-cyan-300/15 text-cyan-300" : "bg-[#07111f] text-dfc-subtext"}`}>{i + 1}</span>
+              <span className="min-w-0">
+                <span className="block truncate font-black text-white">{c.nickname}{c.verified ? " ✓" : ""}</span>
+                <span className="block text-xs text-dfc-muted">{c.completedOrders ?? 0} 单 · {c.averageRating ? `${c.averageRating.toFixed(1)} 分` : "暂无评分"}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

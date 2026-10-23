@@ -9,6 +9,7 @@ import { GuaranteeEvidencePanel } from "../guarantee-evidence";
 import { reorderHref } from "../order/order-entry";
 import { AcceptanceCountdown } from "./acceptance-countdown";
 import { ReviewForm } from "./review-form";
+import { TipForm } from "./tip-form";
 
 type Order = {
   hasReview?: boolean;
@@ -21,6 +22,9 @@ type Order = {
   totalAmount: string;
   refundAmount?: string;
   serviceKind?: string;
+  originalAmount?: string | null;
+  memberDiscountRate?: string | null;
+  tipAmount?: string;
   companionId?: string | null;
   companion?: { displayName: string } | null;
 };
@@ -213,8 +217,9 @@ export default function OrdersPage() {
               <span>{labels[order.status] || order.status}</span>
             </div>
             <p className="my-3 text-sm text-dfc-subtext">
-              {order.mode}{order.serviceKind === "GUARANTEE" ? "" : ` · ${order.hours} 小时`} · ¥
+              {order.mode}{order.serviceKind && order.serviceKind !== "HOURLY" ? " · 一口价" : ` · ${order.hours} 小时`} · ¥
               {order.totalAmount}
+              {order.memberDiscountRate && order.originalAmount ? <span className="ml-2 rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand-ink">会员价 · 省 ¥{(Number(order.originalAmount) - Number(order.totalAmount)).toFixed(2)}</span> : null}
             </p>
             <EscrowProgress order={order} />
             <GuaranteeEvidencePanel orderId={order.id} status={order.status} tokenKey="dfc_customer_token" defaultKind="VAULT_START" guarantee={order.serviceKind === "GUARANTEE"} />
@@ -243,6 +248,8 @@ export default function OrdersPage() {
               </div>
             )}
             {order.status === "AWAITING_ACCEPTANCE" && <AcceptanceCountdown dueAt={order.autoAcceptanceDueAt} />}
+            {(order.status === "AWAITING_ACCEPTANCE" || order.status === "COMPLETED") && order.companionId
+              ? <TipForm orderId={order.id} companionName={order.companion?.displayName || "陪玩"} tipped={order.tipAmount ?? "0.00"} onTipped={() => void load()} /> : null}
             {reorderHref(order) ? <Link href={reorderHref(order)!} className="maycat-button mb-3 inline-block px-4 py-2 text-sm font-black">再来一单（{order.companion?.displayName || "同一陪玩"}）</Link> : null}
             {order.status === "COMPLETED" && (order.hasReview ? <p className="my-3 text-sm">已评价</p> : <ReviewForm orderId={order.id} onSubmitted={load} />)}
             <Link

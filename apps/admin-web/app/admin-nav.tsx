@@ -30,6 +30,7 @@ export const navGroups: Array<{ title: string; items: Item[] }> = [
   ] },
   { title: "配置", items: [
     { label: "价格设置", href: "/pricing" },
+    { label: "套餐", href: "/service-packages" },
     { label: "优惠", href: "/promotions" },
     { label: "AI 客服知识库", href: "/knowledge" },
     { label: "导入 KOOK 成员", href: "/kook-import" }

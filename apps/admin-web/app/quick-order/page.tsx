@@ -8,6 +8,7 @@ import s from "./quick-order.module.css";
 type Customer = { id: string; displayName: string; balance: string; platforms: string[] };
 type Companion = { userId: string; nickname: string; status: string; onlineStatus: string; game: string; games?: string[]; pricePerHour: string; kookPricePerHour?: string | null };
 type Package = { id: string; label: string; price: string; isActive: boolean };
+type ServicePackage = { id: string; name: string; category: string; price: string; isActive: boolean };
 type Preview = { mode: string; hours: string; unitPrice: string; totalAmount: string; balance: string; shortfall: string };
 type Result = { order: { orderNo: string; totalAmount: string }; toppedUp: boolean; dispatched: boolean; dispatchMode: "DIRECT" | "OPEN"; dispatchError?: string };
 
@@ -32,13 +33,15 @@ function QuickOrder() {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<Customer[]>([]);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [kind, setKind] = useState<"HOURLY" | "GUARANTEE">("HOURLY");
+  const [kind, setKind] = useState<"HOURLY" | "GUARANTEE" | "PACKAGE">("HOURLY");
   const [game, setGame] = useState("DELTA_FORCE");
   const [mode, setMode] = useState(MODES[0]);
   const [hours, setHours] = useState("2");
   const [customPrice, setCustomPrice] = useState("");
   const [packages, setPackages] = useState<Package[]>([]);
   const [packageId, setPackageId] = useState("");
+  const [servicePackages, setServicePackages] = useState<ServicePackage[]>([]);
+  const [servicePackageId, setServicePackageId] = useState("");
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [companionId, setCompanionId] = useState(""); // empty = open to the dispatch channel
   const [companionQuery, setCompanionQuery] = useState("");
@@ -58,6 +61,11 @@ function QuickOrder() {
       setPackages(active);
       setPackageId(id => id || active[0]?.id || "");
     }).catch(e => setError(e.message));
+    adminApi<ServicePackage[]>("/api/admin/service-packages").then(list => {
+      const active = list.filter(p => p.isActive);
+      setServicePackages(active);
+      setServicePackageId(id => id || active[0]?.id || "");
+    }).catch(e => setError(e.message));
   }, []);
 
   useEffect(() => {
@@ -69,12 +77,14 @@ function QuickOrder() {
 
   const order = useMemo(() => kind === "GUARANTEE"
     ? { kind, packageId, companionId }
-    : { kind, game, mode: mode.trim(), hours: hours.trim(), companionId, customUnitPrice: customPrice.trim() }, [kind, packageId, game, mode, hours, customPrice, companionId]);
+    : kind === "PACKAGE"
+      ? { kind, packageId: servicePackageId, companionId }
+      : { kind, game, mode: mode.trim(), hours: hours.trim(), companionId, customUnitPrice: customPrice.trim() }, [kind, packageId, servicePackageId, game, mode, hours, customPrice, companionId]);
 
   // Re-price whenever anything that affects the price changes; the order is submitted at exactly this total.
   useEffect(() => {
     setPreview(null);
-    if (!customer || (kind === "HOURLY" && (!order.mode || !Number(order.hours))) || (kind === "GUARANTEE" && !packageId)) return;
+    if (!customer || (kind === "HOURLY" && (!order.mode || !Number(order.hours))) || (kind === "GUARANTEE" && !packageId) || (kind === "PACKAGE" && !servicePackageId)) return;
     let live = true;
     const timer = setTimeout(() => {
       adminApi<Preview>("/api/admin/quick-order/preview", { method: "POST", body: JSON.stringify({ customerId: customer.id, ...order }) })
@@ -87,13 +97,13 @@ function QuickOrder() {
         .catch(e => live && setError(e.message));
     }, 300);
     return () => { live = false; clearTimeout(timer); };
-  }, [customer, order, kind, packageId]);
+  }, [customer, order, kind, packageId, servicePackageId]);
 
   const qualified = useMemo(() => {
     const term = companionQuery.trim().toLowerCase();
     const rank = (c: Companion) => (c.onlineStatus === "ONLINE" ? 0 : c.onlineStatus === "BUSY" ? 2 : 1);
     return companions
-      .filter(c => c.status === "LISTED" && (c.game === game || c.games?.includes(game) || kind === "GUARANTEE"))
+      .filter(c => c.status === "LISTED" && (c.game === game || c.games?.includes(game) || kind !== "HOURLY"))
       .filter(c => !term || c.nickname.toLowerCase().includes(term))
       .sort((a, b) => rank(a) - rank(b));
   }, [companions, companionQuery, game, kind]);
@@ -178,6 +188,7 @@ function QuickOrder() {
             <div className={s.tabs}>
               <button className={`${s.tab} ${kind === "HOURLY" ? s.tabOn : ""}`} onClick={() => setKind("HOURLY")}>小时陪玩</button>
               <button className={`${s.tab} ${kind === "GUARANTEE" ? s.tabOn : ""}`} onClick={() => setKind("GUARANTEE")}>保底护航</button>
+              <button className={`${s.tab} ${kind === "PACKAGE" ? s.tabOn : ""}`} onClick={() => setKind("PACKAGE")}>套餐</button>
             </div>
             {kind === "HOURLY" ? (
               <div className={s.stack}>
@@ -194,6 +205,10 @@ function QuickOrder() {
                   <input className={`${s.input} ${s.small}`} style={{ marginLeft: 8 }} inputMode="decimal" placeholder="¥/小时" value={customPrice} onChange={e => setCustomPrice(e.target.value)} />
                 </label>
               </div>
+            ) : kind === "PACKAGE" ? (
+              servicePackages.length
+                ? <div className={s.chips}>{servicePackages.map(p => <button key={p.id} className={`${s.chip} ${servicePackageId === p.id ? s.chipOn : ""}`} onClick={() => setServicePackageId(p.id)}>{p.name} · {yuan(p.price)}</button>)}</div>
+                : <p className={s.muted}>还没有上架的套餐，先到「配置 → 套餐」上架。</p>
             ) : (
               <div className={s.chips}>{packages.map(p => <button key={p.id} className={`${s.chip} ${packageId === p.id ? s.chipOn : ""}`} onClick={() => setPackageId(p.id)}>{p.label} · {yuan(p.price)}</button>)}</div>
             )}

@@ -129,7 +129,18 @@ function toTransactionType(type: string) {
     ORDER_SETTLEMENT: "订单结算",
     WITHDRAWAL: "提现",
     ADMIN_ADJUSTMENT: "管理员调账",
-    REFUND: "退款"
+    REFUND: "退款",
+    RECHARGE_APPROVED: "充值入账",
+    ORDER_REFUND: "订单退款",
+    ORDER_PENDING_INCOME: "陪玩待结算",
+    ORDER_PENDING_RELEASE: "待结算转出",
+    WITHDRAWAL_FREEZE: "提现冻结",
+    WITHDRAWAL_COMPLETED: "提现打款",
+    WITHDRAWAL_REJECTED: "提现驳回",
+    PROMOTION_BONUS: "优惠赠送",
+    REFERRAL_REWARD: "推广奖励",
+    ORDER_TIP: "客户付小费",
+    TIP_INCOME: "陪玩小费收入"
   };
   return map[type] ?? type;
 }
