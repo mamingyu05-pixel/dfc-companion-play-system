@@ -165,12 +165,12 @@ export function CustomerAuthForm() {
       <div className="maycat-grid" />
       <div className="maycat-light-streaks" />
 
-      <div className="relative grid min-h-[calc(100vh-40px)] gap-6 md:grid-cols-[minmax(0,1fr)_430px] lg:gap-10">
+      <div className="dfc-page relative grid min-h-[calc(100vh-40px)] gap-6 md:grid-cols-[minmax(0,1fr)_430px] lg:gap-10">
         <section className="flex flex-col justify-center py-6">
           <div className="max-w-3xl">
             <MaycatLogo />
             <div className="maycat-chip mt-8 px-3 py-1 text-xs font-semibold">Xiaoxiao Esports · KOOK / Discord 客服 · 人工试音派单</div>
-            <h1 className="maycat-text-glow mt-5 text-4xl font-black leading-tight text-white md:text-6xl">小小电竞</h1>
+            <h1 className="dfc-hero-title mt-5 text-4xl font-black leading-tight md:text-6xl">小小电竞</h1>
             <p className="mt-3 text-xl font-black text-cyan-200 md:text-2xl">先接待，再试音，确认舒服了再到群里发单。</p>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
               平台支持 KOOK 和 Discord：客户可以快捷登录、联系客服、进入试音频道；管理员可在后台记录充值、派单、订单、钱包和投诉，整个服务流程可追踪。

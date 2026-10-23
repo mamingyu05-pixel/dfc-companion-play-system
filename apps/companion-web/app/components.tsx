@@ -1,50 +1,26 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CompanionAuthGate } from "./auth-gate";
-
-const navItems = [
-  ["工作台", "/dashboard"],
-  ["可接订单", "/available-orders"],
-  ["我的订单", "/orders"],
-  ["代客派单", "/customer-drafts"],
-  ["收益", "/earnings"],
-  ["提现", "/withdrawals"],
-  ["资料", "/profile"]
-] as const;
+import { CompanionTabBar, CompanionTopNav } from "./companion-nav";
+import { CountUp, PageTransition } from "./motion";
 
 export function CompanionShell({ children }: { children: ReactNode }) {
   return (
-    <main className="companion-console-bg min-h-screen overflow-x-hidden text-dfc-text">
-      <header className="sticky top-0 z-20 border-b border-cyan-300/15 bg-[#060913]/92 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-gradient-to-br from-brand to-[#7c5cff] text-xs font-black !text-white">
-              XX
-            </span>
-            <span>
-              <span className="block text-sm font-black text-white">小小电竞陪玩端</span>
-              <span className="block text-xs text-dfc-muted">接单 / 服务 / 收益 / 提现</span>
-            </span>
+    <main className="companion-console-bg dfc-violet min-h-screen overflow-x-hidden text-dfc-text">
+      <header className="dfc-topbar">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5 md:px-6">
+          <Link href="/dashboard" className="dfc-brand">
+            <img src="/companion/icon.svg" alt="" />
+            <span><b>小小电竞 · 陪玩端</b><small>接单 · 服务 · 收益 · 提现</small></span>
           </Link>
-          <nav className="hidden items-center gap-2 md:flex" aria-label="陪玩端导航">
-            {navItems.map(([label, href]) => (
-              <NavLink key={href} href={href}>{label}</NavLink>
-            ))}
-          </nav>
-          <span className="rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-xs font-black text-dfc-success">
-            在线
-          </span>
+          <CompanionTopNav />
+          <span className="dfc-pill"><span className="dfc-live" aria-hidden="true" />在线</span>
         </div>
       </header>
-      <div className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-6 md:pb-10">
-        <CompanionAuthGate>{children}</CompanionAuthGate>
+      <div className="mx-auto max-w-6xl px-4 pb-28 pt-6 md:px-6 lg:pb-12">
+        <CompanionAuthGate><PageTransition>{children}</PageTransition></CompanionAuthGate>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-cyan-300/15 bg-[#060913]/95 backdrop-blur-xl md:hidden" aria-label="移动端陪玩导航">
-        <MobileNavLink href="/dashboard">工作台</MobileNavLink>
-        <MobileNavLink href="/available-orders">接单</MobileNavLink>
-        <MobileNavLink href="/orders">订单</MobileNavLink>
-        <MobileNavLink href="/earnings">收益</MobileNavLink>
-      </nav>
+      <CompanionTabBar />
     </main>
   );
 }
@@ -52,9 +28,9 @@ export function CompanionShell({ children }: { children: ReactNode }) {
 // eyebrow stays in the props for existing callers; the light theme does not show the English labels.
 export function SectionHeader({ title, desc }: { title: string; desc?: string; eyebrow?: string }) {
   return (
-    <div>
-      <h1 className="mt-1 text-2xl font-black tracking-normal text-white md:text-3xl">{title}</h1>
-      {desc ? <p className="mt-2 max-w-2xl text-sm leading-6 text-dfc-subtext">{desc}</p> : null}
+    <div className="dfc-title">
+      <h1>{title}</h1>
+      {desc ? <p>{desc}</p> : null}
     </div>
   );
 }
@@ -70,7 +46,7 @@ export function MetricCard({ label, value, hint, tone = "cyan" }: { label: strin
   return (
     <div className="companion-card p-4">
       <div className="text-xs font-semibold text-dfc-muted">{label}</div>
-      <div className={`mt-2 text-2xl font-black tabular-nums ${toneClass}`}>{value}</div>
+      <div className={`mt-2 text-2xl font-black tabular-nums ${toneClass}`}><CountUp value={value} /></div>
       <div className="mt-1 text-xs leading-5 text-dfc-subtext">{hint}</div>
     </div>
   );
@@ -129,14 +105,6 @@ export function ActionButton({ children, tone = "primary", onClick, disabled, ty
       {children}
     </button>
   );
-}
-
-function NavLink({ href, children }: { href: string; children: ReactNode }) {
-  return <Link href={href} className="rounded-dfc-control px-3 py-2 text-sm font-semibold text-dfc-subtext hover:bg-cyan-300/10 hover:text-cyan-100">{children}</Link>;
-}
-
-function MobileNavLink({ href, children }: { href: string; children: ReactNode }) {
-  return <Link href={href} className="py-3 text-center text-xs font-black text-dfc-subtext">{children}</Link>;
 }
 
 function toOrderStatus(status: string) {

@@ -2,35 +2,39 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AdminAuthGate } from "./auth-gate";
 import { AdminMobileNav, AdminSidebarNav } from "./admin-nav";
+import { CountUp, PageTransition } from "./motion";
 
 export function AdminShell({ children }: { children: ReactNode }) {
   return (
     <main className="admin-console-bg min-h-screen overflow-x-hidden">
-      <div className="grid min-h-screen xl:grid-cols-[232px_1fr]">
+      <div className="grid min-h-screen xl:grid-cols-[240px_1fr]">
         <aside className="admin-sidebar hidden xl:block">
-          <div className="sticky top-0">
-            <div className="flex items-center gap-2 px-5 py-4">
-              <span className="h-8 w-8 rounded-[9px] bg-gradient-to-br from-brand to-[#7c5cff]" />
-              <span><span className="block text-[15px] font-black text-dfc-text">小小电竞</span><span className="block text-xs text-dfc-muted">运营后台</span></span>
-            </div>
+          <div className="sticky top-0 max-h-screen overflow-y-auto">
+            <Link href="/dashboard" className="dfc-brand px-5 py-4">
+              <img src="/admin/icon.svg" alt="" />
+              <span><b>小小电竞</b><small>运营后台</small></span>
+            </Link>
             <AdminSidebarNav />
           </div>
         </aside>
 
         <section className="min-w-0">
-          <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-[#e6e8ef] bg-white/95 px-4 py-3 backdrop-blur md:px-6">
-            <span className="text-sm font-black text-dfc-text xl:hidden">小小电竞后台</span>
+          <header className="dfc-topbar flex items-center gap-3 px-4 py-2.5 md:px-6">
+            <Link href="/dashboard" className="dfc-brand xl:hidden">
+              <img src="/admin/icon.svg" alt="" />
+              <span className="hidden sm:block"><b>小小电竞后台</b></span>
+            </Link>
             <span className="flex-1" />
-            <Link href="/quick-order" className="rounded-[10px] bg-brand px-4 py-2 text-sm font-black text-white hover:bg-brand-ink">＋ 快速开单</Link>
-            <Link href="/staff-recharge" className="rounded-[10px] border border-[#e6e8ef] bg-white px-4 py-2 text-sm font-bold text-dfc-text hover:border-brand">代客充值</Link>
+            <Link href="/quick-order" className="dfc-pill dfc-pill-strong">＋ 快速开单</Link>
+            <Link href="/staff-recharge" className="dfc-pill">代客充值</Link>
           </header>
 
-          <nav className="border-b border-[#e6e8ef] bg-white px-3 py-2 xl:hidden" aria-label="移动端后台导航">
+          <nav className="border-b border-[#e7e4de] bg-white/70 px-3 py-2 backdrop-blur xl:hidden" aria-label="移动端后台导航">
             <AdminMobileNav />
           </nav>
 
           <div className="mx-auto max-w-[1400px] px-4 py-6 md:px-6">
-            <AdminAuthGate>{children}</AdminAuthGate>
+            <AdminAuthGate><PageTransition>{children}</PageTransition></AdminAuthGate>
           </div>
         </section>
       </div>
@@ -41,9 +45,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
 // eyebrow stays in the props for existing callers; the light theme does not show the English labels.
 export function SectionHeader({ title, desc }: { title: string; desc?: string; eyebrow?: string }) {
   return (
-    <div className="mb-5 flex flex-col gap-1">
-      <h1 className="text-2xl font-black tracking-normal text-dfc-text">{title}</h1>
-      {desc ? <p className="max-w-3xl text-sm leading-6 text-dfc-muted">{desc}</p> : null}
+    <div className="dfc-title mb-5">
+      <h1>{title}</h1>
+      {desc ? <p>{desc}</p> : null}
     </div>
   );
 }
@@ -52,7 +56,7 @@ export function MetricCard({ label, value, hint, href }: { label: string; value:
   const body = (
     <>
       <div className="text-xs font-semibold text-dfc-muted">{label}</div>
-      <div className="mt-2 text-3xl font-black tabular-nums text-dfc-text">{value}</div>
+      <div className="mt-2 text-3xl font-black tabular-nums text-dfc-text"><CountUp value={value} /></div>
       <div className="mt-2 text-xs leading-5 text-dfc-subtext">{hint}{href ? " · 去处理 →" : ""}</div>
     </>
   );

@@ -1,0 +1,297 @@
+/*
+ * 小小电竞 premium layer, shared by the customer, companion and admin sites.
+ * Imported last in each root layout, so it refines the light theme and the
+ * compatibility rules that sit in each app's styles.css.
+ *
+ * Motion identity (one personality: Premium):
+ *   signature easing  --ease: cubic-bezier(.2, .8, .2, 1)   decelerating, no overshoot
+ *   durations         quick 140ms (press, hover colour) / standard 260ms (lift, focus) / slow 520ms (entrance)
+ *   entrance          16px rise + fade, staggered 45ms per block, capped at 8 blocks (< 400ms total)
+ *   layers            primary = page entrance, secondary = card lift / button sheen, ambient = grid glow, live dot
+ */
+:root {
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --t-quick: 140ms;
+  --t-std: 260ms;
+  --t-slow: 520ms;
+
+  --bg: #f6f5f2;
+  --ink: #15171c;
+  --sub: #4f5562;
+  --muted: #80858f;
+  --line: #e7e4de;
+  --soft: #faf9f6;
+  --grid: rgba(21, 23, 28, .04);
+  --brand: #ff6a3d;
+  --brand-2: #ff8a5b;
+  --brand-ink: #d24a1c;
+  --brand-soft: #fff1ea;
+  --violet: #6d4cff;
+  --violet-soft: #f0ecff;
+  --steel: #1c2028;
+  --shadow-1: 0 1px 2px rgba(21, 23, 28, .05), 0 6px 18px -8px rgba(21, 23, 28, .12);
+  --shadow-2: 0 2px 4px rgba(21, 23, 28, .05), 0 18px 40px -16px rgba(21, 23, 28, .22);
+  --shadow: var(--shadow-1);
+  --ring: 0 0 0 3px rgba(255, 106, 61, .18);
+}
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+html, body { background: var(--bg); color: var(--ink); }
+body { font-feature-settings: "tnum" 0; }
+::selection { background: rgba(255, 106, 61, .22); color: var(--ink); }
+*:focus-visible { outline: 2px solid rgba(255, 106, 61, .75); outline-offset: 2px; border-radius: 6px; }
+
+/* Thin scrollbars that match the warm neutrals. */
+* { scrollbar-width: thin; scrollbar-color: #d6d2ca transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: #d6d2ca; border-radius: 99px; border: 3px solid var(--bg); }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- Ambient layer: tactical map grid with two soft glows ---------- */
+html body .maycat-neon-bg,
+html body .companion-console-bg,
+html body .admin-console-bg {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 520px at 88% -12%, rgba(255, 106, 61, .10), transparent 62%),
+    radial-gradient(900px 460px at -8% -6%, rgba(109, 76, 255, .07), transparent 60%),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: auto, auto, 48px 48px, 48px 48px;
+  background-attachment: fixed, fixed, fixed, fixed;
+}
+html body .admin-console-bg { background-size: auto, auto, 64px 64px, 64px 64px; }
+
+/* ---------- Primary layer: page entrance ---------- */
+@keyframes dfc-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes dfc-fade { from { opacity: 0; } to { opacity: 1; } }
+.dfc-page > * { animation: dfc-rise var(--t-slow) var(--ease) both; }
+.dfc-page > *:nth-child(2) { animation-delay: 45ms; }
+.dfc-page > *:nth-child(3) { animation-delay: 90ms; }
+.dfc-page > *:nth-child(4) { animation-delay: 135ms; }
+.dfc-page > *:nth-child(5) { animation-delay: 180ms; }
+.dfc-page > *:nth-child(6) { animation-delay: 225ms; }
+.dfc-page > *:nth-child(7) { animation-delay: 270ms; }
+.dfc-page > *:nth-child(n+8) { animation-delay: 315ms; }
+/* Pages usually wrap everything in one container; stagger its blocks instead of the wrapper. */
+.dfc-page > :only-child { animation: none; }
+.dfc-page > :only-child > * { animation: dfc-rise var(--t-slow) var(--ease) both; }
+.dfc-page > :only-child > *:nth-child(2) { animation-delay: 45ms; }
+.dfc-page > :only-child > *:nth-child(3) { animation-delay: 90ms; }
+.dfc-page > :only-child > *:nth-child(4) { animation-delay: 135ms; }
+.dfc-page > :only-child > *:nth-child(5) { animation-delay: 180ms; }
+.dfc-page > :only-child > *:nth-child(6) { animation-delay: 225ms; }
+.dfc-page > :only-child > *:nth-child(7) { animation-delay: 270ms; }
+.dfc-page > :only-child > *:nth-child(n+8) { animation-delay: 315ms; }
+
+/* ---------- Top bars ---------- */
+.dfc-topbar {
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(250, 249, 246, .78);
+  -webkit-backdrop-filter: saturate(160%) blur(14px); backdrop-filter: saturate(160%) blur(14px);
+  border-bottom: 1px solid rgba(231, 228, 222, .9);
+}
+.dfc-topbar::after {
+  /* A hairline of brand colour under the bar, brighter in the middle. */
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 106, 61, .45), rgba(109, 76, 255, .35), transparent);
+}
+.dfc-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); }
+.dfc-brand img { width: 38px; height: 38px; border-radius: 11px; display: block; box-shadow: 0 4px 14px -4px rgba(255, 106, 61, .55); transition: transform var(--t-std) var(--ease); }
+.dfc-brand:hover img { transform: rotate(-6deg) scale(1.04); }
+.dfc-brand b { display: block; font-size: 16px; font-weight: 900; letter-spacing: .02em; line-height: 1.2; color: var(--ink); }
+.dfc-brand small { display: block; font-size: 11px; color: var(--muted); letter-spacing: .06em; }
+
+.dfc-navlink {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-radius: 10px; font-size: 14px; font-weight: 700; color: var(--sub); text-decoration: none;
+  transition: color var(--t-quick) var(--ease), background-color var(--t-quick) var(--ease);
+}
+.dfc-navlink:hover { color: var(--ink); background: rgba(21, 23, 28, .045); }
+.dfc-navlink::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--brand), var(--brand-2));
+  transform: scaleX(0); transform-origin: left; transition: transform var(--t-std) var(--ease);
+}
+.dfc-navlink[aria-current="page"] { color: var(--ink); }
+.dfc-navlink[aria-current="page"]::after { transform: scaleX(1); }
+.dfc-violet .dfc-navlink::after { background: linear-gradient(90deg, var(--violet), #9b84ff); }
+
+.dfc-pill {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none;
+  padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 800;
+  border: 1px solid var(--line); background: #fff; color: var(--ink); box-shadow: var(--shadow-1);
+  transition: transform var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease), box-shadow var(--t-std) var(--ease);
+}
+.dfc-pill:hover { border-color: rgba(255, 106, 61, .55); box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.dfc-pill:active { transform: translateY(0) scale(.97); }
+.dfc-pill-strong { background: linear-gradient(135deg, var(--brand), var(--brand-2)); border-color: transparent; color: #fff; }
+.dfc-pill-strong:hover { border-color: transparent; }
+
+/* Live status dot: the one looping ambient animation. */
+.dfc-live { position: relative; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex: none; }
+.dfc-live::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: #22c55e; animation: dfc-ping 2.4s var(--ease) infinite; }
+@keyframes dfc-ping { 0% { transform: scale(1); opacity: .55; } 70%, 100% { transform: scale(2.8); opacity: 0; } }
+
+/* Bottom tab bar on phones. */
+.dfc-tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid;
+  padding: 6px max(8px, env(safe-area-inset-left, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-right, 0px));
+  background: rgba(250, 249, 246, .9); -webkit-backdrop-filter: saturate(160%) blur(14px); backdrop-filter: saturate(160%) blur(14px);
+  border-top: 1px solid var(--line);
+}
+.dfc-tab {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border-radius: 12px;
+  font-size: 11px; font-weight: 800; color: var(--muted); text-decoration: none;
+  transition: color var(--t-quick) var(--ease), background-color var(--t-quick) var(--ease);
+}
+.dfc-tab svg { width: 22px; height: 22px; transition: transform var(--t-std) var(--ease); }
+.dfc-tab[aria-current="page"] { color: var(--brand-ink); background: var(--brand-soft); }
+.dfc-tab[aria-current="page"] svg { transform: translateY(-1px) scale(1.06); }
+.dfc-violet .dfc-tab[aria-current="page"] { color: var(--violet); background: var(--violet-soft); }
+
+/* Section titles: a short accent bar marks the start of every page. */
+.dfc-title { display: flex; flex-direction: column; gap: 6px; }
+.dfc-title h1 { position: relative; margin: 0; font-size: clamp(24px, 3.2vw, 32px); font-weight: 900; letter-spacing: -.01em; line-height: 1.2; color: var(--ink); text-wrap: balance; }
+.dfc-title h1::before {
+  content: ""; display: block; width: 28px; height: 4px; border-radius: 4px; margin-bottom: 12px;
+  background: linear-gradient(90deg, var(--brand), var(--violet));
+}
+.dfc-title p { margin: 0; max-width: 46em; color: var(--sub); font-size: 14px; line-height: 1.7; }
+
+/* Big headline on the login screens: ink fading into the brand colour. */
+.dfc-hero-title {
+  background: linear-gradient(100deg, var(--ink) 0%, var(--ink) 45%, var(--brand) 78%, var(--violet) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent !important; letter-spacing: -.015em;
+}
+
+.dfc-scope { width: min(220px, 60%); aspect-ratio: 1; color: var(--brand); margin-inline: auto; }
+.dfc-scope-compact { width: min(150px, 46%); }
+.dfc-scope svg { width: 100%; height: 100%; display: block; }
+.dfc-scope-ring { transform-origin: 50% 50%; animation: dfc-spin 40s linear infinite; }
+@keyframes dfc-spin { to { transform: rotate(360deg); } }
+
+/* ---------- Secondary layer: surfaces ---------- */
+html body .maycat-card, html body .maycat-panel, html body .maycat-price-console, html body .maycat-profile-card,
+html body .maycat-support-panel, html body .maycat-recharge-record, html body .maycat-case-record, html body .maycat-game-tile,
+html body .companion-card, html body .admin-panel, html body .admin-metric-card, html body .admin-table-wrap {
+  background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-1);
+  transition: transform var(--t-std) var(--ease), box-shadow var(--t-std) var(--ease), border-color var(--t-std) var(--ease);
+}
+/* Only things you can click lift; static panels just warm their border. */
+html body a.admin-metric-card:hover, html body article.maycat-card:hover, html body .maycat-game-tile:hover,
+html body a.maycat-card:hover, html body a.companion-card:hover {
+  transform: translateY(-3px); box-shadow: var(--shadow-2); border-color: rgba(255, 106, 61, .45);
+}
+html body .admin-panel:hover, html body .companion-card:hover { border-color: #dcd7cf; }
+html body a.admin-metric-card:active, html body a.maycat-card:active { transform: translateY(-1px) scale(.995); transition-duration: var(--t-quick); }
+
+/* Metric figures read like an instrument panel. */
+html body .admin-metric-card .text-3xl, html body .companion-card .text-2xl, html body .maycat-card .text-2xl { font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+
+/* Hero panels: warm glass with a slow light sweep across the top edge. */
+html body .companion-hero,
+html body .maycat-home-hero, html body .maycat-lobby-hero, html body .maycat-order-hero, html body .maycat-recharge-hero,
+html body .maycat-profile-hero, html body .maycat-support-hero, html body .maycat-complaint-hero, html body .maycat-settings-hero {
+  position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow-1);
+  background:
+    radial-gradient(600px 220px at 100% 0%, rgba(255, 106, 61, .14), transparent 70%),
+    radial-gradient(520px 240px at 0% 100%, rgba(109, 76, 255, .10), transparent 70%),
+    #fff;
+}
+html body .companion-hero::after,
+html body .maycat-home-hero::after, html body .maycat-lobby-hero::after, html body .maycat-order-hero::after, html body .maycat-recharge-hero::after,
+html body .maycat-profile-hero::after, html body .maycat-support-hero::after, html body .maycat-complaint-hero::after, html body .maycat-settings-hero::after {
+  content: ""; position: absolute; top: 0; left: -40%; width: 40%; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 106, 61, .9), transparent);
+  animation: dfc-sweep 6s var(--ease) 1.2s infinite;
+}
+@keyframes dfc-sweep { 0% { left: -40%; } 55%, 100% { left: 110%; } }
+
+/* ---------- Buttons ---------- */
+html body .maycat-button,
+html body [class~="bg-cyan-300"], html body [class~="bg-cyan-200"], html body [class~="bg-cyan-400"],
+html body a[class~="bg-brand"], html body button[class~="bg-brand"], html body button[class~="border-brand"][class~="bg-brand"] {
+  position: relative; overflow: hidden; isolation: isolate;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); color: #fff; border-color: transparent;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 6px 16px -6px rgba(255, 106, 61, .6);
+  transition: transform var(--t-quick) var(--ease), box-shadow var(--t-std) var(--ease), filter var(--t-quick) var(--ease);
+}
+html body .maycat-button::after,
+html body [class~="bg-cyan-300"]::after, html body [class~="bg-cyan-200"]::after, html body [class~="bg-cyan-400"]::after,
+html body a[class~="bg-brand"]::after, html body button[class~="bg-brand"]::after {
+  /* Sheen that sweeps across on hover. */
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .38) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform 700ms var(--ease);
+}
+html body .maycat-button:hover, html body [class~="bg-cyan-300"]:hover, html body [class~="bg-cyan-200"]:hover,
+html body a[class~="bg-brand"]:hover, html body button[class~="bg-brand"]:hover {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); filter: brightness(1.03) saturate(1.05);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 10px 22px -8px rgba(255, 106, 61, .7); transform: translateY(-1px);
+}
+html body .maycat-button:hover::after, html body [class~="bg-cyan-300"]:hover::after, html body [class~="bg-cyan-200"]:hover::after,
+html body a[class~="bg-brand"]:hover::after, html body button[class~="bg-brand"]:hover::after { transform: translateX(120%); }
+html body .maycat-button:active, html body [class~="bg-cyan-300"]:active, html body a[class~="bg-brand"]:active, html body button[class~="bg-brand"]:active {
+  transform: translateY(0) scale(.97); box-shadow: 0 2px 6px -2px rgba(255, 106, 61, .6); transition-duration: 80ms;
+}
+html body button:disabled, html body button[disabled] { transform: none !important; filter: grayscale(.25); box-shadow: none !important; }
+html body button:disabled::after { display: none; }
+
+html body .maycat-button-secondary {
+  background: #fff; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); box-shadow: var(--shadow-1);
+  transition: transform var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease), box-shadow var(--t-std) var(--ease);
+}
+html body .maycat-button-secondary:hover { border-color: rgba(255, 106, 61, .6); color: var(--brand-ink); transform: translateY(-1px); box-shadow: var(--shadow-2); }
+html body .maycat-button-secondary:active { transform: scale(.97); }
+html body button { transition: transform var(--t-quick) var(--ease), background-color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease), box-shadow var(--t-std) var(--ease); }
+html body button:not(:disabled):active { transform: scale(.97); }
+
+/* ---------- Inputs ---------- */
+html body .input, html body .maycat-input, html body input[type="text"], html body input[type="number"], html body input[type="email"],
+html body input[type="password"], html body input[type="search"], html body input[type="tel"], html body select, html body textarea {
+  transition: border-color var(--t-quick) var(--ease), box-shadow var(--t-std) var(--ease), background-color var(--t-quick) var(--ease);
+}
+html body .input:hover, html body .maycat-input:hover { border-color: #d6d1c8; }
+html body .input:focus, html body .maycat-input:focus, html body select:focus, html body textarea:focus { border-color: var(--brand); box-shadow: var(--ring); outline: none; }
+
+/* Choice tiles (order mode, package pickers): a check-in pop when selected. */
+html body .maycat-choice { transition: transform var(--t-std) var(--ease), border-color var(--t-quick) var(--ease), box-shadow var(--t-std) var(--ease), background-color var(--t-quick) var(--ease); }
+html body .maycat-choice:hover { transform: translateY(-2px); border-color: #ffc2ad; }
+html body .maycat-choice-active { animation: dfc-pop 320ms var(--ease); }
+@keyframes dfc-pop { 0% { transform: scale(.97); } 60% { transform: scale(1.015); } 100% { transform: scale(1); } }
+
+/* ---------- Tables ---------- */
+html body .admin-table-wrap thead { background: rgba(250, 249, 246, .92) !important; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+html body .admin-table-wrap tbody tr { transition: background-color var(--t-quick) var(--ease); }
+html body .admin-table-wrap tbody tr:hover { background: linear-gradient(90deg, rgba(255, 106, 61, .06), rgba(255, 106, 61, 0) 60%) !important; }
+
+/* ---------- Admin sidebar ---------- */
+html body .admin-sidebar { background: rgba(255, 255, 255, .72); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-right: 1px solid var(--line); }
+html body .admin-nav-item { position: relative; border-radius: 10px; transition: background-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease), padding-left var(--t-std) var(--ease); }
+html body .admin-nav-item:hover { background: rgba(21, 23, 28, .045); color: var(--ink); padding-left: 16px; }
+html body .admin-nav-item[aria-current="page"] { background: linear-gradient(90deg, var(--brand-soft), rgba(255, 241, 234, .3)); color: var(--brand-ink); padding-left: 16px; }
+html body .admin-nav-item[aria-current="page"]::before {
+  content: ""; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px;
+  background: linear-gradient(180deg, var(--brand), var(--violet)); animation: dfc-fade var(--t-std) var(--ease);
+}
+
+/* ---------- Loading placeholder ---------- */
+.dfc-skeleton { position: relative; overflow: hidden; background: #efece6; border-radius: 10px; }
+.dfc-skeleton::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .7), transparent); animation: dfc-shimmer 1.4s var(--ease) infinite;
+}
+@keyframes dfc-shimmer { to { transform: translateX(100%); } }
+
+@media (max-width: 767px) {
+  html body .maycat-neon-bg, html body .companion-console-bg, html body .admin-console-bg { background-attachment: scroll, scroll, scroll, scroll; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dfc-page > *, .dfc-page > :only-child > * { animation: none !important; }
+  .dfc-live::after, .dfc-skeleton::after, .dfc-scope-ring { animation: none !important; }
+  html body [class*="-hero"]::after { animation: none !important; display: none; }
+  html body *, html body *::before, html body *::after { transition-duration: .01ms !important; }
+}

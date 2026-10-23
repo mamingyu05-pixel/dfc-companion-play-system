@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { CustomerAuthGate } from "./auth-gate";
-import { MaycatLogo } from "./brand";
+import { CountUp, PageTransition } from "./motion";
 
 type Companion = {
   id: string;
@@ -50,48 +51,32 @@ export function CustomerShell({ children }: { children: ReactNode }) {
 
   return (
     <main className="maycat-neon-bg min-h-screen text-dfc-text">
-      <div className="maycat-grid" />
-      <div className="maycat-light-streaks" />
-
-      <header className="maycat-nav sticky top-0 z-20">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
-          <Link href="/home" className="flex items-center gap-3">
-            <MaycatLogo compact />
-            <span className="hidden sm:block">
-              <span className="block text-sm font-black text-white">小小电竞</span>
-              <span className="block text-xs text-dfc-muted">多游戏陪玩俱乐部</span>
-            </span>
+      <header className="dfc-topbar">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5 md:px-6">
+          <Link href="/home" className="dfc-brand">
+            <img src="/customer/icon.svg" alt="" />
+            <span className="hidden sm:block"><b>小小电竞</b><small>三角洲行动 · 陪玩与护航</small></span>
           </Link>
-          <nav className="hidden items-center gap-1 md:flex">
-            <NavLink href="/home">首页</NavLink>
-            <NavLink href="/companions">陪玩</NavLink>
-            <NavLink href="/recharge">充值</NavLink>
-            <NavLink href="/support">客服</NavLink>
-            <NavLink href="/settings">设置</NavLink>
-            <ExternalNavLink href={kookUrl}>KOOK</ExternalNavLink>
-            <ExternalNavLink href={discordUrl}>Discord</ExternalNavLink>
+          <nav className="hidden items-center gap-0.5 md:flex" aria-label="客户端导航">
+            {TABS.map(tab => <NavLink key={tab.href} href={tab.href}>{tab.label}</NavLink>)}
           </nav>
           <div className="flex items-center gap-2">
-            <a href="/companion/" className="rounded-dfc-control border border-dfc-gold/45 bg-dfc-gold/10 px-3 py-2 text-xs font-black text-dfc-gold transition hover:bg-dfc-gold/20">
-              陪玩入口
-            </a>
-            <Link href="/recharge" className="maycat-button-secondary px-3 py-2 text-xs font-semibold">
-              钱包
-            </Link>
+            {kookUrl ? (
+              <a href={kookUrl} target="_blank" rel="noreferrer" className="dfc-pill hidden lg:inline-flex"><span className="dfc-live" aria-hidden="true" />KOOK</a>
+            ) : null}
+            {discordUrl ? <a href={discordUrl} target="_blank" rel="noreferrer" className="dfc-pill hidden lg:inline-flex">Discord</a> : null}
+            <a href="/companion/" className="dfc-pill">陪玩入口</a>
+            <Link href="/recharge" className="dfc-pill dfc-pill-strong">钱包</Link>
           </div>
         </div>
       </header>
 
-      <div className="relative mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-6 md:pb-10">
-        <CustomerAuthGate>{children}</CustomerAuthGate>
+      <div className="relative mx-auto max-w-6xl px-4 pb-28 pt-6 md:px-6 md:pb-12">
+        <CustomerAuthGate><PageTransition>{children}</PageTransition></CustomerAuthGate>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-cyan-300/15 bg-[#050711]/95 md:hidden">
-        <MobileNavLink href="/home">首页</MobileNavLink>
-        <MobileNavLink href="/companions">陪玩</MobileNavLink>
-        <MobileNavLink href="/recharge">充值</MobileNavLink>
-        <MobileNavLink href="/support">客服</MobileNavLink>
-        <MobileNavLink href="/settings">设置</MobileNavLink>
+      <nav className="dfc-tabbar grid-cols-5 md:hidden" aria-label="移动端导航">
+        {TABS.map(tab => <MobileNavLink key={tab.href} href={tab.href} icon={tab.icon}>{tab.label}</MobileNavLink>)}
       </nav>
     </main>
   );
@@ -99,9 +84,9 @@ export function CustomerShell({ children }: { children: ReactNode }) {
 
 export function SectionHeader({ title, desc }: { title: string; desc?: string }) {
   return (
-    <div className="flex flex-col gap-1">
-      <h1 className="maycat-text-glow text-2xl font-black tracking-normal text-white md:text-3xl">{title}</h1>
-      {desc ? <p className="max-w-2xl text-sm leading-6 text-dfc-subtext">{desc}</p> : null}
+    <div className="dfc-title">
+      <h1>{title}</h1>
+      {desc ? <p>{desc}</p> : null}
     </div>
   );
 }
@@ -109,8 +94,8 @@ export function SectionHeader({ title, desc }: { title: string; desc?: string })
 export function StatCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
     <div className="maycat-card p-4">
-      <div className="text-xs text-dfc-muted">{label}</div>
-      <div className="mt-2 text-2xl font-black text-white">{value}</div>
+      <div className="text-xs font-semibold text-dfc-muted">{label}</div>
+      <div className="mt-2 text-2xl font-black tabular-nums text-white"><CountUp value={value} /></div>
       <div className="mt-1 text-xs text-dfc-subtext">{hint}</div>
     </div>
   );
@@ -244,29 +229,29 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+const icon = (d: string) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+);
+
+const TABS = [
+  { href: "/home", label: "首页", icon: icon("M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z") },
+  { href: "/companions", label: "陪玩", icon: icon("M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M21 19v-1a4 4 0 0 0-3-3.9M16 3.1a3.5 3.5 0 0 1 0 6.8") },
+  { href: "/recharge", label: "充值", icon: icon("M3 7h15a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l2.5-3h11L18 7M16.5 14h.01") },
+  { href: "/support", label: "客服", icon: icon("M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5.1A8 8 0 1 1 21 12M8.5 12h.01M12 12h.01M15.5 12h.01") },
+  { href: "/settings", label: "设置", icon: icon("M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1") }
+];
+
+function useIsActive(href: string) {
+  const pathname = usePathname();
+  return !!pathname && (pathname === href || pathname === `${href}/` || pathname.startsWith(`${href}/`));
+}
+
 function NavLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link href={href} className="rounded-dfc-control px-3 py-2 text-sm font-semibold text-dfc-subtext transition hover:bg-cyan-300/10 hover:text-cyan-200">
-      {children}
-    </Link>
-  );
+  const active = useIsActive(href);
+  return <Link href={href} aria-current={active ? "page" : undefined} className="dfc-navlink">{children}</Link>;
 }
 
-function ExternalNavLink({ href, children }: { href: string; children: ReactNode }) {
-  if (!href) {
-    return <Link href="/support" className="rounded-dfc-control border border-cyan-300/25 px-3 py-2 text-sm text-dfc-subtext">{children} 未配置，联系客服</Link>;
-  }
-  return (
-    <a href={href} target="_blank" rel="noreferrer" className="rounded-dfc-control border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-sm font-black text-cyan-100 transition hover:border-cyan-300/60 hover:bg-cyan-300/20">
-      {children}
-    </a>
-  );
-}
-
-function MobileNavLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link href={href} className="py-3 text-center text-xs font-semibold text-dfc-subtext transition hover:text-cyan-200">
-      {children}
-    </Link>
-  );
+function MobileNavLink({ href, icon, children }: { href: string; icon: ReactNode; children: ReactNode }) {
+  const active = useIsActive(href);
+  return <Link href={href} aria-current={active ? "page" : undefined} className="dfc-tab">{icon}{children}</Link>;
 }

@@ -124,12 +124,12 @@ export function CompanionLoginForm() {
 
   return (
     <main className="companion-console-bg min-h-screen px-4 py-8 text-dfc-text">
-      <section className="mx-auto grid min-h-[calc(100vh-64px)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_500px]">
+      <section className="dfc-page mx-auto grid min-h-[calc(100vh-64px)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_500px]">
         <div className="max-w-3xl">
           <div className="inline-flex rounded-dfc-control border border-dfc-gold/35 bg-dfc-gold/10 px-4 py-2 text-sm font-black text-dfc-gold">
             陪玩专用入口
           </div>
-          <h1 className="mt-5 text-4xl font-black leading-tight text-white md:text-6xl">陪玩接单工作台</h1>
+          <h1 className="dfc-hero-title mt-5 text-4xl font-black leading-tight md:text-6xl">陪玩接单工作台</h1>
           <p className="mt-5 max-w-2xl text-base leading-8 text-dfc-subtext">
             邮箱注册会创建待审核陪玩资料。通过审核和上架后，才能正式接单、查看派单、维护资料、绑定 KOOK / Discord，并提交提现。
           </p>

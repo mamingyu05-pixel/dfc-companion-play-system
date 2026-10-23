@@ -39,7 +39,8 @@ function harness(search = '', initial = ready(), config = {}, orders = [], entry
       if (id === 'react') return hooks;
       if (id === 'react/jsx-runtime') return jsx;
       if (id === 'next/link') return 'a';
-      if (id === 'next/navigation') return { useParams: () => ({ id: 'a&b' }) };
+      if (id === 'next/navigation') return { useParams: () => ({ id: 'a&b' }), usePathname: () => '/companions' };
+      if (id === './motion') return { PageTransition: stub, CountUp: stub };
       if (id === './order-client') return { createOrderClient: () => client };
       if (id === './order-entry' || id === '../order/order-entry') return load('../app/order/order-entry.ts');
       if (id === './selection-draft') return load('../app/order/selection-draft.ts');
