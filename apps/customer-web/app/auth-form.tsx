@@ -19,6 +19,7 @@ type AuthResponse = {
 };
 
 type PublicConfig = {
+  login?: { kook?: boolean; discord?: boolean };
   support?: {
     wechatId?: string | null;
     kookUrl?: string | null;
@@ -268,6 +269,12 @@ export function CustomerAuthForm() {
           <form onSubmit={submit} className="mt-5 space-y-4" autoComplete={mode === "login" ? "on" : "off"}>
             {mode !== "forgot" ? (
               <>
+                {publicConfig.login?.kook ? (
+                  <a href="/api/auth/oauth/kook/start" className="maycat-button block w-full px-4 py-3 text-center text-base">
+                    KOOK 一键登录
+                    <span className="block text-xs font-semibold opacity-90">第一次登录自动建档，KOOK 里下过单的账号直接进入</span>
+                  </a>
+                ) : null}
                 <div className="grid gap-2 sm:grid-cols-2">
                   <OAuthButton href="/api/auth/oauth/discord/start" label="Discord 登录" />
                   <CommunityAuthLink

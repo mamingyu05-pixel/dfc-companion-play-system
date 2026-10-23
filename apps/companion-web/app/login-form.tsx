@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 type AuthMode = "register" | "login";
 
 type PublicConfig = {
+  login?: { kook?: boolean; discord?: boolean };
   support?: {
     wechatId?: string | null;
     discordUrl?: string | null;
@@ -165,6 +166,12 @@ export function CompanionLoginForm() {
             </button>
           </div>
 
+          {publicConfig.login?.kook ? (
+            <a href="/api/auth/oauth/kook/start?portal=companion" className="mb-2 block w-full rounded-[10px] bg-brand px-4 py-3 text-center text-base font-black text-white hover:bg-brand-ink">
+              KOOK 一键登录
+              <span className="block text-xs font-semibold opacity-90">已在 KOOK 认证的陪玩直接进入工作台</span>
+            </a>
+          ) : null}
           <div className="grid gap-2 sm:grid-cols-2">
             <OAuthButton href="/api/auth/oauth/discord/start?portal=companion" label="Discord 注册/登录" />
             <CommunityAuthLink
@@ -280,7 +287,7 @@ export function CompanionLoginForm() {
           </form>
 
           <div className="mt-4 rounded-dfc-control border border-cyan-300/15 bg-cyan-300/5 px-3 py-3 text-xs leading-5 text-dfc-subtext">
-            KOOK OAuth 暂时受平台审核限制，KOOK 陪玩可以先用邮箱注册，进入陪玩端后生成 KOOK 绑定码完成绑定。
+            {publicConfig.login?.kook ? "" : "KOOK 一键登录还未开启，KOOK 陪玩可以先用邮箱注册，进入陪玩端后生成 KOOK 绑定码完成绑定。"}
             VX 客服：<span className="font-black text-cyan-200">{publicConfig.support?.wechatId || "暂未配置"}</span>
           </div>
         </section>

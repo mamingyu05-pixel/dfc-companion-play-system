@@ -528,7 +528,16 @@ export class AuthService {
         ? `https://www.kookapp.cn/app/channels/${process.env.KOOK_GUILD_ID}/${process.env.KOOK_VOICE_WAITING_CHANNEL_ID}`
         : process.env.SUPPORT_KOOK_URL?.trim() || null);
 
+    // Login pages only offer a one-click button for providers whose OAuth app is fully configured.
+    // (Kept free of type syntax: a customer-web test evaluates this method body as plain JavaScript.)
+    const env = process.env;
+    const login = {
+      kook: Boolean(env.KOOK_CLIENT_ID?.trim() && env.KOOK_CLIENT_SECRET?.trim() && env.KOOK_REDIRECT_URI?.trim()),
+      discord: Boolean(env.DISCORD_CLIENT_ID?.trim() && env.DISCORD_CLIENT_SECRET?.trim() && env.DISCORD_REDIRECT_URI?.trim())
+    };
+
     return {
+      login,
       pricing: {
         platformMatchUnitPrice: process.env.PLATFORM_MATCH_UNIT_PRICE || null
       },
