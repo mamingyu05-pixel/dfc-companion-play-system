@@ -126,10 +126,11 @@
 
   .customer { --accent: var(--brand); --accent-soft: var(--brand-soft); --accent-on: #fff; }
   .companion { --accent: var(--violet); --accent-soft: var(--violet-soft); --accent-on: #fff; }
-  .admin {
+  a.card.admin {
     --accent: var(--brand); --accent-soft: rgba(255, 106, 61, .14); --accent-on: #fff;
     background: var(--steel); border-color: var(--steel); color: var(--steel-ink);
   }
+  a.card.admin:hover { border-color: var(--brand); }
   .admin p, .admin .code { color: var(--steel-sub); }
   .admin .who { color: #ffb197; }
   .admin h2 { color: var(--steel-ink); }
@@ -150,9 +151,19 @@
     .strip .wrap { grid-template-columns: 1fr; gap: 16px; }
   }
   @media (max-width: 480px) {
-    .hero { padding-block: 36px 28px; }
+    /* On a phone all three entrances should sit near the first screen, so the cards drop their detail. */
+    .hero { padding-block: 22px 18px; }
+    h1 { margin-top: 10px; }
+    .facts { display: none; }
     .kook .txt-long { display: none; }
-    a.card { padding: 22px 18px 18px; }
+    .cards { gap: 12px; }
+    a.card { padding: 16px; gap: 10px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 14px; }
+    .card .top { grid-row: span 3; }
+    .card .code, .card ul, .card p { display: none; }
+    .icon { width: 46px; height: 46px; }
+    .card h2 { margin: 0; font-size: 20px; }
+    .who { grid-column: 2; }
+    .go { grid-column: 1 / -1; margin-top: 2px; padding: 11px 14px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .scope .ring { animation: none; }
