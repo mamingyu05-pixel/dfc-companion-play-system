@@ -2,22 +2,45 @@ events {}
 
 http {
   resolver 127.0.0.11 valid=10s ipv6=off;
+  # Uploads (payment proofs, vault screenshots) are accepted up to 20 MB by the API.
+  client_max_body_size 21m;
 
+  # Plain HTTP answers every host name and the bare IP. Platform webhooks stay on HTTP because
+  # KOOK and Discord do not follow redirects; everything else moves to the HTTPS site.
   server {
-    listen 80;
-    server_name __DOMAIN__;
+    listen 80 default_server;
+    server_name _;
+    set $api_server http://api-server:4000;
 
     location /.well-known/acme-challenge/ {
       root /var/www/certbot;
     }
 
+    location ~ ^/api/(kook|discord)/ {
+      proxy_pass $api_server;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location / {
-      return 301 https://$host$request_uri;
+      return 301 https://__DOMAIN__$request_uri;
     }
   }
 
   server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
+    server_name www.__DOMAIN__;
+    ssl_certificate /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
+    return 301 https://__DOMAIN__$request_uri;
+  }
+
+  server {
+    listen 443 ssl default_server;
+    http2 on;
     server_name __DOMAIN__;
     set $api_server http://api-server:4000;
     set $customer_web http://customer-web:3000;
@@ -26,6 +49,8 @@ http {
 
     ssl_certificate /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
 
     location = / {
       root /usr/share/nginx/portal;
@@ -85,11 +110,12 @@ http {
       return 308 /admin/;
     }
 
+    # The API trusts X-Forwarded-For for rate limits, so pass only the real peer, never a client-supplied chain.
     location /api/ {
       proxy_pass $api_server;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-For $remote_addr;
       proxy_set_header X-Forwarded-Proto $scheme;
     }
 

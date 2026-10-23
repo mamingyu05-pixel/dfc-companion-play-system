@@ -100,7 +100,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # scripts/enable-https.sh points this at the generated HTTPS config.
+      - ${NGINX_CONF_FILE:-./infra/nginx/nginx.conf}:/etc/nginx/nginx.conf:ro
       - ./infra/nginx/portal:/usr/share/nginx/portal:ro
       - certbot_www:/var/www/certbot:ro
       - letsencrypt:/etc/letsencrypt:ro

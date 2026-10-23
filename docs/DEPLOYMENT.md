@@ -92,8 +92,12 @@ http://你的域名/admin
 执行：
 
 ```bash
-bash scripts/enable-https.sh
+sudo bash scripts/enable-https.sh
 ```
+
+脚本会为 `DOMAIN` 和 `www.DOMAIN` 申请证书，把生成的配置写到 `infra/nginx/nginx.https.conf`（不进 git），在 `.env` 里设置 `NGINX_CONF_FILE` 指向它，并安装每天两次的自动续期任务 `/etc/cron.d/dfc-certbot`。之后 `http://` 和 IP 访问都会跳到 `https://DOMAIN/`，只有 `/api/kook/` 和 `/api/discord/` 仍可用 HTTP 访问，旧的 Webhook 地址不会失效。
+
+启用后把 `.env` 里的 `CUSTOMER_WEB_URL`、`COMPANION_WEB_URL`、`ADMIN_WEB_URL` 改成 `https://DOMAIN/...`，再 `docker compose up -d api-server kook-bot`，机器人和邮件里的链接才会用新域名。
 
 ## KOOK Webhook
 
