@@ -6,9 +6,8 @@ import { ActionButton, CompanionShell, SectionHeader, StatusBadge } from "../com
 
 type CustomerOption = {
   id: string;
-  email: string;
   displayName: string;
-  externalAccounts: Array<{ platform: string; externalUserId: string; displayName?: string | null }>;
+  externalAccounts: Array<{ platform: string; displayName?: string | null }>;
 };
 
 const gameOptions = [
@@ -121,7 +120,7 @@ export default function CompanionCustomerDraftsPage() {
           <h2 className="text-base font-black text-white">搜索老板账号</h2>
           <p className="mt-1 text-xs leading-5 text-dfc-muted">可输入邮箱、昵称、KOOK/DC 昵称或平台 ID。</p>
           <div className="mt-4 grid gap-2 md:grid-cols-[1fr_auto] xl:grid-cols-1">
-            <input value={query} onChange={(event) => setQuery(event.target.value)} className="input" placeholder="例如 66 / boss@qq.com" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} className="input" placeholder="老板昵称或 KOOK 昵称；邮箱需输入完整地址" />
             <ActionButton onClick={() => void searchCustomers()}>搜索客户</ActionButton>
           </div>
 
@@ -139,9 +138,8 @@ export default function CompanionCustomerDraftsPage() {
                   <span className="font-black text-white">{customer.displayName}</span>
                   {customerId === customer.id ? <StatusBadge tone="success">已选择</StatusBadge> : null}
                 </div>
-                <div className="mt-1 text-xs text-dfc-muted">{customer.email}</div>
                 <div className="mt-1 text-xs text-cyan-100/75">
-                  {customer.externalAccounts.map((item) => `${item.platform}:${item.displayName || item.externalUserId}`).join(" / ") || "未绑定平台账号"}
+                  {customer.externalAccounts.map((item) => `${item.platform}${item.displayName ? `:${item.displayName}` : ""}`).join(" / ") || "未绑定平台账号"}
                 </div>
               </button>
             ))}
@@ -159,7 +157,7 @@ export default function CompanionCustomerDraftsPage() {
                 <option value="">先搜索并选择老板</option>
                 {customers.map((customer) => (
                   <option key={customer.id} value={customer.id}>
-                    {customer.displayName} / {customer.email}
+                    {customer.displayName}
                   </option>
                 ))}
               </select>
@@ -188,7 +186,7 @@ export default function CompanionCustomerDraftsPage() {
               报价档位由后台根据模式自动判断。陪玩只记录老板需求，不手动选择或修改单价。
             </div>
             <div className="rounded-dfc border border-cyan-300/15 bg-[#08111f] p-3 text-xs leading-5 text-dfc-subtext">
-              当前老板：{selectedCustomer ? `${selectedCustomer.displayName} / ${selectedCustomer.email}` : "未选择"}
+              当前老板：{selectedCustomer ? selectedCustomer.displayName : "未选择"}
             </div>
           </div>
 

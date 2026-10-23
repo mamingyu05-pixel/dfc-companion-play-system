@@ -14,7 +14,7 @@ type Order = {
   totalAmount: string;
   status: string;
   serviceKind?: string;
-  customer?: { displayName: string; email: string };
+  customer?: { displayName: string };
 };
 
 function isOrderList(value: unknown): value is Order[] {
@@ -26,7 +26,7 @@ function isOrderList(value: unknown): value is Order[] {
     if (order.customer === undefined || order.customer === null) return true;
     if (typeof order.customer !== "object" || Array.isArray(order.customer)) return false;
     const customer = order.customer as Record<string, unknown>;
-    return typeof customer.displayName === "string" && typeof customer.email === "string";
+    return typeof customer.displayName === "string";
   });
 }
 
@@ -211,7 +211,7 @@ export default function CompanionOrdersPage() {
                   <div className="min-w-0">
                     <h2 className="break-words text-base font-black text-white">{order.orderNo}</h2>
                     <p className="mt-1 text-sm leading-6 text-dfc-subtext">{order.serviceKind === "GUARANTEE" ? `${order.mode} / 达标后报完成` : `${order.mode} / ${order.hours} 小时`}</p>
-                    {order.customer ? <p className="mt-1 break-words text-xs text-dfc-muted">{order.customer.displayName} / {order.customer.email}</p> : null}
+                    {order.customer ? <p className="mt-1 break-words text-xs text-dfc-muted">{order.customer.displayName}</p> : null}
                   </div>
                   <StatusBadge tone={orderStatusTone(order.status)}>{orderStatusLabel(order.status)}</StatusBadge>
                 </div>

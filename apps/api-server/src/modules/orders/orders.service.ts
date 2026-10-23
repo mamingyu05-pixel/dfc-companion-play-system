@@ -161,7 +161,7 @@ export class OrdersService {
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
       }
     });
-    return orders.map((order) => ({ ...this.serializeOrder(order, false),
+    return orders.map((order) => ({ ...withoutCustomerContact(this.serializeOrder(order, false)),
       refundAmount: order.refundAmount.toString(),
       hasReview: Boolean(order.review),
       autoAcceptanceDueAt: order.status === OrderStatus.AWAITING_ACCEPTANCE && !order.complaints.length
@@ -277,7 +277,7 @@ export class OrdersService {
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
       }
     });
-    return orders.map((order) => this.serializeOrder(order, false));
+    return orders.map((order) => withoutCustomerContact(this.serializeOrder(order, false)));
   }
 
   async listAvailableOrdersForCompanion(companionId: string) {
@@ -324,20 +324,21 @@ export class OrdersService {
       where: {
         role: UserRole.CUSTOMER,
         status: UserStatus.ACTIVE,
+        // Companions find a customer by name or KOOK/Discord nickname. An email or platform ID only
+        // matches exactly, so the search cannot be used to list other customers' contact details.
         OR: [
-          { email: { contains: keyword, mode: "insensitive" } },
+          { email: { equals: keyword, mode: "insensitive" } },
           { displayName: { contains: keyword, mode: "insensitive" } },
           { externalAccounts: { some: { displayName: { contains: keyword, mode: "insensitive" } } } },
-          { externalAccounts: { some: { externalUserId: { contains: keyword } } } }
+          { externalAccounts: { some: { externalUserId: keyword } } }
         ]
       },
       take: 20,
       orderBy: { updatedAt: "desc" },
       select: {
         id: true,
-        email: true,
         displayName: true,
-        externalAccounts: { select: { platform: true, externalUserId: true, displayName: true } }
+        externalAccounts: { select: { platform: true, displayName: true } }
       }
     });
 
@@ -2048,4 +2049,9 @@ export class OrdersService {
     const random = Math.random().toString(36).slice(2, 7).toUpperCase();
     return `MAYG${stamp}${random}`;
   }
+}
+
+// Companions see who the customer is, never how to contact them outside the platform.
+function withoutCustomerContact<T extends { customer?: { id: string; displayName: string } | null }>(order: T) {
+  return { ...order, customer: order.customer ? { id: order.customer.id, displayName: order.customer.displayName } : order.customer };
 }

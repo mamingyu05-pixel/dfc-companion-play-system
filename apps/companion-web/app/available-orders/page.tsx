@@ -13,7 +13,7 @@ type Order = {
   totalAmount: string;
   status: string;
   dispatchVersion?: number;
-  customer?: { displayName: string; email: string };
+  customer?: { displayName: string };
 };
 
 type DraftOrder = {
@@ -375,7 +375,7 @@ function toOrderCard(order: Order) {
   return {
     id: order.orderNo,
     mode: `${gameLabel(order.game)} / ${order.mode}`,
-    customer: order.customer ? `${order.customer.displayName} / ${order.customer.email}` : undefined,
+    customer: order.customer ? order.customer.displayName : undefined,
     hours: Number(order.hours),
     amount: Number(order.totalAmount),
     status: order.status
