@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
+import { adminApi, BatchBar, BatchButton, ExportButton, SelectBox, useSelection } from "../batch-tools";
 
 type AdminUser = {
   id: string;
@@ -45,6 +46,8 @@ const gameOptions = [
 export default function UsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState("");
+  const selection = useSelection();
+  const [batchBusy, setBatchBusy] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
@@ -315,7 +318,24 @@ export default function UsersPage() {
     return { customers, companions, admins, banned };
   }, [visibleUsers]);
 
+  // Staff accounts are never batch-selectable; the server refuses them too.
+  const selectableIds = filteredUsers.filter((user) => user.role === "CUSTOMER" || user.role === "COMPANION").map((user) => user.id);
+  async function batchStatus(next: "ACTIVE" | "BANNED") {
+    const label = next === "BANNED" ? "封禁" : "解封";
+    if (!window.confirm(`批量${label} ${selection.selected.length} 个账号？`)) return;
+    setBatchBusy(true); setError(""); setStatus("");
+    try {
+      const result = await adminApi<{ updated: number }>("/api/admin/batch/users/status", { method: "POST", body: JSON.stringify({ ids: selection.selected, status: next }) });
+      setStatus(`已批量${label} ${result.updated} 个账号`);
+      selection.clear();
+      await loadUsers();
+    } catch (err) { setError(err instanceof Error ? err.message : "批量操作失败"); }
+    finally { setBatchBusy(false); }
+  }
   const rows = filteredUsers.map((user) => [
+    selectableIds.includes(user.id)
+      ? <SelectBox key={`${user.id}-pick`} label={`选择 ${user.displayName}`} checked={selection.has(user.id)} onChange={() => selection.toggle(user.id)} />
+      : <span key={`${user.id}-pick`} />,
     shortId(user.id),
     <div key={`${user.id}-profile`}>
       <div className="font-semibold text-white">{user.displayName}</div>
@@ -359,6 +379,7 @@ export default function UsersPage() {
   return (
     <AdminShell>
       <SectionHeader eyebrow="Account Control" title="用户管理" desc="搜索真实用户，处理人工调账、重置密码、封禁解封，并创建或提升管理员账号。资金动作必须写备注。" />
+      <div className="mb-4"><ExportButton kind="users" label="用户" /></div>
 
       <section className="mb-5 grid gap-4 md:grid-cols-4">
         <Signal label="客户" value={String(stats.customers)} hint="可充值下单" tone="cyan" />
@@ -528,7 +549,7 @@ export default function UsersPage() {
         </div>
         {isUserTableOpen ? (
           <DataTable
-            columns={["ID", "资料", "角色", "状态", "钱包", "绑定", "操作"]}
+            columns={[<SelectBox key="all" label="全选当前列表的客户和陪玩" checked={selectableIds.length > 0 && selectableIds.every((id) => selection.has(id))} onChange={() => selection.toggleAll(selectableIds)} />, "ID", "资料", "角色", "状态", "钱包", "绑定", "操作"]}
             rows={rows}
             maxHeightClassName="max-h-[620px]"
             stickyHeader
@@ -538,6 +559,10 @@ export default function UsersPage() {
             用户列表已收起。需要查看、封禁或搜索结果时点击“展开列表”。
           </div>
         )}
+        <BatchBar count={selection.selected.length} onClear={selection.clear}>
+          <BatchButton tone="danger" disabled={batchBusy} onClick={() => void batchStatus("BANNED")}>批量封禁</BatchButton>
+          <BatchButton tone="plain" disabled={batchBusy} onClick={() => void batchStatus("ACTIVE")}>批量解封</BatchButton>
+        </BatchBar>
       </section>
     </AdminShell>
   );

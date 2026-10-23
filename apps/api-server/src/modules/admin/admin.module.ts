@@ -10,11 +10,12 @@ import { OperationsController } from "./operations.controller";
 import { AnalyticsService } from "./analytics.service";
 import { AnalyticsController } from "./analytics.controller";
 import { KookMemberImportController } from "./kook-member-import.controller";
+import { AdminBatchController } from "./batch.controller";
 import { KookMemberImportService } from "./kook-member-import.service";
 
 @Module({
   imports: [AuthModule, OrdersModule, PrismaModule, WalletModule],
-  controllers: [AdminController, OperationsController, AnalyticsController, KookMemberImportController],
+  controllers: [AdminController, OperationsController, AnalyticsController, KookMemberImportController, AdminBatchController],
   providers: [CompanionExternalAccountsService, OperationsService, AnalyticsService, KookMemberImportService]
 })
 export class AdminModule {}

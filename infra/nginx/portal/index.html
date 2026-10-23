@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>May猫饼电竞 · 选择入口</title>
+<link rel="icon" href="/icon.svg">
+<style>
+  :root { --bg: #050711; --panel: #0b1222; --line: rgba(103, 232, 249, .22); --text: #f1f5ff; --muted: #94a3c4; --cyan: #67e8f9; --gold: #facc15; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(1200px 600px at 20% -10%, rgba(103,232,249,.12), transparent 60%), var(--bg);
+    color: var(--text); font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; display: flex; flex-direction: column; }
+  main { width: 100%; max-width: 980px; margin: 0 auto; padding: 48px 16px 32px; flex: 1; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand img { width: 44px; height: 44px; border-radius: 10px; }
+  .brand b { font-size: 20px; }
+  .brand small { display: block; color: var(--cyan); font-size: 11px; letter-spacing: .2em; }
+  h1 { font-size: clamp(28px, 6vw, 44px); margin: 36px 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 32px; font-size: 16px; }
+  .cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  a.card { display: block; text-decoration: none; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 24px;
+    transition: transform .15s, border-color .15s; }
+  a.card:hover, a.card:focus-visible { transform: translateY(-2px); border-color: var(--cyan); outline: none; }
+  .card .tag { display: inline-block; font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
+  .card h2 { font-size: 24px; margin: 14px 0 6px; }
+  .card p { color: var(--muted); margin: 0 0 20px; line-height: 1.6; font-size: 14px; }
+  .card .go { font-weight: 900; }
+  .customer .tag { background: rgba(103,232,249,.15); color: var(--cyan); }
+  .customer .go { color: var(--cyan); }
+  .companion { border-color: rgba(250,204,21,.35); }
+  .companion:hover, .companion:focus-visible { border-color: var(--gold) !important; }
+  .companion .tag { background: rgba(250,204,21,.15); color: var(--gold); }
+  .companion .go { color: var(--gold); }
+  .staff { margin-top: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; }
+  .staff a { color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 8px 16px; text-decoration: none; font-weight: 700; }
+  .staff a:hover { border-color: var(--cyan); }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><img src="/icon.svg" alt=""><div><b>May猫饼电竞</b><small>MAYCAT CLUB</small></div></div>
+  <h1>你是来做什么的？</h1>
+  <p class="lead">选择你的身份进入对应入口。</p>
+  <div class="cards">
+    <a class="card customer" href="/customer/">
+      <span class="tag">我是客户</span>
+      <h2>找陪玩 / 下单</h2>
+      <p>选陪玩、保底护航、查看订单和余额。钱先托管，你验收后才结算给陪玩。</p>
+      <span class="go">进入客户端 →</span>
+    </a>
+    <a class="card companion" href="/companion/">
+      <span class="tag">我是陪玩</span>
+      <h2>接单 / 看收益</h2>
+      <p>查看派给你的订单、开始服务、报完成、上传战绩截图，查看收益和申请提现。</p>
+      <span class="go">进入陪玩端 →</span>
+    </a>
+  </div>
+  <div class="staff"><span>工作人员：</span><a href="/admin/">管理后台</a></div>
+</main>
+<footer>KOOK / Discord 客服频道同样可以下单和接单</footer>
+</body>
+</html>

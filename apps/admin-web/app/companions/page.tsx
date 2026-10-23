@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
+import { adminApi, BatchBar, BatchButton, SelectBox, useSelection } from "../batch-tools";
 
 type Companion = {
   userId: string;
@@ -46,6 +47,22 @@ export default function CompanionsPage() {
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const selection = useSelection();
+  const [batchPrice, setBatchPrice] = useState("");
+  const [batchCommission, setBatchCommission] = useState("");
+  const [batchBusy, setBatchBusy] = useState(false);
+
+  async function applyBatch(change: { status?: string; pricePerHour?: string; commissionRate?: string }, label: string) {
+    if (!window.confirm(`对选中的 ${selection.selected.length} 名陪玩${label}？`)) return;
+    setBatchBusy(true); setError(""); setStatus("");
+    try {
+      const result = await adminApi<{ updated: number }>("/api/admin/batch/companions", { method: "POST", body: JSON.stringify({ userIds: selection.selected, ...change }) });
+      setStatus(`已${label}：${result.updated} 名陪玩`);
+      selection.clear(); setBatchPrice(""); setBatchCommission("");
+      await loadCompanions();
+    } catch (err) { setError(err instanceof Error ? err.message : "批量修改失败"); }
+    finally { setBatchBusy(false); }
+  }
 
   async function loadCompanions() {
     const token = localStorage.getItem("dfc_admin_token");
@@ -221,10 +238,11 @@ export default function CompanionsPage() {
       </section>
 
       <DataTable
-        columns={["ID", "资料", "游戏", "账号", "段位", "价格/抽成", "资料状态", "在线", "收益", "操作"]}
+        columns={[<SelectBox key="all" label="全选当前列表" checked={filteredCompanions.length > 0 && filteredCompanions.every((item) => selection.has(item.userId))} onChange={() => selection.toggleAll(filteredCompanions.map((item) => item.userId))} />, "ID", "资料", "游戏", "账号", "段位", "价格/抽成", "资料状态", "在线", "收益", "操作"]}
         maxHeightClassName="max-h-[680px]"
         stickyHeader
         rows={filteredCompanions.map((item) => [
+          <SelectBox key={`${item.userId}-pick`} label={`选择 ${item.nickname}`} checked={selection.has(item.userId)} onChange={() => selection.toggle(item.userId)} />,
           shortId(item.userId),
           <div key={`${item.userId}-profile`} className="flex items-center gap-3">
             <SafeAvatar nickname={item.nickname} avatarUrl={item.avatarUrl} />
@@ -268,6 +286,14 @@ export default function CompanionsPage() {
           </div>
         ])}
       />
+      <BatchBar count={selection.selected.length} onClear={selection.clear}>
+        <BatchButton disabled={batchBusy} onClick={() => void applyBatch({ status: "LISTED" }, "批量上架")}>上架</BatchButton>
+        <BatchButton tone="plain" disabled={batchBusy} onClick={() => void applyBatch({ status: "UNLISTED" }, "批量下架")}>下架</BatchButton>
+        <span className="flex items-center gap-1 text-sm">时薪 ¥<input className="input w-20" inputMode="decimal" value={batchPrice} onChange={(event) => setBatchPrice(event.target.value)} /></span>
+        <BatchButton tone="plain" disabled={batchBusy || !batchPrice} onClick={() => void applyBatch({ pricePerHour: batchPrice }, `统一改时薪为 ¥${batchPrice}`)}>改时薪</BatchButton>
+        <span className="flex items-center gap-1 text-sm">抽成<input className="input w-16" inputMode="decimal" placeholder="20" value={batchCommission} onChange={(event) => setBatchCommission(event.target.value)} />%</span>
+        <BatchButton tone="plain" disabled={batchBusy || !batchCommission} onClick={() => void applyBatch({ commissionRate: String(Number(batchCommission) / 100) }, `统一改抽成为 ${batchCommission}%`)}>改抽成</BatchButton>
+      </BatchBar>
     </AdminShell>
   );
 }

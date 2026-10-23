@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 import { LazyImage } from "../lazy-image";
+import Link from "next/link";
+import { adminApi, BatchBar, BatchButton, ExportButton, SelectBox, sumYuan, useSelection } from "../batch-tools";
 
 type RechargeRequest = {
   id: string;
@@ -34,6 +36,8 @@ export default function RechargesPage() {
   const inFlight = useRef(new Set<string>());
   const [pendingIds, setPendingIds] = useState<string[]>([]);
   const [uncertainIds, setUncertainIds] = useState<string[]>([]);
+  const selection = useSelection();
+  const [batchBusy, setBatchBusy] = useState(false);
 
   async function loadRecharges() {
     const token = localStorage.getItem("dfc_admin_token");
@@ -90,6 +94,29 @@ export default function RechargesPage() {
     }
   }
 
+  async function reviewSelected(nextStatus: "APPROVED" | "REJECTED") {
+    const chosen = recharges.filter((item) => selection.has(item.id) && item.status === "PENDING");
+    if (!chosen.length) return;
+    const total = sumYuan(chosen.map((item) => item.amount));
+    const action = nextStatus === "APPROVED" ? "通过" : "拒绝";
+    if (!window.confirm(`批量${action} ${chosen.length} 笔充值？
+合计金额：¥${total}
+请确认每张截图都已核对。`)) return;
+    setBatchBusy(true); setError(""); setStatus("");
+    try {
+      const result = await adminApi<{ done: number; failed: Array<{ id: string; error?: string }> }>("/api/admin/batch/recharges/review", {
+        method: "POST", body: JSON.stringify({ ids: chosen.map((item) => item.id), status: nextStatus, expectedTotal: total })
+      });
+      setStatus(`已批量${action} ${result.done} 笔，合计 ¥${total}${result.failed.length ? `；${result.failed.length} 笔未处理，请逐笔核对` : ""}`);
+      selection.clear();
+    } catch (err) {
+      setError(err instanceof Error ? toChineseError(err.message) : "批量处理失败");
+    } finally {
+      setBatchBusy(false);
+      await loadRecharges().catch(() => setError("列表刷新失败，请手动刷新核对"));
+    }
+  }
+
   const stats = useMemo(() => {
     const pending = recharges.filter((item) => item.status === "PENDING");
     const approved = recharges.filter((item) => item.status === "APPROVED");
@@ -97,7 +124,12 @@ export default function RechargesPage() {
     return { pendingCount: pending.length, approvedCount: approved.length, pendingAmount };
   }, [recharges]);
 
+  const pendingRows = recharges.filter((item) => item.status === "PENDING").map((item) => item.id);
+  const selectedPending = recharges.filter((item) => selection.has(item.id) && item.status === "PENDING");
   const rows = recharges.map((item) => [
+    item.status === "PENDING"
+      ? <SelectBox key={`${item.id}-pick`} label={`选择 ${item.id}`} checked={selection.has(item.id)} onChange={() => selection.toggle(item.id)} />
+      : <span key={`${item.id}-pick`} />,
     <div key={`${item.id}-id`}>
       <div className="font-black text-white">{shortId(item.id)}</div>
       <div className="mt-1 text-xs text-dfc-muted">{formatDateTime(item.createdAt)}</div>
@@ -149,9 +181,19 @@ export default function RechargesPage() {
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
-      <div className="mb-4"><ActionButton onClick={() => void loadRecharges().catch(() => setError("刷新失败，请保留原操作上下文"))}>刷新并核对状态</ActionButton></div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Link href="/staff-recharge" className="rounded border border-dfc-gold/60 bg-dfc-gold px-3 py-1.5 text-sm font-black text-slate-950">客户转账给客服？代客充值</Link>
+        <ActionButton onClick={() => void loadRecharges().catch(() => setError("刷新失败，请保留原操作上下文"))}>刷新并核对状态</ActionButton>
+        {pendingRows.length ? <BatchButton tone="plain" onClick={() => selection.toggleAll(pendingRows)}>全选待审核（{pendingRows.length}）</BatchButton> : null}
+        <ExportButton kind="recharges" label="充值记录" />
+      </div>
 
-      <DataTable columns={["编号", "客户", "金额", "凭证", "状态", "操作"]} rows={rows} />
+      <DataTable columns={["", "编号", "客户", "金额", "凭证", "状态", "操作"]} rows={rows} />
+      <BatchBar count={selectedPending.length} onClear={selection.clear}>
+        <span className="text-sm text-dfc-gold">合计 ¥{sumYuan(selectedPending.map((item) => item.amount))}</span>
+        <BatchButton disabled={batchBusy} onClick={() => void reviewSelected("APPROVED")}>批量通过</BatchButton>
+        <BatchButton tone="danger" disabled={batchBusy} onClick={() => void reviewSelected("REJECTED")}>批量拒绝</BatchButton>
+      </BatchBar>
     </AdminShell>
   );
 }

@@ -10,7 +10,8 @@ type Response = { status(code: number): { json(body: unknown): unknown } };
 // The larger bounded parser is deliberately scoped to the image upload endpoints listed here.
 const IMAGE_UPLOAD_ROUTES: Array<{ path: RegExp; tooLarge: string }> = [
   { path: /^\/api\/wallet\/recharge-requests\/?$/, tooLarge: "充值申请内容过大，请使用不超过2MiB的凭证图片并减少备注后重试，也可不附图片提交人工核对。" },
-  { path: /^\/api\/orders\/[^/]+\/evidence\/?$/, tooLarge: "凭证内容过大，请使用不超过2MiB的截图并精简备注后重试。" }
+  { path: /^\/api\/orders\/[^/]+\/evidence\/?$/, tooLarge: "凭证内容过大，请使用不超过2MiB的截图并精简备注后重试。" },
+  { path: /^\/api\/admin\/recharges\/staff-record\/?$/, tooLarge: "转账截图过大，请使用不超过2MiB的图片。" }
 ];
 
 export function configureRechargeBodyParser(app: INestApplication) {

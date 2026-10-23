@@ -28,7 +28,9 @@ http {
     ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
 
     location = / {
-      return 302 /customer/;
+      root /usr/share/nginx/portal;
+      try_files /index.html =404;
+      add_header Cache-Control "no-cache";
     }
 
     location = /favicon.ico {

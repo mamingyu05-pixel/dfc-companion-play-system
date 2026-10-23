@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
+import { ExportButton } from "../batch-tools";
 
 type AdminOrder = {
   id: string;
@@ -167,6 +168,7 @@ export default function OrdersPage() {
   return (
     <AdminShell>
       <SectionHeader eyebrow="Order Control" title="订单管理" desc="查看数据库真实订单。已支付订单进入派单页分配陪玩，进行中订单重点关注服务状态和投诉风险。" />
+      <div className="mb-4"><ExportButton kind="orders" label="订单" /></div>
 
       <section className="mb-5 grid gap-4 md:grid-cols-4">
         <Signal label="待派单" value={String(stats.paid)} hint="PAID 订单" tone="gold" />

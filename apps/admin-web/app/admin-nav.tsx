@@ -13,6 +13,7 @@ export const navGroups: Array<{ title: string; items: Item[] }> = [
     { label: "看板", href: "/dashboard" },
     { label: "草稿台", href: "/order-drafts", badge: c => c.drafts },
     { label: "派单", href: "/dispatch", badge: c => c.dispatch },
+    { label: "代客充值", href: "/staff-recharge" },
     { label: "充值审核", href: "/recharges", badge: c => c.recharges },
     { label: "提现审核", href: "/withdrawals", badge: c => c.withdrawals },
     { label: "投诉与争议", href: "/complaints", badge: c => c.complaints + c.disputes }

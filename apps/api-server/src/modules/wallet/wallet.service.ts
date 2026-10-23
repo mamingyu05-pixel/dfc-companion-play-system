@@ -17,6 +17,7 @@ import { validateRechargeScreenshot } from "./upload-evidence";
 
 const MANUAL_RECHARGE_EVIDENCE = "MANUAL_SUPPORT_CONFIRMATION";
 export const PROVIDER_RECHARGE_EVIDENCE_PREFIX = "PROVIDER_PAYMENT:";
+const STAFF_RECHARGE_METHODS: Record<string, string> = { WECHAT: "微信", ALIPAY: "支付宝", BANK: "银行卡", OTHER: "其他" };
 
 @Injectable()
 export class WalletService {
@@ -428,6 +429,49 @@ export class WalletService {
       await this.botNotifications.syncCustomerMembershipLevels(result.customerId).catch(() => undefined);
     }
 
+    return result;
+  }
+
+  // Customers usually pay support staff directly (WeChat / Alipay). Staff record that payment here and it is
+  // credited exactly like an approved recharge, so it counts toward membership level. requestId makes a
+  // double-click or retry replay the first result instead of crediting twice.
+  async recordStaffRecharge(
+    customerId: string,
+    staffId: string,
+    body: { amount?: unknown; method?: unknown; screenshotUrl?: unknown; note?: unknown; requestId?: unknown }
+  ) {
+    const requestId = typeof body.requestId === "string" && /^[A-Za-z0-9-]{8,64}$/.test(body.requestId) ? body.requestId : null;
+    if (!requestId) throw new BadRequestException("requestId 无效");
+    const methodLabel = STAFF_RECHARGE_METHODS[String(body.method)];
+    if (!methodLabel) throw new BadRequestException("请选择付款方式");
+    const extra = typeof body.note === "string" ? body.note.trim().slice(0, 200) : "";
+    const note = `客服代录·${methodLabel}${extra ? `·${extra}` : ""}`;
+    const businessKey = `staff-recharge:${requestId}`;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${customerId} FOR UPDATE`;
+      const replay = await tx.walletTransaction.findUnique({ where: { businessKey }, select: { referenceId: true, userId: true } });
+      if (replay) {
+        if (replay.userId !== customerId || !replay.referenceId) throw new BadRequestException("requestId 已用于其他客户");
+        return { replayed: true, recharge: await tx.rechargeRequest.findUniqueOrThrow({ where: { id: replay.referenceId } }) };
+      }
+      const created = await this.createRechargeInTransaction(tx, customerId, {
+        amount: typeof body.amount === "string" || typeof body.amount === "number" ? String(body.amount) : "",
+        screenshotUrl: typeof body.screenshotUrl === "string" ? body.screenshotUrl : undefined,
+        note
+      });
+      await tx.rechargeRequest.update({ where: { id: created.id }, data: { status: ReviewStatus.APPROVED, reviewedById: staffId, reviewedAt: new Date(), reviewNote: note } });
+      if (!await tx.wallet.findUnique({ where: { userId: customerId }, select: { id: true } })) await tx.wallet.create({ data: { userId: customerId } });
+      const request = await tx.rechargeRequest.findUniqueOrThrow({ where: { id: created.id }, include: { customer: { include: { wallet: true } } } });
+      const { creditAmount } = await this.creditApprovedRecharge(tx, request, staffId, note, businessKey);
+      await tx.adminLog.create({ data: {
+        actorId: staffId, targetUserId: customerId, action: "STAFF_RECORD_RECHARGE", entityType: "RECHARGE_REQUEST", entityId: created.id,
+        detail: { amount: request.amount.toString(), totalCredit: creditAmount.toString(), method: methodLabel, requestId }
+      } });
+      return { replayed: false, recharge: await tx.rechargeRequest.findUniqueOrThrow({ where: { id: created.id } }) };
+    });
+
+    if (!result.replayed) await this.botNotifications.syncCustomerMembershipLevels(customerId).catch(() => undefined);
     return result;
   }
 

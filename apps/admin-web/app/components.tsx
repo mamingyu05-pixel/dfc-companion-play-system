@@ -73,7 +73,7 @@ export function DataTable({
   maxHeightClassName,
   stickyHeader = false
 }: {
-  columns: string[];
+  columns: ReactNode[];
   rows: Array<Array<ReactNode>>;
   maxHeightClassName?: string;
   stickyHeader?: boolean;
@@ -84,8 +84,8 @@ export function DataTable({
         <table className="min-w-full text-left text-sm">
           <thead className={`border-b border-cyan-300/15 bg-[#101827] text-xs text-dfc-muted ${stickyHeader ? "sticky top-0 z-10" : ""}`}>
             <tr>
-              {columns.map((column) => (
-                <th key={column} className="whitespace-nowrap px-4 py-3 font-black">
+              {columns.map((column, index) => (
+                <th key={index} className="whitespace-nowrap px-4 py-3 font-black">
                   {column}
                 </th>
               ))}
