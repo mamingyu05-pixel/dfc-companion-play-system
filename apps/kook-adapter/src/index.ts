@@ -46,7 +46,7 @@ export class KookAdapter implements BotAdapter {
             type: "header",
             text: {
               type: "plain-text",
-              content: "DFC 新订单待接单"
+              content: "小小电竞新订单待接单"
             }
           },
           {

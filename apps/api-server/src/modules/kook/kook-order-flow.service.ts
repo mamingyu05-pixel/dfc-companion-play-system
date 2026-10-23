@@ -9,7 +9,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AuthService } from "../auth/auth.service";
 import { getCustomerMembershipLevel } from "../customer-membership";
 import { requireKookActor } from "./kook-flow-identity";
-import { kookOnboardingCard, parseKookOnboardingAction, createConfirmedKookCustomer } from "./kook-customer-onboarding";
+import { kookOnboardingCard, parseKookOnboardingAction, createConfirmedKookCustomer, fetchKookNickname } from "./kook-customer-onboarding";
 import { entryButton, flowCard, FlowCard, FlowButton, orderFlowCard, parseEntryAction, parseFlowAction, parseOrderFlowAction, webButton } from "./kook-flow-card";
 import { KOOK_FLOW_PORT, KookFlowPort } from "./kook-flow-port";
 
@@ -123,7 +123,8 @@ export class KookOrderFlowService {
   private async confirmOnboarding(platformUserId: string, action: NonNullable<ReturnType<typeof parseKookOnboardingAction>>) {
     if (Date.now() >= action.expiresAt) throw new BadRequestException("建档确认已过期，请重新发送“首次使用”。");
     if (action.action === "bind") return flowCard("绑定已有网页账号", ["登录原网页账号，在个人设置生成 KOOK 绑定码，再在此私聊发送：绑定 你的绑定码。", "此按钮没有建立新档案。不要发送密码或邮箱验证码；原账号的余额和订单不会自动合并。"]);
-    const result = await this.prisma.$transaction(tx => createConfirmedKookCustomer(tx, platformUserId, action.expiresAt));
+    const nickname = await fetchKookNickname(platformUserId);
+    const result = await this.prisma.$transaction(tx => createConfirmedKookCustomer(tx, platformUserId, action.expiresAt, nickname));
     return flowCard(result.created ? "客户档案已建立" : "客户档案已就绪", [result.created ? "已关联当前 KOOK 身份，初始余额为零。没有充值或创建订单。" : "已找到当前 KOOK 对应的客户档案，没有重复创建或更改余额。", "点击“开始下单”选择模式、时长和陪玩；核对报价并确认后才会成单。"], [entryButton("order", "开始下单", true), entryButton("orders", "我的订单")]);
   }
 

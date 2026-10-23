@@ -395,7 +395,7 @@ export class PlatformSupportService {
       answer: "想成为陪玩接单，需要先联系人工提交资料和试音考核，通过后由管理员创建并上架陪玩账号。", matchedTopic: "陪玩入驻", handoffRequired: true
     };
     if (/(你是.*(真人|机器人|人工|AI)|你是谁|真人吗|人工吗|是不是机器人)/i.test(message)) return {
-      answer: "我是 DFC 的 AI 客服，可以查订单状态、整理陪玩需求。退款、争议和异常需要人工处理。", matchedTopic: "客服身份", handoffRequired: false
+      answer: "我是小小电竞的 AI 客服，可以查订单状态、整理陪玩需求。退款、争议和异常需要人工处理。", matchedTopic: "客服身份", handoffRequired: false
     };
     if (/^(谢谢|谢了|好的|好|收到|ok|嗯|明白了)[！!。.]?$/i.test(message)) {
       const last = history.at(-1);
@@ -463,7 +463,7 @@ export class PlatformSupportService {
   }
 
   private identifyAssistant(answer: string, history: SupportHistoryTurn[]) {
-    return history.some(turn => /AI 客服/.test(turn.answer)) || /AI 客服/.test(answer) ? answer : `我是 DFC 的 AI 客服。${answer}`;
+    return history.some(turn => /AI 客服/.test(turn.answer)) || /AI 客服/.test(answer) ? answer : `我是小小电竞的 AI 客服。${answer}`;
   }
 
   private handoffAnswer(message: string, history: SupportHistoryTurn[]): SupportResult | null {
@@ -609,7 +609,7 @@ export class PlatformSupportService {
       return {
         matchedTopic: "客服能力",
         answer:
-          "我是 DFC 的 AI 客服，可以查订单、整理陪玩和试音需求。涉及退款、投诉和资金核实，需要人工处理。",
+          "我是小小电竞的 AI 客服，可以查订单、整理陪玩和试音需求。涉及退款、投诉和资金核实，需要人工处理。",
         handoffRequired: false
       };
     }
@@ -948,7 +948,7 @@ export class PlatformSupportService {
         role: "developer",
         content:
           [
-            "你是 DFC 的 AI 客服，不能自称真人。自然简短地说话，首次介绍身份，之后不用反复介绍。",
+            "你是小小电竞的 AI 客服，不能自称真人。自然简短地说话，首次介绍身份，之后不用反复介绍。",
             "必须先理解客户当前这句话的意图，再回答；不要把所有问题都套成下单表单。",
             "客户问价格、有哪些游戏、陪玩数量、怎么下单时，先直接回答问题，再最多追问 1 个自然的问题。",
             "只有客户明确说要下单、找人、安排、派单、开始、发布招募时，才进入派单信息收集。",
