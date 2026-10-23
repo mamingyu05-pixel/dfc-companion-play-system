@@ -1,0 +1,68 @@
+/* First page of the light redesign (direction B). Tokens live here until the rest of admin moves over. */
+.page {
+  --bg: #f5f6fa; --panel: #ffffff; --soft: #f8f9fc; --line: #e6e8ef; --text: #1d2233; --muted: #6b7288;
+  --brand: #ff6a3d; --brand-soft: #fff1ec; --ok: #18b26b; --warn: #f08c00; --bad: #e5484d;
+  --radius: 14px; --shadow: 0 1px 2px rgba(20, 24, 40, .06), 0 8px 24px rgba(20, 24, 40, .06);
+  min-height: 100vh; background: var(--bg); color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+.top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.logo { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--brand), #7c5cff); }
+.top b { font-size: 16px; }
+.top .spacer { flex: 1; }
+.top a { color: var(--muted); text-decoration: none; font-size: 14px; padding: 6px 10px; border-radius: 8px; }
+.top a:hover { background: var(--soft); color: var(--text); }
+
+.layout { max-width: 1180px; margin: 0 auto; padding: 20px 16px 120px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+.card { background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+.step { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 16px; font-weight: 800; }
+.step span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; background: var(--brand-soft); color: var(--brand); }
+.stack { display: grid; gap: 16px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+.input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 15px; background: #fff; color: var(--text); outline: none; }
+.input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.small { width: 110px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 14px; color: var(--text); cursor: pointer; }
+.chip:hover { border-color: var(--brand); }
+.chipOn { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); font-weight: 800; }
+
+.tabs { display: inline-grid; grid-auto-flow: column; gap: 4px; padding: 4px; border-radius: 12px; background: var(--soft); border: 1px solid var(--line); margin-bottom: 14px; }
+.tab { padding: 8px 18px; border-radius: 9px; border: 0; background: transparent; font-size: 14px; font-weight: 800; color: var(--muted); cursor: pointer; }
+.tabOn { background: var(--brand); color: #fff; }
+
+.list { display: grid; gap: 8px; margin-top: 10px; max-height: 320px; overflow-y: auto; }
+.row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; cursor: pointer; font-size: 14px; color: var(--text); }
+.row:hover { border-color: var(--brand); }
+.rowOn { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.av { width: 34px; height: 34px; border-radius: 50%; flex: none; background: linear-gradient(135deg, #7c5cff, var(--brand)); }
+.rowMain { flex: 1; min-width: 0; }
+.rowMain b { display: block; }
+.rowMain small { color: var(--muted); }
+.online { color: var(--ok); font-size: 12px; font-weight: 800; }
+.offline { color: var(--muted); font-size: 12px; }
+.busy { color: var(--warn); font-size: 12px; font-weight: 800; }
+
+.picked { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-radius: 12px; background: var(--brand-soft); }
+.link { border: 0; background: none; color: var(--brand); font-weight: 800; cursor: pointer; font-size: 13px; }
+
+.summary { position: sticky; top: 72px; display: grid; gap: 14px; }
+.line { display: flex; justify-content: space-between; font-size: 14px; }
+.total { font-size: 30px; font-weight: 900; color: var(--brand); font-variant-numeric: tabular-nums; }
+.money { font-variant-numeric: tabular-nums; font-weight: 800; }
+.warnBox { border: 1px solid #ffd8b5; background: #fff7ef; border-radius: 12px; padding: 12px; display: grid; gap: 10px; font-size: 14px; }
+.drop { border: 1px dashed var(--line); border-radius: 10px; padding: 10px; font-size: 12px; color: var(--muted); }
+.drop:focus { outline: none; border-color: var(--brand); }
+.drop img { max-height: 120px; border-radius: 8px; display: block; }
+
+.primary { width: 100%; padding: 14px; border: 0; border-radius: 12px; background: var(--brand); color: #fff; font-size: 16px; font-weight: 900; cursor: pointer; }
+.primary:disabled { opacity: .45; cursor: not-allowed; }
+.ghost { padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-weight: 800; cursor: pointer; color: var(--text); }
+
+.error { border: 1px solid #f6c3c4; background: #fff1f1; color: var(--bad); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+.success { border: 1px solid #b9ead2; background: #effaf4; color: #0e7a48; border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+.success b { font-size: 18px; }

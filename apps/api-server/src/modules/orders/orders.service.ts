@@ -401,6 +401,27 @@ export class OrdersService {
       targetWan: guarantee.targetWan, mode: guaranteeModeLabel(guarantee.platform, guarantee.targetWan), totalAmount: pricing.unitPrice.toFixed(2) };
   }
 
+  // Same pricing rules as createOrderInTransaction, without writing anything, so staff see the exact
+  // total before confirming and createOrder can reject the order if the price moved in between.
+  async quoteOrder(body: Partial<Pick<CreateOrderBody, "game" | "mode" | "hours" | "companionId" | "priceTier" | "rankTierKey" | "customUnitPrice" | "guaranteePackageId" | "sourcePlatform">>) {
+    const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
+    const guarantee = body.guaranteePackageId ? await this.activeGuaranteePackage(body.guaranteePackageId) : null;
+    const game = guarantee?.game ?? body.game ?? GameCode.DELTA_FORCE;
+    if (!guarantee && !body.mode?.trim()) throw new BadRequestException("mode is required");
+    const hours = guarantee ? new Prisma.Decimal(1) : this.positiveDecimal(body.hours ?? "", "hours");
+    const maxHours = this.positiveDecimal(process.env.ORDER_MAX_HOURS ?? "8", "ORDER_MAX_HOURS");
+    if (!guarantee && hours.gt(maxHours)) throw new BadRequestException(`hours cannot be greater than ${maxHours.toString()}`);
+    const pricing = guarantee
+      ? await this.guaranteePricing(guarantee, body.companionId, sourcePlatform, this.prisma)
+      : await this.resolvePricing(body.companionId, game, sourcePlatform, this.normalizePriceTier(body.priceTier, body.mode ?? ""), {
+        rankTierKey: body.rankTierKey, customUnitPrice: body.customUnitPrice
+      }, this.prisma);
+    return {
+      game, mode: guarantee ? guaranteeModeLabel(guarantee.platform, guarantee.targetWan) : body.mode, hours: hours.toString(),
+      unitPrice: pricing.unitPrice.toFixed(2), totalAmount: money(pricing.unitPrice.mul(hours), true).toFixed(2)
+    };
+  }
+
   createGuaranteeOrder(customerId: string, body: { requestId: string; packageId: string; companionId?: string; expectedTotalAmount?: string; notes?: string; testEnvironment?: string }) {
     return this.createOrder(customerId, { requestId: body.requestId, guaranteePackageId: body.packageId, companionId: body.companionId,
       expectedTotalAmount: body.expectedTotalAmount, notes: body.notes, testEnvironment: body.testEnvironment, mode: "GUARANTEE", hours: "1" });

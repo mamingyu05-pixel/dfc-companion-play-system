@@ -10,6 +10,7 @@ type Item = { label: string; href: string; badge?: (c: Counts) => number };
 // Grouped by the job an operator is doing; badges show where work is waiting right now.
 export const navGroups: Array<{ title: string; items: Item[] }> = [
   { title: "今日处理", items: [
+    { label: "快速开单", href: "/quick-order" },
     { label: "看板", href: "/dashboard" },
     { label: "草稿台", href: "/order-drafts", badge: c => c.drafts },
     { label: "派单", href: "/dispatch", badge: c => c.dispatch },
