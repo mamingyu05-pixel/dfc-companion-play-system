@@ -2,62 +2,254 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>小小电竞 · 选择入口</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>小小电竞 · 三角洲行动陪玩</title>
+<meta name="description" content="小小电竞：三角洲行动陪玩与保底护航。客户下单、陪玩接单、工作人员管理后台入口。">
 <link rel="icon" href="/icon.svg">
 <style>
-  :root { --bg: #f5f6fa; --panel: #ffffff; --line: #e6e8ef; --text: #1d2233; --muted: #6b7288; --cyan: #ff6a3d; --gold: #7c5cff; --shadow: 0 1px 2px rgba(20,24,40,.06), 0 8px 24px rgba(20,24,40,.06); }
+  /* Layout: tactical-briefing hero over a faint map grid, then three equal-weight entry cards. */
+  :root {
+    --bg: #f6f5f2;
+    --surface: #ffffff;
+    --ink: #15171c;
+    --sub: #626772;
+    --line: #e4e2dc;
+    --grid: rgba(21, 23, 28, 0.045);
+    --brand: #ff6a3d;
+    --brand-ink: #c2441a;
+    --brand-soft: #fff0e9;
+    --violet: #6d4cff;
+    --violet-soft: #efebff;
+    --steel: #1c2028;
+    --steel-ink: #f3f1ec;
+    --steel-sub: #a9adb7;
+    --shadow: 0 1px 2px rgba(21, 23, 28, 0.05), 0 12px 32px -12px rgba(21, 23, 28, 0.18);
+    --font: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101216; --surface: #181b21; --ink: #f1efe9; --sub: #9aa0ab; --line: #2a2e36;
+      --grid: rgba(241, 239, 233, 0.04); --brand: #ff7a4f; --brand-ink: #ff9b78; --brand-soft: #2b1a13;
+      --violet: #8f76ff; --violet-soft: #221d3d; --steel: #232832; --steel-ink: #f3f1ec; --steel-sub: #a9adb7;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px -16px rgba(0, 0, 0, 0.7);
+      color-scheme: dark;
+    }
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; background: linear-gradient(180deg, #fff7f3 0%, var(--bg) 40%);
-    color: var(--text); font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; display: flex; flex-direction: column; }
-  main { width: 100%; max-width: 980px; margin: 0 auto; padding: 48px 16px 32px; flex: 1; }
-  .brand { display: flex; align-items: center; gap: 12px; }
-  .brand img { width: 44px; height: 44px; border-radius: 10px; }
-  .brand b { font-size: 20px; }
-  .brand small { display: block; color: var(--muted); font-size: 11px; letter-spacing: .2em; }
-  h1 { font-size: clamp(28px, 6vw, 44px); margin: 36px 0 8px; }
-  p.lead { color: var(--muted); margin: 0 0 32px; font-size: 16px; }
-  .cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-  a.card { display: block; text-decoration: none; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 24px; box-shadow: var(--shadow);
-    transition: transform .15s, border-color .15s; }
-  a.card:hover, a.card:focus-visible { transform: translateY(-2px); border-color: var(--cyan); outline: none; }
-  .card .tag { display: inline-block; font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
-  .card h2 { font-size: 24px; margin: 14px 0 6px; }
-  .card p { color: var(--muted); margin: 0 0 20px; line-height: 1.6; font-size: 14px; }
-  .card .go { font-weight: 900; }
-  .customer .tag { background: #fff1ec; color: var(--cyan); }
-  .customer .go { color: var(--cyan); }
-  .companion { border-color: #ddd4ff; }
-  .companion:hover, .companion:focus-visible { border-color: var(--gold) !important; }
-  .companion .tag { background: #f1edff; color: var(--gold); }
-  .companion .go { color: var(--gold); }
-  .staff { margin-top: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; }
-  .staff a { background: #fff; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 8px 16px; text-decoration: none; font-weight: 700; }
-  .staff a:hover { border-color: var(--cyan); }
-  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 16px; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh; display: flex; flex-direction: column;
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 48px 48px;
+    color: var(--ink); font-family: var(--font); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    width: 100%; max-width: 1120px; margin: 0 auto;
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
+  }
+  main { flex: 1; }
+  a { color: inherit; }
+  a:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 6px; }
+
+  /* Top bar */
+  header.bar { padding-top: max(20px, env(safe-area-inset-top, 0px)); }
+  header.bar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+  .brand img { width: 40px; height: 40px; border-radius: 11px; display: block; }
+  .brand b { display: block; font-size: 18px; font-weight: 800; letter-spacing: 0.02em; line-height: 1.2; }
+  .brand small { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.24em; color: var(--sub); }
+  .kook {
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none; white-space: nowrap;
+    font-size: 14px; font-weight: 700; padding: 9px 16px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+    transition: border-color .15s, transform .15s;
+  }
+  .kook:hover { border-color: var(--brand); transform: translateY(-1px); }
+  .kook .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, .18); }
+
+  /* Hero */
+  .hero { padding-block: 56px 40px; position: relative; }
+  .hero .wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px; align-items: center; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.2em; color: var(--brand-ink); text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
+  .eyebrow::before { content: ""; width: 24px; height: 2px; background: var(--brand); }
+  h1 { margin: 16px 0 14px; font-size: clamp(34px, 6.4vw, 64px); line-height: 1.08; font-weight: 900; letter-spacing: -0.01em; text-wrap: balance; }
+  h1 em { font-style: normal; color: var(--brand); }
+  .lead { margin: 0; max-width: 34em; color: var(--sub); font-size: clamp(15px, 1.9vw, 17px); }
+  .facts { list-style: none; margin: 28px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+  .facts li { font-size: 13.5px; padding: 6px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); }
+  .facts b { color: var(--brand-ink); font-weight: 700; margin-right: 6px; }
+  .scope { width: clamp(150px, 20vw, 220px); aspect-ratio: 1; color: var(--brand); opacity: .9; }
+  .scope svg { width: 100%; height: 100%; display: block; }
+  .scope .ring { animation: spin 40s linear infinite; transform-origin: 50% 50%; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Entry cards */
+  .entries { padding-bottom: 56px; }
+  .label { font-family: var(--mono); font-size: 12px; letter-spacing: 0.2em; color: var(--sub); margin: 0 0 16px; display: flex; justify-content: space-between; gap: 12px; }
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  a.card {
+    position: relative; display: flex; flex-direction: column; gap: 14px; min-width: 0;
+    padding: 26px 24px 22px; border-radius: 18px; text-decoration: none;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+  a.card:hover { transform: translateY(-4px); }
+  /* Corner brackets, like a target lock. */
+  a.card::before, a.card::after { content: ""; position: absolute; width: 18px; height: 18px; border: 2px solid var(--accent); opacity: 0; transition: opacity .18s; }
+  a.card::before { top: 10px; left: 10px; border-right: 0; border-bottom: 0; border-radius: 6px 0 0 0; }
+  a.card::after { bottom: 10px; right: 10px; border-left: 0; border-top: 0; border-radius: 0 0 6px 0; }
+  a.card:hover::before, a.card:hover::after, a.card:focus-visible::before, a.card:focus-visible::after { opacity: 1; }
+  a.card:hover { border-color: var(--accent); }
+  .card .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .icon { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+  .icon svg { width: 28px; height: 28px; }
+  .code { font-family: var(--mono); font-size: 11.5px; letter-spacing: .18em; color: var(--sub); }
+  .who { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .04em; }
+  .card h2 { margin: -6px 0 0; font-size: 26px; font-weight: 900; line-height: 1.25; }
+  .card p { margin: 0; color: var(--sub); font-size: 14.5px; flex: 1; }
+  .card ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13.5px; }
+  .card ul li { display: flex; gap: 8px; align-items: baseline; }
+  .card ul li::before { content: ""; width: 6px; height: 6px; border-radius: 2px; background: var(--accent); flex: none; transform: translateY(-2px); }
+  .go {
+    margin-top: 6px; display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-radius: 12px; font-weight: 800; font-size: 15px;
+    background: var(--accent); color: var(--accent-on);
+  }
+  .go span { transition: transform .18s; }
+  a.card:hover .go span { transform: translateX(4px); }
+
+  .customer { --accent: var(--brand); --accent-soft: var(--brand-soft); --accent-on: #fff; }
+  .companion { --accent: var(--violet); --accent-soft: var(--violet-soft); --accent-on: #fff; }
+  .admin {
+    --accent: var(--brand); --accent-soft: rgba(255, 106, 61, .14); --accent-on: #fff;
+    background: var(--steel); border-color: var(--steel); color: var(--steel-ink);
+  }
+  .admin p, .admin .code { color: var(--steel-sub); }
+  .admin .who { color: #ffb197; }
+  .admin h2 { color: var(--steel-ink); }
+
+  /* Strip */
+  .strip { border-top: 1px solid var(--line); background: var(--surface); }
+  .strip .wrap { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding-block: 28px; }
+  .strip h3 { margin: 0 0 4px; font-size: 15px; }
+  .strip p { margin: 0; font-size: 13.5px; color: var(--sub); }
+  .strip .n { font-family: var(--mono); font-size: 12px; color: var(--brand-ink); letter-spacing: .14em; display: block; margin-bottom: 6px; }
+  footer { color: var(--sub); font-size: 12.5px; text-align: center; padding: 18px 20px max(18px, env(safe-area-inset-bottom, 0px)); background: var(--surface); border-top: 1px solid var(--line); }
+  footer a { color: var(--brand-ink); }
+
+  @media (max-width: 900px) {
+    .cards { grid-template-columns: 1fr; }
+    .hero .wrap { grid-template-columns: 1fr; }
+    .scope { display: none; }
+    .strip .wrap { grid-template-columns: 1fr; gap: 16px; }
+  }
+  @media (max-width: 480px) {
+    .hero { padding-block: 36px 28px; }
+    .kook .txt-long { display: none; }
+    a.card { padding: 22px 18px 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scope .ring { animation: none; }
+    a.card, a.card:hover, .kook, .go span { transition: none; transform: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <div class="brand"><img src="/icon.svg" alt=""><div><b>小小电竞</b><small>XIAOXIAO ESPORTS</small></div></div>
-  <h1>你是来做什么的？</h1>
-  <p class="lead">选择你的身份进入对应入口。</p>
-  <div class="cards">
-    <a class="card customer" href="/customer/">
-      <span class="tag">我是客户</span>
-      <h2>找陪玩 / 下单</h2>
-      <p>选陪玩、保底护航、查看订单和余额。钱先托管，你验收后才结算给陪玩。</p>
-      <span class="go">进入客户端 →</span>
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="小小电竞首页">
+      <img src="/icon.svg" alt="">
+      <span><b>小小电竞</b><small>XIAOXIAO ESPORTS</small></span>
     </a>
-    <a class="card companion" href="/companion/">
-      <span class="tag">我是陪玩</span>
-      <h2>接单 / 看收益</h2>
-      <p>查看派给你的订单、开始服务、报完成、上传战绩截图，查看收益和申请提现。</p>
-      <span class="go">进入陪玩端 →</span>
-    </a>
+    <a class="kook" href="https://kook.vip/r1KFpx" target="_blank" rel="noopener"><span class="dot" aria-hidden="true"></span>加入 KOOK<span class="txt-long">&nbsp;客服频道</span></a>
   </div>
-  <div class="staff"><span>工作人员：</span><a href="/admin/">管理后台</a></div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">三角洲行动 · DELTA FORCE</p>
+        <h1>带你<em>撤离</em>，<br>也带你上分。</h1>
+        <p class="lead">烽火地带、全面战场、排位上分和保底护航。KOOK 一句话下单，客服专人派单，钱先托管，你验收后才结算给陪玩。</p>
+        <ul class="facts">
+          <li><b>托管</b>验收后才结算</li>
+          <li><b>保底</b>按仓库净增算</li>
+          <li><b>派单</b>客服专人安排</li>
+        </ul>
+      </div>
+      <div class="scope" aria-hidden="true">
+        <svg viewBox="0 0 200 200" fill="none" stroke="currentColor">
+          <g class="ring">
+            <circle cx="100" cy="100" r="92" stroke-width="2" stroke-dasharray="4 10" opacity=".55"/>
+          </g>
+          <circle cx="100" cy="100" r="70" stroke-width="2.5"/>
+          <circle cx="100" cy="100" r="34" stroke-width="1.5" opacity=".6"/>
+          <path d="M100 14v40M100 146v40M14 100h40M146 100h40" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="100" cy="100" r="4" fill="currentColor" stroke="none"/>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="entries" aria-labelledby="entries-title">
+    <div class="wrap">
+      <p class="label" id="entries-title"><span>选择你的入口</span><span>3 ENTRIES</span></p>
+      <div class="cards">
+        <a class="card customer" href="/customer/">
+          <div class="top">
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg></span>
+            <span class="code">ENTRY · 01</span>
+          </div>
+          <span class="who">我是客户</span>
+          <h2>找陪玩 · 下单</h2>
+          <p>挑陪玩、下小时单或保底护航，查订单进度、余额和会员等级。</p>
+          <ul><li>KOOK 发「首次使用」免注册进入</li><li>验收前有异议可提交投诉</li></ul>
+          <span class="go">进入客户端<span aria-hidden="true">→</span></span>
+        </a>
+
+        <a class="card companion" href="/companion/">
+          <div class="top">
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2.5" y="13.5" width="5" height="7" rx="2"/><rect x="16.5" y="13.5" width="5" height="7" rx="2"/><path d="M19 20.5c0 1.4-2 2-5 2"/></svg></span>
+            <span class="code">ENTRY · 02</span>
+          </div>
+          <span class="who">我是陪玩</span>
+          <h2>接单 · 看收益</h2>
+          <p>接派给你的订单，开始服务、报完成、上传仓库截图，查看收益并申请提现。</p>
+          <ul><li>KOOK 工作台一键接单</li><li>收益验收后转为可提现</li></ul>
+          <span class="go">进入陪玩端<span aria-hidden="true">→</span></span>
+        </a>
+
+        <a class="card admin" href="/admin/">
+          <div class="top">
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 4 5.5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10v-6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span>
+            <span class="code">ENTRY · 03</span>
+          </div>
+          <span class="who">工作人员</span>
+          <h2>管理后台</h2>
+          <p>快速开单、派单、代客充值、审核充值和提现、处理投诉，查看经营数据。</p>
+          <ul><li>仅限管理员账号登录</li><li>所有资金操作留有日志</li></ul>
+          <span class="go">进入管理后台<span aria-hidden="true">→</span></span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="strip" aria-label="服务说明">
+    <div class="wrap">
+      <div><span class="n">01 / 下单</span><h3>说需求，客服派单</h3><p>在 KOOK 客服频道或网站说游戏、模式和时长，客服为你安排合适的陪玩。</p></div>
+      <div><span class="n">02 / 服务</span><h3>陪玩接单开打</h3><p>陪玩接单后开始服务，保底护航开局和结束都会上传仓库截图。</p></div>
+      <div><span class="n">03 / 结算</span><h3>验收后才付给陪玩</h3><p>下单只冻结余额，你确认验收后才结算；有问题先投诉，客服核实处理。</p></div>
+    </div>
+  </section>
 </main>
-<footer>KOOK / Discord 客服频道同样可以下单和接单</footer>
+
+<footer>小小电竞 · 三角洲行动陪玩 · KOOK 客服频道：<a href="https://kook.vip/r1KFpx" target="_blank" rel="noopener">kook.vip/r1KFpx</a></footer>
 </body>
 </html>
