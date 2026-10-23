@@ -42,7 +42,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
           <Link href="/home" className="flex items-center gap-3">
             <MaycatLogo compact />
             <span className="hidden sm:block">
-              <span className="block text-sm font-black text-white">May猫饼电竞</span>
+              <span className="block text-sm font-black text-white">小小电竞</span>
               <span className="block text-xs text-dfc-muted">多游戏陪玩俱乐部</span>
             </span>
           </Link>

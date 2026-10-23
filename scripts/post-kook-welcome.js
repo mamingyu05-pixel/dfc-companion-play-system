@@ -7,7 +7,7 @@ const KOOK_API_BASE_URL = "https://www.kookapp.cn";
 const channelMessages = [
   {
     env: "KOOK_SUPPORT_CHANNEL_ID",
-    title: "May猫饼客服接待",
+    title: "小小电竞客服接待",
     lines: [
       "这里是客户咨询入口。你可以直接说需求，AI 客服会先整理信息，复杂问题会转人工。",
       "",
@@ -149,7 +149,7 @@ function buildMessage(title, lines) {
     "━━━━━━━━━━━━━━━━",
     "Website: https://maycatplay.com/customer/",
     "Account binding: https://maycatplay.com/customer/settings",
-    "May猫饼规则：下单、派单、充值、提现、投诉都以网站后台记录为准。"
+    "小小电竞规则：下单、派单、充值、提现、投诉都以网站后台记录为准。"
   ].join("\n");
 }
 

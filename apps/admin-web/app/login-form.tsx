@@ -43,9 +43,9 @@ export function AdminLoginForm() {
       <section className="mx-auto grid min-h-[calc(100vh-64px)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_420px]">
         <div className="max-w-3xl">
           <div className="inline-flex rounded-dfc-control border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-fuchsia-100">
-            Maycat Ops Console
+            Xiaoxiao Ops Console
           </div>
-          <h1 className="mt-5 text-4xl font-black leading-none text-white md:text-6xl">May猫饼运营后台</h1>
+          <h1 className="mt-5 text-4xl font-black leading-none text-white md:text-6xl">小小电竞运营后台</h1>
           <p className="mt-5 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
             用一套控制台处理充值审核、人工派单、提现打款、投诉留证和后台日志。这里是资金和服务质量的最后一道人工关口。
           </p>

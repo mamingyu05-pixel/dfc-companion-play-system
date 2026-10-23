@@ -294,7 +294,7 @@ export class KookWebhookController {
     const supportChannelId = process.env.KOOK_SUPPORT_CHANNEL_ID;
     if (!supportChannelId) return directNotification;
 
-    return this.botNotifications.sendKookChannelText(supportChannelId, `(met)${kookUserId}(met) 欢迎加入 May猫饼电竞。\n${content}`);
+    return this.botNotifications.sendKookChannelText(supportChannelId, `(met)${kookUserId}(met) 欢迎加入 小小电竞。\n${content}`);
   }
 
   private parseApplyText(content: string) {

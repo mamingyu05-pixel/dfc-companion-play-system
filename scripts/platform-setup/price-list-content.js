@@ -8,11 +8,11 @@ const KOOK_GUILD_ID = "3189962583916682";
 
 const PRICE_NOTICE = {
   key: "price-notice",
-  title: "00｜May猫饼价目说明",
+  title: "00｜小小电竞价目说明",
   marker: "[MayCatPriceList:price-notice]",
   content: [
     "[MayCatPriceList:price-notice]",
-    "🐱 May猫饼电竞 · 价格须知",
+    "🐱 小小电竞 · 价格须知",
     "",
     "· 按段位分档定价，均可语音（各游戏价目见对应帖图）；黄金以下 ¥98/时 起，高段位递增",
     "· 新客首单试音免费（限 15 分钟）",

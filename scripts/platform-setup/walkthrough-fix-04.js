@@ -7,7 +7,7 @@ async function main() {
   const runDiscord = !args.has("--kook-only");
   const runKook = !args.has("--discord-only");
 
-  console.log("🔧 MayCat Club 频道走查修复 · 第 04 版\n");
+  console.log("🔧 Xiaoxiao Esports 频道走查修复 · 第 04 版\n");
 
   if (runDiscord) {
     console.log("═══ Discord ═══");

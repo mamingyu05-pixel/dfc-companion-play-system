@@ -71,7 +71,7 @@ const adminRoleRules = [
 const aiDispatchDecoration = {
   name: "🤖｜ai派单",
   topic: "AI 汇总客户需求，按游戏/声线标签提醒陪玩报名，客服后台确认后转正式订单。",
-  title: "May猫饼 AI 派单大厅",
+  title: "小小电竞 AI 派单大厅",
   lines: [
     "这里用于接收 KOOK / Discord / 网站客服整理出的派单草稿。",
     "客户需求会先进入后台草稿；陪玩报名后进入候选列表，客服再向客户确认最终人选。",
@@ -290,7 +290,7 @@ async function decorateAiDispatch(token, env, channels) {
     "Website: https://maycatplay.com/customer/",
     "Account binding: https://maycatplay.com/customer/settings",
     "",
-    "May猫饼规则：派单、报名、确认、结算都以网站后台记录为准。"
+    "小小电竞规则：派单、报名、确认、结算都以网站后台记录为准。"
   ].join("\n");
 
   const result = await discordRequest(token, `/channels/${channelId}/messages`, {

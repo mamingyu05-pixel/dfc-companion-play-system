@@ -4,8 +4,8 @@ export function MaycatLogo({ compact = false }: { compact?: boolean }) {
       <MaycatLogoMark />
       {!compact ? (
         <div className="min-w-0">
-          <div className="maycat-text-glow text-lg font-black leading-tight text-white">May猫饼电竞</div>
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Maycat Club</div>
+          <div className="maycat-text-glow text-lg font-black leading-tight text-white">小小电竞</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Xiaoxiao Esports</div>
         </div>
       ) : null}
     </div>
@@ -29,7 +29,7 @@ export function MaycatLogoMark() {
         <path d="M22 36h4" stroke="#38bdf8" strokeWidth="2.2" strokeLinecap="round" />
       </svg>
       <span className="absolute -bottom-1 rounded-dfc-control border border-cyan-300/60 bg-[#050711] px-1.5 text-[10px] font-black text-cyan-300">
-        MAY
+        XX
       </span>
     </span>
   );
@@ -37,13 +37,13 @@ export function MaycatLogoMark() {
 
 export function MaycatSignalArtwork({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={`maycat-signal-art ${compact ? "maycat-signal-art-compact" : ""}`} aria-label="Maycat Club 自绘霓虹品牌视觉">
+    <div className={`maycat-signal-art ${compact ? "maycat-signal-art-compact" : ""}`} aria-label="Xiaoxiao Esports 自绘霓虹品牌视觉">
       <div className="maycat-art-grid" />
       <div className="maycat-art-rail maycat-art-rail-left" />
       <div className="maycat-art-rail maycat-art-rail-right" />
       <div className="maycat-art-core">
         <svg viewBox="0 0 260 230" role="img" aria-labelledby="maycat-art-title" className="h-full w-full">
-          <title id="maycat-art-title">Maycat Club 霓虹猫耳控制台</title>
+          <title id="maycat-art-title">Xiaoxiao Esports 霓虹猫耳控制台</title>
           <defs>
             <linearGradient id="maycatStroke" x1="0" x2="1" y1="0" y2="1">
               <stop offset="0%" stopColor="#22d3ee" />

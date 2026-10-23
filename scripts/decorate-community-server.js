@@ -43,7 +43,7 @@ const legacyChannelNames = [
 ];
 
 const discordCategories = [
-  { key: "welcome", name: "✦ 欢迎来到 May猫饼 ✦" },
+  { key: "welcome", name: "✦ 欢迎来到 小小电竞 ✦" },
   { key: "service", name: "☎ 客服接待大厅 ☎" },
   { key: "chat", name: "✍ 文字聊天区" },
   { key: "assessment", name: "🧾 考核专区" },
@@ -53,7 +53,7 @@ const discordCategories = [
 
 const textGuides = {
   pricing: {
-    title: "May猫饼服务价目",
+    title: "小小电竞服务价目",
     lines: [
       "价格以网站后台配置为准，客户不用自己选价格。",
       "不同游戏、模式、陪玩等级、平台来源可以配置不同单价。",
@@ -474,7 +474,7 @@ function normalizeName(value) {
 
 function buildTopic(item) {
   const guide = item.guide ? textGuides[item.guide] : undefined;
-  return guide ? `${guide.title}｜${guide.lines[0]}` : `May猫饼电竞｜${item.name}｜网站 ${SITE_URL}`;
+  return guide ? `${guide.title}｜${guide.lines[0]}` : `小小电竞｜${item.name}｜网站 ${SITE_URL}`;
 }
 
 function buildGuideMessage(guide) {

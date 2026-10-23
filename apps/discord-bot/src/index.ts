@@ -32,7 +32,7 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, (readyClient) => {
-  console.log(`Maycat Discord Bot ready as ${readyClient.user.tag}`);
+  console.log(`Xiaoxiao Discord Bot ready as ${readyClient.user.tag}`);
   startStaleDraftSweep();
 });
 
@@ -115,7 +115,7 @@ async function sendAccountBindingGuide(member: { displayName: string; user: { id
   if (!channel?.isTextBased() || typeof textChannel?.send !== "function") return;
 
   await textChannel.send({
-    content: [`<@${member.user.id}> 欢迎加入 May猫饼电竞。`, content].join("\n")
+    content: [`<@${member.user.id}> 欢迎加入 小小电竞。`, content].join("\n")
   }).catch((error: unknown) => {
     console.warn(`Failed to send Discord binding guide fallback for ${member.user.id}: ${errorMessage(error)}`);
   });

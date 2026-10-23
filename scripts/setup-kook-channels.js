@@ -73,7 +73,7 @@ async function main() {
   }
 
   console.log(`KOOK guild: ${guildId}`);
-  console.log("Creating or reusing May猫饼运营频道...\n");
+  console.log("Creating or reusing 小小电竞运营频道...\n");
 
   const existingChannels = await listChannels(token, guildId);
   const output = {};

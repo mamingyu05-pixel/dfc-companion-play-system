@@ -47,7 +47,7 @@ export default function SupportPage() {
   const [chat, setChat] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      text: "你好，我是 May猫饼自动客服。可以先问我充值、下单、试音、退款、陪玩入驻、KOOK/Discord 绑定等问题。"
+      text: "你好，我是 小小电竞自动客服。可以先问我充值、下单、试音、退款、陪玩入驻、KOOK/Discord 绑定等问题。"
     }
   ]);
   const [error, setError] = useState("");

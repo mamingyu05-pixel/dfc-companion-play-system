@@ -1,4 +1,4 @@
-# May猫饼电竞 / DFC 平台 Claude 审查包
+# 小小电竞 / DFC 平台 Claude 审查包
 
 日期：2026-06-13  
 目标：请 Claude 按“真实可运营的陪玩平台”标准审查当前代码架构、业务闭环、资金安全、Bot/AI、权限和部署风险。
@@ -33,8 +33,8 @@ Bot/AI 审查：
 
 品牌：
 
-- May猫饼电竞
-- Maycat Club
+- 小小电竞
+- Xiaoxiao Esports
 
 项目原始定位：
 
@@ -664,7 +664,7 @@ apps/companion-web/app/withdrawals/page.tsx
 
 当前设计方向：
 
-- May猫饼电竞。
+- 小小电竞。
 - 暗黑电竞风。
 - 霓虹蓝紫点缀。
 - 少量金色用于推荐/VIP。
@@ -674,7 +674,7 @@ apps/companion-web/app/withdrawals/page.tsx
 用户提供的新视觉参考：
 
 - 赛博霓虹街区背景。
-- Maycat Club 猫形象。
+- Xiaoxiao Esports 猫形象。
 - 蓝紫粉霓虹。
 
 请 Claude 重点审查：

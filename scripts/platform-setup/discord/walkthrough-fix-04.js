@@ -7,7 +7,7 @@ const DEFAULT_SCAN_LIMIT = 300;
 const CONTENT = {
   onboarding: {
     marker: "陪玩入职须知",
-    body: ({ exam, tag }) => `## 🟥 May猫饼电竞 · 陪玩入职须知
+    body: ({ exam, tag }) => `## 🟥 小小电竞 · 陪玩入职须知
 
 想入驻陪玩，按下面流程走：
 
@@ -33,7 +33,7 @@ const CONTENT = {
   },
   examMerged: {
     marker: "陪玩考核标准",
-    body: ({ onboarding }) => `## 📋 May猫饼电竞 · 陪玩考核标准
+    body: ({ onboarding }) => `## 📋 小小电竞 · 陪玩考核标准
 
 ━━━━━━ 基本要求 ━━━━━━
 ▸ 年满 18 岁，有稳定游戏时间
@@ -63,7 +63,7 @@ const CONTENT = {
   },
   violationMerged: {
     marker: "违规处理制度",
-    body: () => `## ⚠️ May猫饼电竞 · 违规处理制度（周结工资制）
+    body: () => `## ⚠️ 小小电竞 · 违规处理制度（周结工资制）
 
 ━━━━━━ 一级 · 警告级 ━━━━━━（累计 3 次升二级）
 · 未及时提交订单 / 战绩截图；服务后未及时反馈
@@ -86,7 +86,7 @@ const CONTENT = {
   },
   complaint: {
     marker: "投诉处理说明",
-    body: () => `## 🧯 May猫饼电竞 · 投诉处理说明
+    body: () => `## 🧯 小小电竞 · 投诉处理说明
 
 遇到服务纠纷、态度问题、超时计费争议或其他异常，请按格式提交：
 
@@ -102,7 +102,7 @@ const CONTENT = {
   },
   announcement: {
     marker: "官方公告",
-    body: () => `## 📣 May猫饼电竞 · 官方公告
+    body: () => `## 📣 小小电竞 · 官方公告
 
 本频道仅发布平台公告、活动通知和重要规则变更。
 
@@ -116,7 +116,7 @@ const CONTENT = {
   },
   community: {
     marker: "社区守则",
-    body: () => `## 🍏 May猫饼电竞 · 社区守则
+    body: () => `## 🍏 小小电竞 · 社区守则
 
 1. 尊重他人，禁止辱骂、骚扰、歧视和人身攻击。
 2. 禁止广告、刷屏、钓鱼链接、恶意引流和无关推广。
@@ -129,7 +129,7 @@ const CONTENT = {
   },
   reviews: {
     marker: "好评征集说明",
-    body: () => `## ⭐ May猫饼电竞 · 好评展示
+    body: () => `## ⭐ 小小电竞 · 好评展示
 
 本频道用于展示客户真实好评和服务反馈。
 
@@ -143,7 +143,7 @@ const CONTENT = {
   },
   predeposit: {
     marker: "预存福利说明",
-    body: () => `## 💎 May猫饼电竞 · 预存福利
+    body: () => `## 💎 小小电竞 · 预存福利
 
 预存/充值后金额进入网站账户余额，下单时从余额扣减。
 
@@ -174,7 +174,7 @@ const CONTENT = {
   },
   skillRegistration: {
     marker: "技能登记指引",
-    body: ({ tag }) => `## 🔖 May猫饼电竞 · 技能登记指引
+    body: ({ tag }) => `## 🔖 小小电竞 · 技能登记指引
 
 这里是陪玩技能资料入口。
 
@@ -205,7 +205,7 @@ AI 客服会整理成派单卡并 @ 匹配的陪玩，确认人选后由客服�
   },
   aiCustomerOrder: {
     marker: "客户下单格式",
-    body: ({ recharge }) => `## 🤖 May猫饼电竞 · 客户下单格式
+    body: ({ recharge }) => `## 🤖 小小电竞 · 客户下单格式
 
 下单前请确认钱包余额充足（充值见 ${mentionOrName(recharge)}）。
 
@@ -228,8 +228,8 @@ AI 客服会整理成派单卡并 @ 匹配的陪玩，最终由客服确认人�
 const EXACT_TEST_MESSAGES = [
   "这个公告可以改一下",
   "这是个duplicate 还没改完",
-  "May猫饼试音派单，有空的陪玩可以报名",
-  "May猫饼 AI 派单，有空的陪玩可以报名"
+  "小小电竞试音派单，有空的陪玩可以报名",
+  "小小电竞 AI 派单，有空的陪玩可以报名"
 ];
 
 const SUPPORT_TEST_MESSAGES = new Set([

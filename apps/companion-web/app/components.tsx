@@ -19,10 +19,10 @@ export function CompanionShell({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
           <Link href="/dashboard" className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-dfc border border-fuchsia-300/35 bg-fuchsia-400/10 text-xs font-black text-fuchsia-100">
-              MAY
+              XX
             </span>
             <span>
-              <span className="block text-sm font-black text-white">May猫饼陪玩端</span>
+              <span className="block text-sm font-black text-white">小小电竞陪玩端</span>
               <span className="block text-xs text-dfc-muted">接单 / 服务 / 收益 / 提现</span>
             </span>
           </Link>

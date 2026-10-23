@@ -1243,9 +1243,9 @@ export class AuthService {
     await transporter.sendMail({
       from,
       to: email,
-      subject: "May猫饼电竞注册验证码",
-      text: `你的 May猫饼电竞注册验证码是：${code}。验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。`,
-      html: `<p>你的 May猫饼电竞注册验证码是：</p><p style="font-size:24px;font-weight:700;letter-spacing:4px;">${code}</p><p>验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。</p>`
+      subject: "小小电竞注册验证码",
+      text: `你的 小小电竞注册验证码是：${code}。验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。`,
+      html: `<p>你的 小小电竞注册验证码是：</p><p style="font-size:24px;font-weight:700;letter-spacing:4px;">${code}</p><p>验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。</p>`
     });
   }
 

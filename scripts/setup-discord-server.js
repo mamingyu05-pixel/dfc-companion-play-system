@@ -5,9 +5,9 @@ const path = require("node:path");
 const DISCORD_API_BASE_URL = "https://discord.com/api/v10";
 
 const categoryPlan = [
-  { key: "customer", name: "May猫饼｜客户服务" },
-  { key: "dispatch", name: "May猫饼｜陪玩派单" },
-  { key: "admin", name: "May猫饼｜运营后台" }
+  { key: "customer", name: "小小电竞｜客户服务" },
+  { key: "dispatch", name: "小小电竞｜陪玩派单" },
+  { key: "admin", name: "小小电竞｜运营后台" }
 ];
 
 const channelPlan = [
@@ -17,7 +17,7 @@ const channelPlan = [
     topic: "客户咨询、AI客服、人工接管、找陪玩需求入口。",
     categoryKey: "customer",
     type: 0,
-    title: "欢迎来到 May猫饼客服接待",
+    title: "欢迎来到 小小电竞客服接待",
     lines: [
       "你可以直接说需求，AI 客服会先整理信息，复杂问题会转人工。",
       "找陪玩请说明：游戏、模式、段位、时长、预算、是否试音、语音偏好。",
@@ -31,7 +31,7 @@ const channelPlan = [
     topic: "AI 自动整理客户需求，按游戏标签提醒陪玩报名。",
     categoryKey: "dispatch",
     type: 0,
-    title: "May猫饼 AI 派单大厅",
+    title: "小小电竞 AI 派单大厅",
     lines: [
       "AI 客服会把 KOOK / Discord 客户需求整理到这里。",
       "消息会自动提醒对应游戏标签和声线标签的陪玩。",
@@ -44,7 +44,7 @@ const channelPlan = [
     topic: "客服发布需求，陪玩报名，管理员确认。",
     categoryKey: "dispatch",
     type: 0,
-    title: "May猫饼人工派单大厅",
+    title: "小小电竞人工派单大厅",
     lines: [
       "客服或 AI 会在这里整理客户需求，陪玩按格式报名，管理员最终确认。",
       "陪玩报名建议包含：可服务时间、报价、擅长模式、是否可试音、备注。",
@@ -57,7 +57,7 @@ const channelPlan = [
     topic: "人工充值提醒、截图核对、到账确认。",
     categoryKey: "admin",
     type: 0,
-    title: "May猫饼充值审核",
+    title: "小小电竞充值审核",
     lines: [
       "用于人工充值提醒和截图核对。",
       "审核前确认客户账号、金额、截图、备注、优惠码是否匹配。",
@@ -70,7 +70,7 @@ const channelPlan = [
     topic: "陪玩提现申请、支付宝信息核对、人工打款确认。",
     categoryKey: "admin",
     type: 0,
-    title: "May猫饼提现审核",
+    title: "小小电竞提现审核",
     lines: [
       "用于陪玩提现申请、支付宝收款信息核对和人工打款确认。",
       "打款前确认可提现收入、订单完成状态、是否存在投诉。",
@@ -83,7 +83,7 @@ const channelPlan = [
     topic: "退款、投诉、争议订单处理。",
     categoryKey: "admin",
     type: 0,
-    title: "May猫饼投诉处理",
+    title: "小小电竞投诉处理",
     lines: [
       "用于退款、投诉、争议订单处理。",
       "处理前收集订单号、聊天记录、截图或录屏、客户诉求、陪玩说明。",
@@ -96,7 +96,7 @@ const channelPlan = [
     topic: "系统异常、Bot失败日志、充值/提现/投诉待办。",
     categoryKey: "admin",
     type: 0,
-    title: "May猫饼管理提醒",
+    title: "小小电竞管理提醒",
     lines: [
       "用于系统异常、Bot 失败日志、待审核充值、提现和投诉提醒。",
       "每日建议检查：未派单订单、充值审核、提现审核、投诉、数据库备份、Bot 日志。"
@@ -108,7 +108,7 @@ const channelPlan = [
     topic: "客户进入后由客服安排候选陪玩试音。",
     categoryKey: "dispatch",
     type: 2,
-    title: "May猫饼试音等候室",
+    title: "小小电竞试音等候室",
     lines: [
       "客户需要试音时先进入这里，客服再安排候选陪玩进入。",
       "试音只确认声音、沟通风格和基础需求，不在语音里完成私下付款。"
@@ -120,7 +120,7 @@ const customerLevelRolePlan = Array.from({ length: 15 }, (_, index) => {
   const level = index + 1;
   return {
     env: `DISCORD_CUSTOMER_LEVEL_${level}_ROLE_ID`,
-    name: `🐾 猫饼会员 Lv.${level}`,
+    name: `🐾 小小会员 Lv.${level}`,
     color: level <= 4 ? 0x38bdf8 : level <= 9 ? 0x818cf8 : 0xc084fc,
     mentionable: false,
     hoist: true
@@ -130,12 +130,12 @@ const customerLevelRolePlan = Array.from({ length: 15 }, (_, index) => {
 const rolePlan = [
   { env: "DISCORD_SUPER_ADMIN_ROLE_ID", name: "👑 总管理", color: 0xffd166, mentionable: false, hoist: true },
   { env: "DISCORD_ADMIN_ROLE_ID", name: "🛡️ 管理员", color: 0xff5a6a, mentionable: false, hoist: true },
-  { env: "DISCORD_SUPPORT_ROLE_ID", name: "💬 May客服", color: 0x22d3ee, mentionable: true, hoist: true },
-  { env: "DISCORD_CUSTOMER_ROLE_ID", name: "🐾 猫饼客户", color: 0x38bdf8, mentionable: false },
+  { env: "DISCORD_SUPPORT_ROLE_ID", name: "💬 小小客服", color: 0x22d3ee, mentionable: true, hoist: true },
+  { env: "DISCORD_CUSTOMER_ROLE_ID", name: "🐾 小小客户", color: 0x38bdf8, mentionable: false },
   { env: "DISCORD_CUSTOMER_NO_ORDER_ROLE_ID", name: "🌱 未下单客户", color: 0x94a3b8, mentionable: false, hoist: true },
   ...customerLevelRolePlan,
   { env: "DISCORD_CUSTOMER_SPECIAL_NEON_ROLE_ID", name: "💎 霓虹贵宾", color: 0xf472b6, mentionable: false, hoist: true },
-  { env: "DISCORD_CUSTOMER_SPECIAL_HALL_ROLE_ID", name: "👑 May名人堂", color: 0xfacc15, mentionable: false, hoist: true },
+  { env: "DISCORD_CUSTOMER_SPECIAL_HALL_ROLE_ID", name: "👑 小小名人堂", color: 0xfacc15, mentionable: false, hoist: true },
   { env: "DISCORD_COMPANION_ROLE_ID", name: "🎮 认证陪玩", color: 0xa78bfa, mentionable: true, hoist: true },
   { env: "DISCORD_VOICE_MOON_ROLE_ID", name: "🌙 月影声线", color: 0xf472b6, mentionable: true },
   { env: "DISCORD_VOICE_SOLAR_ROLE_ID", name: "☀️ 曜刃声线", color: 0x38bdf8, mentionable: true },
@@ -164,7 +164,7 @@ async function main() {
   if (!guildId) throw new Error("DISCORD_GUILD_ID is missing in .env. Example: node scripts/setup-discord-server.js 123456789");
 
   console.log(`Discord guild: ${guildId}`);
-  console.log("Creating or reusing May猫饼 Discord channels...\n");
+  console.log("Creating or reusing 小小电竞 Discord channels...\n");
 
   const existingChannels = await listGuildChannels(token, guildId);
   const existingRoles = await listGuildRoles(token, guildId);
@@ -208,7 +208,7 @@ async function main() {
   }
 
   const roleOutput = {};
-  console.log("\nCreating or reusing May猫饼 Discord roles...\n");
+  console.log("\nCreating or reusing 小小电竞 Discord roles...\n");
   for (const item of rolePlan) {
     const existing = existingRoles.find((role) => matchesManagedName(role.name, item.name));
     const role = existing || (await createGuildRole(token, guildId, item));
@@ -323,7 +323,7 @@ function buildIntroMessage(item) {
     "Website: https://maycatplay.com/customer/",
     "Account binding: https://maycatplay.com/customer/settings",
     "",
-    "May猫饼电竞：下单、派单、充值、提现、投诉都以网站后台记录为准。"
+    "小小电竞：下单、派单、充值、提现、投诉都以网站后台记录为准。"
   ].join("\n");
 }
 

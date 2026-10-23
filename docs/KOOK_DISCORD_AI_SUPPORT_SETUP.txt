@@ -1,4 +1,4 @@
-May猫饼电竞 - Discord / KOOK AI客服接入步骤
+小小电竞 - Discord / KOOK AI客服接入步骤
 
 目标
 ====
@@ -92,7 +92,7 @@ KOOK_DISPATCH_CHANNEL_ID=
    New Application
 
 3. 名字填：
-   May猫饼客服
+   小小电竞客服
 
 4. 创建后，左侧点：
    Bot
@@ -220,7 +220,7 @@ DISCORD_DISPATCH_CHANNEL_ID=派单频道ID
 3. 创建应用 / 机器人。
 
 4. 名字建议：
-   May猫饼客服
+   小小电竞客服
 
 5. 找到机器人 Token。
 
@@ -408,7 +408,7 @@ sudo docker compose logs -f kook-bot
 
 在 Discord 的 #客服接待 频道发：
 
-@May猫饼客服 我要找三角洲陪玩，2小时，预算100，想先试音
+@小小电竞客服 我要找三角洲陪玩，2小时，预算100，想先试音
 
 正常结果：
 1. Bot 会回复。

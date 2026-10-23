@@ -246,7 +246,7 @@ export class BotNotificationService {
     if (!draft) return [];
 
     const content = [
-      `May猫饼派单 ${draft.draftNo} 已流单`,
+      `小小电竞派单 ${draft.draftNo} 已流单`,
       `游戏：${draft.game}`,
       `模式：${publicServiceLabel(draft.priceTier)}`,
       "具体原因请联系授权客服核对。",
@@ -316,7 +316,7 @@ export class BotNotificationService {
       if (channelId) {
         const mention = discordAccount?.externalUserId ? `<@${discordAccount.externalUserId}>` : companionName;
         results.push(await this.sendDiscordChannelText(channelId, [
-          `May猫饼派单 ${draft.draftNo} 已指定陪玩`,
+          `小小电竞派单 ${draft.draftNo} 已指定陪玩`,
           `陪玩：${mention}`,
           `游戏：${draft.game}`,
           `模式：${publicServiceLabel(draft.priceTier)}`,
@@ -330,7 +330,7 @@ export class BotNotificationService {
       if (channelId) {
         const mention = kookAccount?.externalUserId ? `(met)${kookAccount.externalUserId}(met)` : companionName;
         results.push(await this.sendKookChannelText(channelId, [
-          `May猫饼派单 ${draft.draftNo} 已指定陪玩`,
+          `小小电竞派单 ${draft.draftNo} 已指定陪玩`,
           `陪玩：${mention}`,
           `游戏：${draft.game}`,
           `模式：${publicServiceLabel(draft.priceTier)}`,
@@ -531,7 +531,7 @@ export class BotNotificationService {
 
     try {
       const body = await this.postDiscordMessage(channelId, {
-          content: payload.companionId ? "May\u732b\u997c\u8ba2\u5355\u5df2\u6307\u5b9a\u966a\u73a9" : "May\u732b\u997c\u65b0\u8ba2\u5355\u5f85\u63a5\u5355",
+          content: payload.companionId ? "\u5c0f\u5c0f\u7535\u7ade\u8ba2\u5355\u5df2\u6307\u5b9a\u966a\u73a9" : "\u5c0f\u5c0f\u7535\u7ade\u65b0\u8ba2\u5355\u5f85\u63a5\u5355",
           embeds: [
             {
               title: `订单 ${payload.orderNo}`,
@@ -575,7 +575,7 @@ export class BotNotificationService {
     const roleMentions = this.buildDiscordDraftRoleMentions(payload);
     try {
       const body = await this.postDiscordMessage(channelId, {
-          content: [roleMentions.content, "May猫饼平台招募：符合标签的陪玩可报名，客户会从报名里选择"].filter(Boolean).join("\n"),
+          content: [roleMentions.content, "小小电竞平台招募：符合标签的陪玩可报名，客户会从报名里选择"].filter(Boolean).join("\n"),
           allowed_mentions: { parse: [], roles: roleMentions.roleIds },
           embeds: [
             {
@@ -617,7 +617,7 @@ export class BotNotificationService {
         theme: "primary",
         size: "lg",
         modules: [
-          { type: "header", text: { type: "plain-text", content: payload.companionId ? "May\u732b\u997c\u8ba2\u5355\u5df2\u6307\u5b9a\u966a\u73a9" : "May\u732b\u997c\u65b0\u8ba2\u5355\u5f85\u63a5\u5355" } },
+          { type: "header", text: { type: "plain-text", content: payload.companionId ? "\u5c0f\u5c0f\u7535\u7ade\u8ba2\u5355\u5df2\u6307\u5b9a\u966a\u73a9" : "\u5c0f\u5c0f\u7535\u7ade\u65b0\u8ba2\u5355\u5f85\u63a5\u5355" } },
           {
             type: "section",
             text: {
@@ -676,7 +676,7 @@ export class BotNotificationService {
         theme: "primary",
         size: "lg",
         modules: [
-          { type: "header", text: { type: "plain-text", content: `May猫饼平台招募 ${payload.draftNo}` } },
+          { type: "header", text: { type: "plain-text", content: `小小电竞平台招募 ${payload.draftNo}` } },
           {
             type: "section",
             text: {

@@ -9,9 +9,9 @@ const {
   requireAny
 } = require("./utils");
 
-const EXAM_RULES_MARKER = "May猫饼电竞 · 陪玩考核标准";
+const EXAM_RULES_MARKER = "小小电竞 · 陪玩考核标准";
 
-const KOOK_EXAM_RULES_CONTENT = `**📋 May猫饼电竞 · 陪玩考核标准**
+const KOOK_EXAM_RULES_CONTENT = `**📋 小小电竞 · 陪玩考核标准**
 
 ━━━━━━ 基本要求 ━━━━━━
 

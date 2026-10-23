@@ -30,13 +30,13 @@ const CHANNEL_RENAMES = [
 ];
 
 const CATEGORY_RENAMES = [
-  { target: "May猫饼｜频道导航", cores: ["Text Channels", "May猫饼频道导航", "频道导航"] },
-  { target: "✦ 欢迎来到 May猫饼 ✦", cores: ["客户专区", "欢迎来到May猫饼", "欢迎来到"] },
+  { target: "小小电竞｜频道导航", cores: ["Text Channels", "小小电竞频道导航", "频道导航"] },
+  { target: "✦ 欢迎来到 小小电竞 ✦", cores: ["客户专区", "欢迎来到小小电竞", "欢迎来到"] },
   { target: "☎ 客服接待大厅 ☎", cores: ["客服接待大厅", "客服接待"] },
   { target: "员工守则", cores: ["员工守则"] },
   { target: "🧾 考核专区", cores: ["考核专区"] },
-  { target: "May猫饼｜语音服务", cores: ["Voice Channels", "语音服务"] },
-  { target: "May猫饼｜陪玩派单", cores: ["XP接单区", "陪玩派单", "接单大厅"] }
+  { target: "小小电竞｜语音服务", cores: ["Voice Channels", "语音服务"] },
+  { target: "小小电竞｜陪玩派单", cores: ["XP接单区", "陪玩派单", "接单大厅"] }
 ];
 
 async function renameDiscord() {
@@ -55,7 +55,7 @@ async function renameDiscord() {
 
   const refreshedChannels = await getGuildChannels(token, guildId);
   await reorderCategories(token, guildId, refreshedChannels);
-  await reorderChannelsInCategory(token, guildId, refreshedChannels, "May猫饼｜频道导航", [
+  await reorderChannelsInCategory(token, guildId, refreshedChannels, "小小电竞｜频道导航", [
     "频道简介",
     "公告通知",
     "自助下单",
@@ -98,13 +98,13 @@ function normalizeForRename(value) {
 
 async function reorderCategories(token, guildId, channels) {
   const desired = [
-    "May猫饼｜频道导航",
-    "✦ 欢迎来到 May猫饼 ✦",
+    "小小电竞｜频道导航",
+    "✦ 欢迎来到 小小电竞 ✦",
     "☎ 客服接待大厅 ☎",
     "员工守则",
     "🧾 考核专区",
-    "May猫饼｜语音服务",
-    "May猫饼｜陪玩派单"
+    "小小电竞｜语音服务",
+    "小小电竞｜陪玩派单"
   ];
   const body = desired
     .map((name) => findChannel(channels, [name], 4))

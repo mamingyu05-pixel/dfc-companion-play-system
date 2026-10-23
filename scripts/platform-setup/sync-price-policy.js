@@ -35,7 +35,7 @@ async function main() {
   const apply = args.has("--apply");
   const confirm = args.has("--confirm-rank-baseline") || args.has("--confirm-sync-prices");
 
-  console.log("💰 May猫饼段位价基线审计");
+  console.log("💰 小小电竞段位价基线审计");
   console.log("说明：新版不是统一价；本脚本只处理上一版遗留的 128/108 扁平价，并回到 ¥98 起基线。");
   console.log(apply ? "模式：真实更新数据库" : "模式：只审计，不修改数据库");
   if (apply && !confirm) {

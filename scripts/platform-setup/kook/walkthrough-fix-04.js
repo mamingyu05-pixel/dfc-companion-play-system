@@ -21,7 +21,7 @@ const KNOWN_KOOK_CHANNEL_IDS = {
 const CONTENT = {
   aiCustomerOrder: {
     marker: "客户下单格式",
-    body: ({ recharge }) => `**🤖 May猫饼电竞 · 客户下单格式**
+    body: ({ recharge }) => `**🤖 小小电竞 · 客户下单格式**
 
 下单前请确认钱包余额充足（充值见 ${mentionOrName(recharge)}）。
 
@@ -115,7 +115,7 @@ async function fixKookDispatchDuplicate(context, env) {
   if (!dispatch) return;
 
   const messages = await getKookRecentMessages(context, dispatch);
-  const targets = messages.filter((message) => hasAny(getContent(message), ["人工派单大厅", "May猫饼·人工派单大厅", "May猫饼 · 人工派单大厅"]));
+  const targets = messages.filter((message) => hasAny(getContent(message), ["人工派单大厅", "小小电竞·人工派单大厅", "小小电竞 · 人工派单大厅"]));
   if (targets.length <= 1) {
     console.log(`✓ K03 人工派单简介无需去重，候选 ${targets.length} 条`);
     return;

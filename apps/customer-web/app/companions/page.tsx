@@ -107,7 +107,7 @@ export default function CompanionsPage() {
               选择今晚的队友。
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-dfc-subtext md:text-base">
-              先看在线状态、语音偏好和价格，再进入详情或试音。正式发单请到 KOOK / Discord 群里，May猫饼会把派单、接单和结算记录完整留在后台。
+              先看在线状态、语音偏好和价格，再进入详情或试音。正式发单请到 KOOK / Discord 群里，小小电竞会把派单、接单和结算记录完整留在后台。
             </p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <Link href="/order" className="maycat-button px-5 py-3 text-center text-sm font-black">

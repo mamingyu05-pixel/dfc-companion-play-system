@@ -104,7 +104,7 @@ export default function CompanionDashboardPage() {
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           <div>
             <SectionHeader
-              eyebrow="Maycat Companion Console"
+              eyebrow="Xiaoxiao Companion Console"
               title={`${nickname}，准备接单。`}
               desc={`账号：${formatAccountEmail(profile.user.email)}。这里显示当前陪玩账号的资料、收益、可接订单和服务中的订单。`}
             />

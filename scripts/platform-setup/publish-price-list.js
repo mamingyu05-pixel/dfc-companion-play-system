@@ -37,7 +37,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   validateAssets();
 
-  console.log("💰 May猫饼价目表发布");
+  console.log("💰 小小电竞价目表发布");
   console.log(options.apply ? "模式：真实发布" : "模式：只演练，不修改 Discord/KOOK");
   if (options.replaceExisting) console.log("重发策略：先清理旧价目内容，再发布新版");
   console.log(`图片目录：${CARD_DIR}`);
@@ -101,7 +101,7 @@ async function publishDiscord(env, options) {
       name: DISCORD_PRICE_FORUM_NAME,
       type: 15,
       parent_id: serviceChannel?.parent_id ?? undefined,
-      topic: "May猫饼价目表：游戏价格与充值福利"
+      topic: "小小电竞价目表：游戏价格与充值福利"
     });
     console.log(`✓ 已创建论坛频道：${forum.name}`);
   } else {

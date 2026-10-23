@@ -173,7 +173,7 @@ node scripts/platform-setup/audit-discord-duplicates.js --delete-duplicates --co
 
 删除频道会永久删除该频道历史消息，脚本不会迁移历史消息。
 
-MayCat Club 频道走查修复第 04 版可清理 Discord / KOOK 重复 Bot 简介、错位内容、测试消息，并补齐入职须知、社区守则、好评展示、预存福利和 tag 登记说明。第 04 版历史方案按“预存钱包制、群内下单、网页只读查询”修正文案；当前网页范围以本文开头为准，仍支持人工充值申请、投诉和服务验收。默认只审计，不修改频道：
+Xiaoxiao Esports 频道走查修复第 04 版可清理 Discord / KOOK 重复 Bot 简介、错位内容、测试消息，并补齐入职须知、社区守则、好评展示、预存福利和 tag 登记说明。第 04 版历史方案按“预存钱包制、群内下单、网页只读查询”修正文案；当前网页范围以本文开头为准，仍支持人工充值申请、投诉和服务验收。默认只审计，不修改频道：
 
 ```bash
 node scripts/platform-setup/walkthrough-fix-04.js

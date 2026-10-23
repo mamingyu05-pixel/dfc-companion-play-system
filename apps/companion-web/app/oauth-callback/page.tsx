@@ -23,7 +23,7 @@ export default function CompanionOAuthCallbackPage() {
     localStorage.setItem(
       "dfc_companion_user",
       JSON.stringify({
-        displayName: displayName || "May猫饼陪玩",
+        displayName: displayName || "小小电竞陪玩",
         role: "COMPANION"
       })
     );
@@ -38,7 +38,7 @@ export default function CompanionOAuthCallbackPage() {
     <main className="companion-console-bg flex min-h-screen items-center justify-center px-4 text-dfc-text">
       <section className="companion-card w-full max-w-md p-5">
         <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">Maycat Companion</div>
-        <h1 className="mt-2 text-xl font-black text-white">May猫饼陪玩端</h1>
+        <h1 className="mt-2 text-xl font-black text-white">小小电竞陪玩端</h1>
         <p className="mt-1 text-xs text-dfc-muted">Discord / KOOK 申请与登录</p>
         <div className={`mt-5 rounded-dfc-control border px-3 py-3 text-sm ${failed ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success"}`}>
           {message}

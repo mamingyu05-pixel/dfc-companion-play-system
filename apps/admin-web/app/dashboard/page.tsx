@@ -104,7 +104,7 @@ export default function AdminDashboardPage() {
           <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
             <div>
               <SectionHeader
-                eyebrow="Maycat Command Center"
+                eyebrow="Xiaoxiao Command Center"
                 title="异常与审核待办"
                 desc="先处理待分配、接单超时、投诉和人工资金审核。正常接单与服务无需重复操作；资金确认和处理原因继续保留。"
               />

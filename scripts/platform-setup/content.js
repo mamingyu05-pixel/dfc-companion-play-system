@@ -13,7 +13,7 @@ function renderTemplate(template, platform, channelIds) {
 const CONTENT = {
   INTRO_CUSTOMER: {
     marker: "客户专区",
-    discord: `## 🐱 May猫饼电竞 · 客户频道导航
+    discord: `## 🐱 小小电竞 · 客户频道导航
 
 **先接待，再试听，确认舒服了再下单。**
 
@@ -30,7 +30,7 @@ const CONTENT = {
 
 🙋 找客服派单 → {{SUPPORT1_CHANNEL}} / {{SUPPORT2_CHANNEL}}
 📝 自助下单   → {{ORDER_CHANNEL}}`,
-    kook: `**May猫饼电竞 · 客户频道导航**
+    kook: `**小小电竞 · 客户频道导航**
 
 先接待，再试听，确认舒服了再下单。
 
@@ -147,7 +147,7 @@ AI 客服会整理成派单卡并 @ 匹配的陪玩，确认人选后由客服�
 
   SERVICE_ITEMS: {
     marker: "服务项目",
-    discord: `## 📋 May猫饼电竞 · 服务项目
+    discord: `## 📋 小小电竞 · 服务项目
 
 ━━━━━━ 支持游戏 ━━━━━━
 三角洲行动 / 英雄联盟 / 无畏契约 / CS2
@@ -172,7 +172,7 @@ PUBG 绝地求生 / Apex 英雄 / 永劫无间 / 塔科夫/COD
 
 📝 下单请在 {{AI_DISPATCH_CHANNEL}} 按格式发单
 🌐 网页：https://maycatplay.com/customer/（查余额、看陪玩、查订单）`,
-    kook: `**📋 May猫饼电竞 · 服务项目**
+    kook: `**📋 小小电竞 · 服务项目**
 
 ---
 
@@ -211,7 +211,7 @@ PUBG 绝地求生 / Apex 英雄 / 永劫无间 / 塔科夫/COD
 
   DISPATCH_RULES: {
     marker: "人工派单大厅",
-    discord: `📣 **May猫饼 · 人工派单大厅**
+    discord: `📣 **小小电竞 · 人工派单大厅**
 
 客服或 AI 在此发布派单，陪玩按格式报名，管理员最终确认。
 
@@ -225,7 +225,7 @@ PUBG 绝地求生 / Apex 英雄 / 永劫无间 / 塔科夫/COD
 ▸ 报名不等于接单，最终以后台订单状态为准
 ▸ 禁止绕过平台私下交易
 ▸ 一切以 maycatplay.com 后台记录为准`,
-    kook: `📣 **May猫饼 · 人工派单大厅**
+    kook: `📣 **小小电竞 · 人工派单大厅**
 
 客服或 AI 在此发布派单，陪玩按格式报名，管理员最终确认。
 

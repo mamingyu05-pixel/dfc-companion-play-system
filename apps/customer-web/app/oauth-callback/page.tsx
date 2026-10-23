@@ -24,7 +24,7 @@ export default function OAuthCallbackPage() {
     localStorage.setItem(
       "dfc_customer_user",
       JSON.stringify({
-        displayName: displayName || "May猫饼玩家",
+        displayName: displayName || "小小电竞玩家",
         role: "CUSTOMER"
       })
     );
@@ -40,7 +40,7 @@ export default function OAuthCallbackPage() {
       <section className="maycat-card w-full max-w-md p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-black text-white">May猫饼电竞</h1>
+            <h1 className="text-xl font-black text-white">小小电竞</h1>
             <p className="mt-1 text-xs text-dfc-muted">Discord / KOOK 登录</p>
           </div>
           <MaycatLogo compact />

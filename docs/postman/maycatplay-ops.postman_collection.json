@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "May猫饼运营接口工具包",
-    "description": "May猫饼电竞生产环境常用排查接口。导入后先选择 May猫饼 Production 环境，再执行管理员登录。不要把 token、密码或验证码提交到 GitHub。",
+    "name": "小小电竞运营接口工具包",
+    "description": "小小电竞生产环境常用排查接口。导入后先选择 小小电竞 Production 环境，再执行管理员登录。不要把 token、密码或验证码提交到 GitHub。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [

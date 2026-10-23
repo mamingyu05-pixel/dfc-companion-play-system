@@ -1,4 +1,4 @@
-# May猫饼 Discord AI 客服接入
+# 小小电竞 Discord AI 客服接入
 
 ## 目标
 
@@ -48,7 +48,7 @@ https://discord.com/developers/applications
 3. 名字填：
 
 ```text
-May猫饼客服
+小小电竞客服
 ```
 
 4. 左侧进入 `Bot`。
@@ -109,7 +109,7 @@ Move Members
 
 4. 复制生成的邀请链接。
 5. 浏览器打开邀请链接。
-6. 选择你的 May猫饼 Discord 服务器。
+6. 选择你的 小小电竞 Discord 服务器。
 7. 授权。
 
 ## 四、获取服务器 ID
@@ -140,14 +140,14 @@ sudo docker compose run --rm api-server node /app/scripts/setup-discord-server.j
 脚本会创建或复用：
 
 ```text
-May猫饼｜客户服务
+小小电竞｜客户服务
   💬｜客服接待
 
-May猫饼｜陪玩派单
+小小电竞｜陪玩派单
   📣｜人工派单
   🎧｜试音等候室
 
-May猫饼｜运营后台
+小小电竞｜运营后台
   💳｜充值审核
   💸｜提现审核
   🧯｜投诉处理
@@ -209,7 +209,7 @@ sudo docker compose logs -f discord-bot
 看到类似：
 
 ```text
-Maycat Discord Bot ready as May猫饼客服#xxxx
+Xiaoxiao Discord Bot ready as 小小电竞客服#xxxx
 ```
 
 说明 Bot 已在线。

@@ -10,7 +10,7 @@ async function main() {
   const runDiscord = !args.has("--kook-only");
   const runKook = !args.has("--discord-only");
 
-  console.log("🚀 May猫饼平台频道全套搭建\n");
+  console.log("🚀 小小电竞平台频道全套搭建\n");
 
   if (runDiscord) {
     console.log("━━━ M1: Discord 重命名 ━━━");

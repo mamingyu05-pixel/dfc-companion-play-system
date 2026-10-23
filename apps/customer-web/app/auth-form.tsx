@@ -168,8 +168,8 @@ export function CustomerAuthForm() {
         <section className="flex flex-col justify-center py-6">
           <div className="max-w-3xl">
             <MaycatLogo />
-            <div className="maycat-chip mt-8 px-3 py-1 text-xs font-semibold">Maycat Club · KOOK / Discord 客服 · 人工试音派单</div>
-            <h1 className="maycat-text-glow mt-5 text-4xl font-black leading-tight text-white md:text-6xl">May猫饼电竞</h1>
+            <div className="maycat-chip mt-8 px-3 py-1 text-xs font-semibold">Xiaoxiao Esports · KOOK / Discord 客服 · 人工试音派单</div>
+            <h1 className="maycat-text-glow mt-5 text-4xl font-black leading-tight text-white md:text-6xl">小小电竞</h1>
             <p className="mt-3 text-xl font-black text-cyan-200 md:text-2xl">先接待，再试音，确认舒服了再到群里发单。</p>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
               平台支持 KOOK 和 Discord：客户可以快捷登录、联系客服、进入试音频道；管理员可在后台记录充值、派单、订单、钱包和投诉，整个服务流程可追踪。
@@ -231,7 +231,7 @@ export function CustomerAuthForm() {
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
               <h2 className="maycat-text-glow text-xl font-black text-white">
-                {mode === "forgot" ? "重置密码" : mode === "login" ? "登录 May猫饼" : "加入 May猫饼"}
+                {mode === "forgot" ? "重置密码" : mode === "login" ? "登录 小小电竞" : "加入 小小电竞"}
               </h2>
               <p className="mt-1 text-xs text-dfc-muted">客户入口 · 支持邮箱、KOOK、Discord</p>
             </div>

@@ -1,4 +1,4 @@
-# May猫饼电竞 / DFC 陪玩平台 Claude 审核说明
+# 小小电竞 / DFC 陪玩平台 Claude 审核说明
 
 日期：2026-06-13
 
@@ -8,8 +8,8 @@
 
 项目名称当前对外使用：
 
-- May猫饼电竞
-- Maycat Club
+- 小小电竞
+- Xiaoxiao Esports
 
 项目原始名称：
 
@@ -193,7 +193,7 @@ Claude 重点审核：
 
 最近更新：
 
-- 客户端已根据 Maycat Club 霓虹猫图改版。
+- 客户端已根据 Xiaoxiao Esports 霓虹猫图改版。
 - 新增品牌图：
 
 ```text

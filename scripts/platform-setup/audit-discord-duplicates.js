@@ -92,8 +92,8 @@ const DUPLICATE_GROUPS = [
   {
     key: "DUPLICATE_VOICE_CATEGORY",
     title: "重复 Voice Channels 分类",
-    canonicalName: "May猫饼｜语音服务",
-    aliases: ["Voice Channels", "May猫饼｜语音服务"],
+    canonicalName: "小小电竞｜语音服务",
+    aliases: ["Voice Channels", "小小电竞｜语音服务"],
     types: [4],
     note: "保留第一个通用语音分类，删除多余的同名分类。"
   },
@@ -102,7 +102,7 @@ const DUPLICATE_GROUPS = [
     title: "空的旧分类",
     deleteAll: true,
     emptyOnly: true,
-    aliases: ["May猫饼｜客户服务", "点单看这里"],
+    aliases: ["小小电竞｜客户服务", "点单看这里"],
     types: [4],
     note: "只清理已经没有子频道的旧分类。"
   }
@@ -308,7 +308,7 @@ async function deleteDuplicateChannels(token, duplicates) {
 async function deleteEmptyLegacyCategories(token, guildId) {
   const channels = await getGuildChannels(token, guildId);
   const childCounts = countChildrenByParent(channels);
-  const aliases = ["May猫饼｜客户服务", "点单看这里"];
+  const aliases = ["小小电竞｜客户服务", "点单看这里"];
   const emptyLegacyCategories = channels
     .filter((channel) => Number(channel.type) === 4)
     .filter((channel) => matchesAnyAlias(channel.name, aliases))

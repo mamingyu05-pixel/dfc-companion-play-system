@@ -10,7 +10,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <aside className="admin-sidebar hidden xl:block">
           <div className="border-b border-cyan-300/15 p-5">
             <div className="text-xs font-black uppercase tracking-[0.2em] text-fuchsia-200">Maycat Ops</div>
-            <div className="mt-2 text-xl font-black text-white">May猫饼后台</div>
+            <div className="mt-2 text-xl font-black text-white">小小电竞后台</div>
             <div className="mt-1 text-xs text-dfc-muted">电竞陪玩运营控制台</div>
           </div>
           <AdminSidebarNav />

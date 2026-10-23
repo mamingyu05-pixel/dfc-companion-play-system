@@ -1485,7 +1485,7 @@ export class OrderDraftsService {
 
   private buildCustomerRecommendationMessage(draftNo: string, recommendations: Array<{ candidateId: string; nickname: string; pricePerHour: string; onlineStatus: string; reasons: string[] }>) {
     return [
-      `根据你的需求，May猫饼为你推荐以下陪玩（试音单 ${draftNo}）：`,
+      `根据你的需求，小小电竞为你推荐以下陪玩（试音单 ${draftNo}）：`,
       ...recommendations.map((item, index) => `${index + 1}. ${item.nickname}，¥${item.pricePerHour}/小时，${item.onlineStatus}，${item.reasons.join(" / ")}；选择指令：选择 ${draftNo} #${item.candidateId}`),
       `请复制候选对应的完整选择指令；也可回复“选择 ${draftNo} 陪玩昵称”（昵称须唯一）。仅草稿本人可选，选择后仍需确认服务和价格。`
     ].join("\n");

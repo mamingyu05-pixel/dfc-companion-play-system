@@ -7,7 +7,7 @@ const KOOK_API_BASE_URL = "https://www.kookapp.cn";
 const rolePlan = [
   { env: "KOOK_SUPER_ADMIN_ROLE_ID", name: "👑 总管理", color: 0xffd166, grantToAdmin: true },
   { env: "KOOK_ADMIN_ROLE_ID", name: "🛡️ 管理员", color: 0xff5a6a, grantToAdmin: true },
-  { env: "KOOK_SUPPORT_ROLE_ID", name: "💬 May客服", color: 0x22d3ee },
+  { env: "KOOK_SUPPORT_ROLE_ID", name: "💬 小小客服", color: 0x22d3ee },
   { env: "KOOK_COMPANION_ROLE_ID", name: "🎮 认证陪玩", color: 0xa78bfa, mentionable: true },
   { env: "KOOK_VOICE_MOON_ROLE_ID", name: "🌙 月影声线", color: 0xf472b6, mentionable: true },
   { env: "KOOK_VOICE_SOLAR_ROLE_ID", name: "☀️ 曜刃声线", color: 0x38bdf8, mentionable: true },
@@ -19,15 +19,15 @@ const rolePlan = [
   { env: "KOOK_GAME_APEX_LEGENDS_ROLE_ID", name: "⚡ Apex组", color: 0xef4444, mentionable: true },
   { env: "KOOK_GAME_NARAKA_BLADEPOINT_ROLE_ID", name: "⚔️ 永劫无间组", color: 0xfacc15, mentionable: true },
   { env: "KOOK_GAME_CALL_OF_DUTY_ROLE_ID", name: "🎧 塔科夫/COD组", color: 0x34d399, mentionable: true },
-  { env: "KOOK_CUSTOMER_ROLE_ID", name: "🐾 猫饼客户", color: 0x38bdf8 },
+  { env: "KOOK_CUSTOMER_ROLE_ID", name: "🐾 小小客户", color: 0x38bdf8 },
   { env: "KOOK_CUSTOMER_NO_ORDER_ROLE_ID", name: "🌱 未下单客户", color: 0x94a3b8 },
-  { env: "KOOK_CUSTOMER_SPECIAL_HALL_ROLE_ID", name: "👑 May名人堂", color: 0xfacc15 },
+  { env: "KOOK_CUSTOMER_SPECIAL_HALL_ROLE_ID", name: "👑 小小名人堂", color: 0xfacc15 },
   { env: "KOOK_CUSTOMER_SPECIAL_NEON_ROLE_ID", name: "💎 霓虹贵宾", color: 0xf472b6 },
   ...Array.from({ length: 15 }, (_, index) => {
     const level = index + 1;
     return {
       env: `KOOK_CUSTOMER_LEVEL_${level}_ROLE_ID`,
-      name: `🐾 猫饼会员 Lv.${level}`,
+      name: `🐾 小小会员 Lv.${level}`,
       color: level <= 4 ? 0x38bdf8 : level <= 9 ? 0x818cf8 : 0xc084fc
     };
   })
@@ -38,7 +38,7 @@ const channelIntroPlan = [
     env: "KOOK_SUPPORT_CHANNEL_ID",
     name: "💬｜客服接待",
     topic: "客户咨询、AI客服、人工接管、找陪玩需求入口",
-    title: "欢迎来到 May猫饼客服接待",
+    title: "欢迎来到 小小电竞客服接待",
     lines: [
       "这里是客户咨询入口。你可以直接说需求，AI 客服会先整理信息，复杂问题会转人工。",
       "找陪玩请说清楚：游戏、模式、段位、时长、预算、是否试音、语音偏好。",
@@ -50,7 +50,7 @@ const channelIntroPlan = [
     env: "KOOK_DISPATCH_CHANNEL_ID",
     name: "📣｜人工派单",
     topic: "客服发布需求，陪玩报名，管理员确认",
-    title: "May猫饼人工派单大厅",
+    title: "小小电竞人工派单大厅",
     lines: [
       "客服或 AI 会在这里整理客户需求，陪玩按格式报名，管理员最终确认。",
       "陪玩报名建议包含：可服务时间、报价、擅长模式、是否可试音、备注。",
@@ -61,7 +61,7 @@ const channelIntroPlan = [
     env: "KOOK_AI_DISPATCH_CHANNEL_ID",
     name: "🤖｜AI派单",
     topic: "AI 自动整理客户需求，按游戏标签和声线标签提醒陪玩报名",
-    title: "May猫饼 AI 派单大厅",
+    title: "小小电竞 AI 派单大厅",
     lines: [
       "AI 客服会把 KOOK / Discord 客户需求整理到这里。",
       "派单会自动提醒对应游戏标签和声线标签的陪玩。",
@@ -72,7 +72,7 @@ const channelIntroPlan = [
     env: "KOOK_RECHARGE_CHANNEL_ID",
     name: "💳｜充值审核",
     topic: "人工充值提醒、截图核对、到账确认",
-    title: "May猫饼充值审核",
+    title: "小小电竞充值审核",
     lines: [
       "用于人工充值提醒和截图核对。",
       "审核前确认客户账号、金额、截图、备注、优惠码是否匹配。",
@@ -83,7 +83,7 @@ const channelIntroPlan = [
     env: "KOOK_WITHDRAWAL_CHANNEL_ID",
     name: "💸｜提现审核",
     topic: "陪玩提现申请、支付宝信息核对、人工打款确认",
-    title: "May猫饼提现审核",
+    title: "小小电竞提现审核",
     lines: [
       "用于陪玩提现申请、支付宝收款信息核对和人工打款确认。",
       "打款前确认可提现收入、订单完成状态、是否存在投诉。",
@@ -94,7 +94,7 @@ const channelIntroPlan = [
     env: "KOOK_COMPLAINT_CHANNEL_ID",
     name: "🧯｜投诉处理",
     topic: "退款、投诉、争议订单处理",
-    title: "May猫饼投诉处理",
+    title: "小小电竞投诉处理",
     lines: [
       "用于退款、投诉、争议订单处理。",
       "处理前收集订单号、聊天记录、截图或录屏、客户诉求、陪玩说明。",
@@ -105,7 +105,7 @@ const channelIntroPlan = [
     env: "KOOK_ADMIN_CHANNEL_ID",
     name: "🛎️｜管理提醒",
     topic: "系统异常、Bot失败日志、充值/提现/投诉待办",
-    title: "May猫饼管理提醒",
+    title: "小小电竞管理提醒",
     lines: [
       "用于系统异常、Bot 失败日志、待审核充值、提现和投诉提醒。",
       "每日建议检查：未派单订单、充值审核、提现审核、投诉、数据库备份、Bot 日志。"
@@ -134,7 +134,7 @@ async function main() {
   if (!guildId) throw new Error("KOOK_GUILD_ID is missing in .env. Example: node scripts/decorate-kook-server.js 3189962583916682");
 
   console.log(`KOOK guild: ${guildId}`);
-  console.log("Ensuring May猫饼 roles...\n");
+  console.log("Ensuring 小小电竞 roles...\n");
 
   const existingRoles = await listRoles(token, guildId);
   const roleOutput = {};
@@ -387,7 +387,7 @@ function buildIntroMessage(item) {
     "Website: https://maycatplay.com/customer/",
     "Account binding: https://maycatplay.com/customer/settings",
     "",
-    "May猫饼电竞：下单、派单、充值、提现、投诉都以网站后台记录为准。"
+    "小小电竞：下单、派单、充值、提现、投诉都以网站后台记录为准。"
   ].join("\n");
 }
 

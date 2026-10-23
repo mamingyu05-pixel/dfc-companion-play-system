@@ -12,12 +12,12 @@ const {
   requireAny
 } = require("./utils");
 
-const EXAM_RULES_MARKER = "May猫饼电竞 · 陪玩考核标准";
-const VIOLATION_RULES_MARKER = "May猫饼电竞 · 违规处理制度";
-const NAV_CATEGORY_NAME = "May猫饼｜频道导航";
-const VOICE_CATEGORY_NAME = "May猫饼｜语音服务";
-const NAV_CATEGORY_PATTERNS = [NAV_CATEGORY_NAME, "May猫饼 · 频道导航", "频道导航", "Text Channels"];
-const VOICE_CATEGORY_PATTERNS = [VOICE_CATEGORY_NAME, "May猫饼 · 语音服务", "语音服务", "Voice Channels"];
+const EXAM_RULES_MARKER = "小小电竞 · 陪玩考核标准";
+const VIOLATION_RULES_MARKER = "小小电竞 · 违规处理制度";
+const NAV_CATEGORY_NAME = "小小电竞｜频道导航";
+const VOICE_CATEGORY_NAME = "小小电竞｜语音服务";
+const NAV_CATEGORY_PATTERNS = [NAV_CATEGORY_NAME, "小小电竞 · 频道导航", "频道导航", "Text Channels"];
+const VOICE_CATEGORY_PATTERNS = [VOICE_CATEGORY_NAME, "小小电竞 · 语音服务", "语音服务", "Voice Channels"];
 
 const NAV_CHANNEL_RENAMES = [
   { target: "🗺️｜频道简介", type: 0, patterns: ["频道简介", "店内导航", "频道导航", "welcome"] },
@@ -30,7 +30,7 @@ const NAV_CHANNEL_RENAMES = [
   { target: "💰｜价格清单", type: 15, patterns: ["价格清单"] }
 ];
 
-const EXAM_RULES_CONTENT = `## 📋 May猫饼电竞 · 陪玩考核标准
+const EXAM_RULES_CONTENT = `## 📋 小小电竞 · 陪玩考核标准
 
 ━━━━━━ 基本要求 ━━━━━━
 
@@ -60,7 +60,7 @@ const EXAM_RULES_CONTENT = `## 📋 May猫饼电竞 · 陪玩考核标准
 ▸ 禁止私下向客户索取联系方式　▸ 禁止平台外私接
 ▸ 违规一次警告，二次直接下架　▸ 一切以 maycatplay.com 后台记录为准`;
 
-const VIOLATION_RULES_CONTENT = `## ⚠️ May猫饼电竞 · 违规处理制度（周结工资制）
+const VIOLATION_RULES_CONTENT = `## ⚠️ 小小电竞 · 违规处理制度（周结工资制）
 
 ━━━━━━ 一级 · 警告级 ━━━━━━（累计 3 次升二级）
 · 未及时提交订单 / 战绩截图；服务后未及时反馈
@@ -304,12 +304,12 @@ async function reorderDiscordLayout(token, guildId, channels) {
 async function reorderCategories(token, guildId, channels) {
   const desiredCategories = [
     NAV_CATEGORY_PATTERNS,
-    ["✦ 欢迎来到 May猫饼 ✦", "欢迎来到May猫饼", "欢迎来到"],
+    ["✦ 欢迎来到 小小电竞 ✦", "欢迎来到小小电竞", "欢迎来到"],
     ["☎ 客服接待大厅 ☎", "客服接待大厅"],
     ["员工守则"],
     ["🧾 考核专区", "考核专区"],
     VOICE_CATEGORY_PATTERNS,
-    ["May猫饼｜陪玩派单", "陪玩派单"]
+    ["小小电竞｜陪玩派单", "陪玩派单"]
   ];
 
   const seen = new Set();

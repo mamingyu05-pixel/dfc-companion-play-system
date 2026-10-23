@@ -31,7 +31,7 @@ const CHANNEL_PLACEHOLDERS = {
 const EXAM_RULES_MARKER = "陪玩考核标准";
 const VIOLATION_RULES_MARKER = "违规处理制度";
 
-const EXAM_RULES_CONTENT = `## 📋 May猫饼电竞 · 陪玩考核标准
+const EXAM_RULES_CONTENT = `## 📋 小小电竞 · 陪玩考核标准
 
 ━━━━━━ 基本要求 ━━━━━━
 
@@ -61,7 +61,7 @@ const EXAM_RULES_CONTENT = `## 📋 May猫饼电竞 · 陪玩考核标准
 ▸ 禁止私下向客户索取联系方式　▸ 禁止平台外私接
 ▸ 违规一次警告，二次直接下架　▸ 一切以 maycatplay.com 后台记录为准`;
 
-const VIOLATION_RULES_CONTENT = `## ⚠️ May猫饼电竞 · 违规处理制度（周结工资制）
+const VIOLATION_RULES_CONTENT = `## ⚠️ 小小电竞 · 违规处理制度（周结工资制）
 
 ━━━━━━ 一级 · 警告级 ━━━━━━（累计 3 次升二级）
 · 未及时提交订单 / 战绩截图；服务后未及时反馈

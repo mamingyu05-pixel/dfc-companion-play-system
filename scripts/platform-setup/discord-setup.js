@@ -150,12 +150,12 @@ async function hideInternalTestChannels(token, guildId, channels, everyoneRoleId
 
 async function ensureServiceChannel(token, guildId, channels) {
   if (findChannel(channels, CHANNEL_PLACEHOLDERS.SERVICE_CHANNEL.patterns, 0)) return;
-  const parent = findChannel(channels, ["欢迎来到may猫饼", "欢迎来到", "欢迎"], 4);
+  const parent = findChannel(channels, ["欢迎来到小小电竞", "欢迎来到", "欢迎"], 4);
   const created = await discordPost(token, `/guilds/${guildId}/channels`, {
     name: "服务价目",
     type: 0,
     parent_id: parent?.id,
-    topic: "May猫饼电竞服务项目、价格和超时计费规则"
+    topic: "小小电竞服务项目、价格和超时计费规则"
   });
   channels.push(created);
   console.log(`created Discord service channel: ${created.id}`);

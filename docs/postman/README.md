@@ -1,6 +1,6 @@
 # Postman 运营工具包
 
-这个目录用于保存 May猫饼电竞的 Postman 测试工具。文件里不应该保存真实密码、Token、验证码。
+这个目录用于保存 小小电竞的 Postman 测试工具。文件里不应该保存真实密码、Token、验证码。
 
 ## 导入步骤
 
@@ -8,7 +8,7 @@
 2. 点击左上角 `Import`。
 3. 导入 `docs/postman/maycatplay-ops.postman_collection.json`。
 4. 再导入 `docs/postman/maycatplay-production.postman_environment.json`。
-5. 右上角环境选择 `May猫饼 Production`。
+5. 右上角环境选择 `小小电竞 Production`。
 
 ## 第一次使用
 
