@@ -233,6 +233,17 @@ export class OperationsService {
             ) &&
             !hasOpenComplaint(o),
         );
+        // Blown runs on this window's guarantee orders, for the quality columns below.
+        const guaranteeIds = orders.filter((o) => o.serviceKind === "GUARANTEE").map((o) => o.id);
+        const blownByOrder = new Map(
+          (guaranteeIds.length
+            ? await tx.orderEvidence.groupBy({ by: ["orderId"], where: { kind: "BLOWN_RUN", orderId: { in: guaranteeIds } }, _count: { _all: true } })
+            : []
+          ).map((row) => [row.orderId, row._count._all]),
+        );
+        const minutes = (o: (typeof orders)[number]) =>
+          o.startedAt && o.reportedCompletedAt ? (o.reportedCompletedAt.getTime() - o.startedAt.getTime()) / 60_000 : null;
+        const average = (values: number[]) => (values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : null);
         const companionMetrics = [
           ...new Set(
             eligible
@@ -244,6 +255,19 @@ export class OperationsService {
           const done = rows.filter(
             (o) => o.status === "COMPLETED" && o.verifiedAt,
           );
+          // Complaints count across every order this window, including disputed ones the sample above leaves out.
+          const all = orders.filter((o) => o.companionId === id && inWindow(o.createdAt));
+          const complained = all.filter((o) => o.complaints.length > 0).length;
+          const guaranteeDone = done.filter((o) => o.serviceKind === "GUARANTEE");
+          const avgGuaranteeMinutes = average(guaranteeDone.map(minutes).filter((m): m is number => m !== null));
+          const blownRuns = guaranteeDone.reduce((sum, o) => sum + (blownByOrder.get(o.id) ?? 0), 0);
+          const complaintRate = all.length ? complained / all.length : 0;
+          const qualityFlags = [
+            // Escort shops judge cheating partly by finish time: a guarantee cleared far faster than usual is worth a look.
+            avgGuaranteeMinutes !== null && guaranteeDone.length >= 3 && avgGuaranteeMinutes < 20 ? "保底结单异常快，抽查录屏" : null,
+            all.length >= 5 && complaintRate >= 0.2 ? "投诉率偏高" : null,
+            guaranteeDone.length >= 3 && blownRuns / guaranteeDone.length >= 1 ? "炸单频繁" : null
+          ].filter((flag): flag is string => Boolean(flag));
           const clientCounts = new Map<string, number>();
           for (const o of done)
             clientCounts.set(
@@ -263,6 +287,12 @@ export class OperationsService {
             verifiedComplaintOrders: rows.filter((o) =>
               o.complaints.some((c) => c.status === "RESOLVED"),
             ).length,
+            avgServiceMinutes: average(done.map(minutes).filter((m): m is number => m !== null)),
+            avgGuaranteeMinutes,
+            guaranteeCompleted: guaranteeDone.length,
+            blownRuns,
+            complaintRate: Number(complaintRate.toFixed(3)),
+            qualityFlags,
             sampleWarning: rows.length < 10 ? "样本不足，仅供逐单复核" : null,
             orderIds: rows.map((o) => o.id),
           };

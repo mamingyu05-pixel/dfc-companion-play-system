@@ -31,9 +31,9 @@ export function validateCustomerOrderInput(body: CustomerOrderInput, requireComp
   if (body.notes !== undefined && typeof body.notes !== "string") throw new BadRequestException("订单备注须为文字，请重新填写");
 }
 
-export function validateGuaranteeInput(body: { packageId?: unknown; companionId?: unknown; expectedTotalAmount?: unknown; notes?: unknown }) {
+export function validateGuaranteeInput(body: { packageId?: unknown; companionId?: unknown; expectedTotalAmount?: unknown; notes?: unknown }, missingPackage = "请选择保底档位") {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new BadRequestException("订单内容无效，请刷新后重新选择");
-  if (typeof body.packageId !== "string" || !body.packageId.trim()) throw new BadRequestException("请选择保底档位");
+  if (typeof body.packageId !== "string" || !body.packageId.trim()) throw new BadRequestException(missingPackage);
   if (body.companionId !== undefined && (typeof body.companionId !== "string" || !body.companionId.trim())) throw new BadRequestException("请选择有效的陪玩");
   if (body.expectedTotalAmount !== undefined) {
     try { fixedDecimal(body.expectedTotalAmount as string, "expectedTotalAmount"); }

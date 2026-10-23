@@ -24,6 +24,7 @@ import {
   OrderStatus,
   Order,
   Prisma,
+  ReviewStatus,
   ServicePriceTier,
   TransactionDirection,
   UserRole,
@@ -33,6 +34,11 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { BotNotificationService } from "../bot/bot-notification.service";
 import { EvidenceInput, guaranteeModeLabel, guaranteeProgress, MAX_EVIDENCE_PER_ORDER } from "./guarantee";
+import { getCustomerMembershipLevel } from "../customer-membership";
+
+// Member price thresholds, highest first; each has a MEMBER_LV<n>_DISCOUNT_RATE setting (1 = full price).
+export const MEMBER_DISCOUNT_LEVELS = [10, 8, 5, 3] as const;
+type MemberDiscount = { rate: Prisma.Decimal; level: number; name: string } | null;
 
 type CreateOrderBody = {
       requestId?: string;
@@ -52,6 +58,7 @@ type CreateOrderBody = {
       sourceChannelId?: string;
       sourceMessageId?: string;
       guaranteePackageId?: string;
+      servicePackageId?: string;
     };
 
 const CUSTOMER_SELECTED_DISPATCH = "CUSTOMER_SELECTED_DISPATCH:";
@@ -105,10 +112,16 @@ export class OrdersService {
       select: { stars: true, comment: true, createdAt: true, order: { select: { companionId: true } } },
       orderBy: { createdAt: "desc" }
     });
+    // Completed real orders per companion, for the leaderboard; test orders never count.
+    const completed = await this.prisma.order.groupBy({ by: ["companionId"], _count: { _all: true },
+      where: { status: OrderStatus.COMPLETED, isTest: false, companionId: { in: companions.map(profile => profile.userId) } } });
     return companions.map((profile) => ({
       ...this.companionReviewSummary(reviews.filter(review => review.order.companionId === profile.userId)),
       id: profile.userId,
       displayName: profile.user.displayName,
+      verified: profile.verified,
+      badges: profile.badges,
+      completedOrders: completed.find(row => row.companionId === profile.userId)?._count._all ?? 0,
       // This list is public: never the companion's email or platform user IDs, or anyone could scrape them to poach companions.
       externalAccounts: profile.user.externalAccounts.map((account) => ({ platform: account.platform, displayName: account.displayName })),
       nickname: profile.nickname,
@@ -301,7 +314,7 @@ export class OrdersService {
       }
     });
     return orders.map(order => ({ id: order.id, orderNo: order.orderNo, game: order.game,
-      mode: publicServiceLabel(order.priceTier, order.mode), hours: order.hours.toString(), totalAmount: order.totalAmount.toString(),
+      mode: publicServiceLabel(order.priceTier, order.mode, order.serviceKind), hours: order.hours.toString(), totalAmount: order.totalAmount.toString(),
       unitPrice: order.unitPrice.toString(), status: order.status, companionId: order.companionId,
       dispatchVersion: order.dispatchVersion, acceptanceDeadline: order.acceptanceDeadline }));
   }
@@ -377,8 +390,8 @@ export class OrdersService {
     const maxHours = this.positiveDecimal(process.env.ORDER_MAX_HOURS ?? "8", "ORDER_MAX_HOURS");
     if (hours.gt(maxHours)) throw new BadRequestException("服务时长超出当前上限");
     const pricing = await this.resolvePricing(body.companionId, game, OrderSourcePlatform.WEB, this.normalizePriceTier(undefined, body.mode));
-    return { ...environment, customerId, companionId: body.companionId, game, mode: body.mode, hours: hours.toString(), unitPrice: pricing.unitPrice.toString(),
-      totalAmount: money(pricing.unitPrice.mul(hours), true).toString() };
+    return { ...environment, customerId, companionId: body.companionId, game, mode: body.mode, hours: hours.toString(),
+      ...this.memberQuote(pricing.unitPrice, hours, await this.memberDiscount(customerId)) };
   }
 
   async listGuaranteePackages(includeInactive = false) {
@@ -396,28 +409,35 @@ export class OrdersService {
     if (!customer) throw new BadRequestException("请使用有效的客户账号");
     const guarantee = await this.activeGuaranteePackage(body.packageId);
     const pricing = await this.guaranteePricing(guarantee, body.companionId, OrderSourcePlatform.WEB, this.prisma);
+    const quote = this.memberQuote(pricing.unitPrice, new Prisma.Decimal(1), await this.memberDiscount(customerId));
     return { ...environment, customerId, companionId: body.companionId ?? null, packageId: guarantee.id, platform: guarantee.platform,
-      targetWan: guarantee.targetWan, mode: guaranteeModeLabel(guarantee.platform, guarantee.targetWan), totalAmount: pricing.unitPrice.toFixed(2) };
+      targetWan: guarantee.targetWan, mode: guaranteeModeLabel(guarantee.platform, guarantee.targetWan),
+      totalAmount: quote.totalAmount, originalTotalAmount: quote.originalTotalAmount, memberDiscount: quote.memberDiscount };
   }
 
   // Same pricing rules as createOrderInTransaction, without writing anything, so staff see the exact
   // total before confirming and createOrder can reject the order if the price moved in between.
-  async quoteOrder(body: Partial<Pick<CreateOrderBody, "game" | "mode" | "hours" | "companionId" | "priceTier" | "rankTierKey" | "customUnitPrice" | "guaranteePackageId" | "sourcePlatform">>) {
+  async quoteOrder(body: Partial<Pick<CreateOrderBody, "game" | "mode" | "hours" | "companionId" | "priceTier" | "rankTierKey" | "customUnitPrice" | "guaranteePackageId" | "servicePackageId" | "sourcePlatform">>, customerId?: string) {
     const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
     const guarantee = body.guaranteePackageId ? await this.activeGuaranteePackage(body.guaranteePackageId) : null;
-    const game = guarantee?.game ?? body.game ?? GameCode.DELTA_FORCE;
-    if (!guarantee && !body.mode?.trim()) throw new BadRequestException("mode is required");
-    const hours = guarantee ? new Prisma.Decimal(1) : this.positiveDecimal(body.hours ?? "", "hours");
+    const servicePackage = body.servicePackageId ? await this.activeServicePackage(body.servicePackageId) : null;
+    // Guarantee tiers and service packages are fixed-price: one unit, priced by the package, not by the hour.
+    const fixed = guarantee ?? servicePackage;
+    const game = fixed?.game ?? body.game ?? GameCode.DELTA_FORCE;
+    if (!fixed && !body.mode?.trim()) throw new BadRequestException("mode is required");
+    const hours = fixed ? new Prisma.Decimal(1) : this.positiveDecimal(body.hours ?? "", "hours");
     const maxHours = this.positiveDecimal(process.env.ORDER_MAX_HOURS ?? "8", "ORDER_MAX_HOURS");
-    if (!guarantee && hours.gt(maxHours)) throw new BadRequestException(`hours cannot be greater than ${maxHours.toString()}`);
-    const pricing = guarantee
-      ? await this.guaranteePricing(guarantee, body.companionId, sourcePlatform, this.prisma)
+    if (!fixed && hours.gt(maxHours)) throw new BadRequestException(`hours cannot be greater than ${maxHours.toString()}`);
+    const pricing = fixed
+      ? await this.guaranteePricing(fixed, body.companionId, sourcePlatform, this.prisma)
       : await this.resolvePricing(body.companionId, game, sourcePlatform, this.normalizePriceTier(body.priceTier, body.mode ?? ""), {
         rankTierKey: body.rankTierKey, customUnitPrice: body.customUnitPrice
       }, this.prisma);
+    // A staff-negotiated price is already the deal; the member discount applies to list prices only.
+    const discount = body.customUnitPrice ? null : await this.memberDiscount(customerId);
     return {
-      game, mode: guarantee ? guaranteeModeLabel(guarantee.platform, guarantee.targetWan) : body.mode, hours: hours.toString(),
-      unitPrice: pricing.unitPrice.toFixed(2), totalAmount: money(pricing.unitPrice.mul(hours), true).toFixed(2)
+      game, mode: guarantee ? guaranteeModeLabel(guarantee.platform, guarantee.targetWan) : servicePackage ? servicePackage.name : body.mode, hours: hours.toString(),
+      ...this.memberQuote(pricing.unitPrice, hours, discount)
     };
   }
 
@@ -430,7 +450,11 @@ export class OrdersService {
     return this.prisma.$transaction(async tx => {
       await lockOrder(tx, orderId);
       const order = await this.participantOrder(tx, orderId, viewer);
-      const vault = input.kind === OrderEvidenceKind.VAULT_START || input.kind === OrderEvidenceKind.VAULT_END;
+      // A blown run raises the guarantee target, which only helps the customer, so only the companion or staff record one.
+      const blown = input.kind === OrderEvidenceKind.BLOWN_RUN;
+      if (blown && (order.serviceKind !== OrderServiceKind.GUARANTEE || !order.guaranteeBlownBonusWan)) throw new BadRequestException("这笔订单没有炸单补保底");
+      if (blown && viewer.id === order.customerId) throw new BadRequestException("炸单由陪玩或客服记录");
+      const vault = blown || input.kind === OrderEvidenceKind.VAULT_START || input.kind === OrderEvidenceKind.VAULT_END;
       if (vault && order.serviceKind !== OrderServiceKind.GUARANTEE) throw new BadRequestException("仓库凭证只用于保底单");
       const open: OrderStatus[] = vault
         ? [OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS]
@@ -449,9 +473,10 @@ export class OrdersService {
       select: { id: true, kind: true, linkUrl: true, vaultValueWan: true, note: true, createdAt: true, uploaderId: true,
         uploader: { select: { role: true } } } });
     const withImage = new Set((await this.prisma.orderEvidence.findMany({ where: { orderId, imageUrl: { not: null } }, select: { id: true } })).map(e => e.id));
-    const progress = order.serviceKind === OrderServiceKind.GUARANTEE ? guaranteeProgress(order.guaranteeTargetWan!, evidence) : null;
+    const progress = order.serviceKind === OrderServiceKind.GUARANTEE ? guaranteeProgress(order.guaranteeTargetWan!, evidence, order.guaranteeBlownBonusWan ?? 0) : null;
     return {
-      orderId, serviceKind: order.serviceKind, targetWan: order.guaranteeTargetWan, progress,
+      orderId, serviceKind: order.serviceKind, targetWan: progress?.targetWan ?? order.guaranteeTargetWan, baseTargetWan: order.guaranteeTargetWan,
+      blownBonusWan: order.guaranteeBlownBonusWan, progress,
       evidence: evidence.map(e => ({ id: e.id, kind: e.kind, hasImage: withImage.has(e.id), linkUrl: e.linkUrl, vaultValueWan: e.vaultValueWan, note: e.note, createdAt: e.createdAt,
         uploader: e.uploaderId === order.customerId ? "客户" : e.uploaderId === order.companionId ? "陪玩"
           : e.uploader.role === UserRole.ADMIN || e.uploader.role === UserRole.SUPER_ADMIN ? "客服" : "参与者" }))
@@ -492,9 +517,38 @@ export class OrdersService {
     const admin = viewer.role === UserRole.ADMIN || viewer.role === UserRole.SUPER_ADMIN;
     // Authorize in the query predicate so non-participants cannot probe order existence.
     const order = await db.order.findFirst({ where: { id: orderId, ...(admin ? {} : { OR: [{ customerId: viewer.id }, { companionId: viewer.id }] }) },
-      select: { id: true, status: true, customerId: true, companionId: true, serviceKind: true, guaranteeTargetWan: true } });
+      select: { id: true, status: true, customerId: true, companionId: true, serviceKind: true, guaranteeTargetWan: true, guaranteeBlownBonusWan: true } });
     if (!order) throw new NotFoundException("订单不存在或无权查看");
     return order;
+  }
+
+  async listServicePackages(includeInactive = false) {
+    const packages = await this.prisma.servicePackage.findMany({ where: includeInactive ? {} : { isActive: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+    return packages.map(p => ({ id: p.id, game: p.game, category: p.category, name: p.name, description: p.description, price: p.price.toFixed(2),
+      isActive: p.isActive, sortOrder: p.sortOrder }));
+  }
+
+  async previewPackageOrder(customerId: string, body: { packageId: string; companionId?: string; testEnvironment?: string }) {
+    const environment = await orderEnvironment(this.prisma, body.testEnvironment);
+    const customer = await this.prisma.user.findFirst({ where: { id: customerId, role: UserRole.CUSTOMER, status: UserStatus.ACTIVE }, select: { id: true } });
+    if (!customer) throw new BadRequestException("请使用有效的客户账号");
+    const servicePackage = await this.activeServicePackage(body.packageId);
+    const pricing = await this.guaranteePricing(servicePackage, body.companionId, OrderSourcePlatform.WEB, this.prisma);
+    const quote = this.memberQuote(pricing.unitPrice, new Prisma.Decimal(1), await this.memberDiscount(customerId));
+    return { ...environment, customerId, companionId: body.companionId ?? null, packageId: servicePackage.id, mode: servicePackage.name,
+      totalAmount: quote.totalAmount, originalTotalAmount: quote.originalTotalAmount, memberDiscount: quote.memberDiscount };
+  }
+
+  createPackageOrder(customerId: string, body: { requestId: string; packageId: string; companionId?: string; expectedTotalAmount?: string; notes?: string; testEnvironment?: string }) {
+    return this.createOrder(customerId, { requestId: body.requestId, servicePackageId: body.packageId, companionId: body.companionId,
+      expectedTotalAmount: body.expectedTotalAmount, notes: body.notes, testEnvironment: body.testEnvironment, mode: "PACKAGE", hours: "1" });
+  }
+
+  private async activeServicePackage(id: string, db: Prisma.TransactionClient = this.prisma) {
+    if (typeof id !== "string" || !id.trim()) throw new BadRequestException("请选择套餐");
+    const servicePackage = await db.servicePackage.findFirst({ where: { id, isActive: true } });
+    if (!servicePackage) throw new BadRequestException("套餐已下架或不存在，请刷新后重新选择");
+    return servicePackage;
   }
 
   private async activeGuaranteePackage(id: string, db: Prisma.TransactionClient = this.prisma) {
@@ -523,23 +577,30 @@ export class OrdersService {
       if (receipt.resourceId) return tx.order.findUniqueOrThrow({ where: { id: receipt.resourceId } });
       if (body.sourceDraftId) await this.lockUnconvertedDraft(tx, body.sourceDraftId, customerId);
       const guarantee = body.guaranteePackageId ? await this.activeGuaranteePackage(body.guaranteePackageId, tx) : null;
-      const game = guarantee?.game ?? body.game ?? GameCode.DELTA_FORCE;
-      // A guarantee order is one outcome-priced unit, not billed by the hour.
-      const hours = guarantee ? new Prisma.Decimal(1) : this.positiveDecimal(body.hours, "hours");
+      const servicePackage = body.servicePackageId ? await this.activeServicePackage(body.servicePackageId, tx) : null;
+      if (guarantee && servicePackage) throw new BadRequestException("一笔订单只能选一个套餐");
+      const fixed = guarantee ?? servicePackage;
+      const game = fixed?.game ?? body.game ?? GameCode.DELTA_FORCE;
+      // Guarantee tiers and service packages are one fixed-price unit, not billed by the hour.
+      const hours = fixed ? new Prisma.Decimal(1) : this.positiveDecimal(body.hours, "hours");
       const maxHours = this.positiveDecimal(process.env.ORDER_MAX_HOURS ?? "8", "ORDER_MAX_HOURS");
-      if (!guarantee && hours.gt(maxHours)) throw new BadRequestException(`hours cannot be greater than ${maxHours.toString()}`);
+      if (!fixed && hours.gt(maxHours)) throw new BadRequestException(`hours cannot be greater than ${maxHours.toString()}`);
 
       const assignmentType = body.companionId ? OrderAssignmentType.DIRECT_COMPANION : OrderAssignmentType.PLATFORM_MATCH;
 
       const sourcePlatform = body.sourcePlatform ?? OrderSourcePlatform.WEB;
-      const priceTier = guarantee ? ServicePriceTier.CUSTOM : this.normalizePriceTier(body.priceTier, body.mode);
-      const pricing = guarantee
-        ? await this.guaranteePricing(guarantee, body.companionId, sourcePlatform, tx)
+      const priceTier = fixed ? ServicePriceTier.CUSTOM : this.normalizePriceTier(body.priceTier, body.mode);
+      const pricing = fixed
+        ? await this.guaranteePricing(fixed, body.companionId, sourcePlatform, tx)
         : await this.resolvePricing(body.companionId, game, sourcePlatform, priceTier, {
           rankTierKey: body.rankTierKey,
           customUnitPrice: body.customUnitPrice
         }, tx);
-      const totalAmount = money(pricing.unitPrice.mul(hours), true);
+      // Member price for list prices; the original price stays on the order so the saving is visible.
+      const discount = body.customUnitPrice ? null : await this.memberDiscount(customerId, tx);
+      const unitPrice = this.memberUnitPrice(pricing.unitPrice, discount);
+      const memberPriced = unitPrice.lt(pricing.unitPrice);
+      const totalAmount = money(unitPrice.mul(hours), true);
       if (body.expectedTotalAmount !== undefined) {
         const confirmedAmount = fixedDecimal(body.expectedTotalAmount, "expectedTotalAmount");
         if (!totalAmount.eq(confirmedAmount)) {
@@ -578,13 +639,17 @@ export class OrdersService {
           companionId: body.companionId,
           assignmentType,
           game,
-          mode: guarantee ? guaranteeModeLabel(guarantee.platform, guarantee.targetWan) : body.mode,
+          mode: guarantee ? guaranteeModeLabel(guarantee.platform, guarantee.targetWan) : servicePackage ? servicePackage.name : body.mode,
           hours,
           priceTier,
-          ...(guarantee ? { serviceKind: OrderServiceKind.GUARANTEE, guaranteePlatform: guarantee.platform, guaranteeTargetWan: guarantee.targetWan } : {}),
+          ...(guarantee ? { serviceKind: OrderServiceKind.GUARANTEE, guaranteePlatform: guarantee.platform, guaranteeTargetWan: guarantee.targetWan,
+            guaranteeBlownBonusWan: await this.blownRunBonusWan(tx) } : {}),
+          ...(servicePackage ? { serviceKind: OrderServiceKind.PACKAGE, servicePackageId: servicePackage.id } : {}),
           rankTierKey: pricing.rankTierKey,
           rankTierNameSnapshot: pricing.rankTierName,
-          unitPrice: pricing.unitPrice,
+          unitPrice,
+          ...(memberPriced ? { originalUnitPrice: pricing.unitPrice, discountPerHour: pricing.unitPrice.sub(unitPrice),
+            originalAmount: money(pricing.unitPrice.mul(hours), true), memberDiscountRate: discount!.rate } : {}),
           totalAmount,
           commissionRateSnapshot: pricing.commissionRate,
           status: OrderStatus.PAID,
@@ -632,7 +697,8 @@ export class OrdersService {
     const hours = this.positiveDecimal(body.hours, "hours");
     if (hours.gt(this.positiveDecimal(process.env.ORDER_MAX_HOURS ?? "8", "ORDER_MAX_HOURS"))) throw new BadRequestException("服务时长超出当前上限");
     const pricing = await this.resolvePricing(body.companionId, GameCode.DELTA_FORCE, OrderSourcePlatform.KOOK, this.normalizePriceTier(undefined, body.mode), {}, tx);
-    return { ...body, unitPrice: pricing.unitPrice.toString(), totalAmount: money(pricing.unitPrice.mul(hours), true).toString() };
+    const quote = this.memberQuote(pricing.unitPrice, hours, await this.memberDiscount(customerId, tx));
+    return { ...body, unitPrice: quote.unitPrice, totalAmount: quote.totalAmount, originalTotalAmount: quote.originalTotalAmount, memberDiscount: quote.memberDiscount };
   }
 
   // Server-only entry: the persisted flow, wallet debit, request receipt and
@@ -991,6 +1057,99 @@ export class OrdersService {
     await enqueueJob(tx, "ORDER_CARD_REFRESH", `order-returned:${order.id}:${order.dispatchVersion}`, { orderId: order.id, staleBeforeVersion: order.dispatchVersion + 1 });
   }
 
+  /**
+   * Staff replace the companion on an accepted or running order (the customer asked for someone else).
+   * With nothing served yet the whole order goes to the new companion and no money moves. On an hourly order
+   * already under way, the served hours settle to the original companion now and the rest becomes a follow-on
+   * order for the new companion, paid from the same frozen amount, so the customer pays nothing extra.
+   */
+  async swapCompanion(orderId: string, adminId: string, body: { newCompanionId?: unknown; servedHours?: unknown; reason?: unknown; dispatchVersion?: unknown }) {
+    const newCompanionId = typeof body.newCompanionId === "string" ? body.newCompanionId.trim() : "";
+    if (!newCompanionId) throw new BadRequestException("请选择新的陪玩");
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    if (!reason) throw new BadRequestException("请填写换人原因");
+    const served = body.servedHours === undefined || body.servedHours === "" || body.servedHours === 0 || body.servedHours === "0"
+      ? new Prisma.Decimal(0) : fixedDecimal(String(body.servedHours), "servedHours", { scale: 1, max: "24" });
+    if (!served.mul(2).isInteger()) throw new BadRequestException("已服务时长按 0.5 小时填写");
+    requireDispatchVersion(body.dispatchVersion as number | undefined);
+
+    const moved = await this.prisma.$transaction(async tx => {
+      await lockOrder(tx, orderId);
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order) throw new NotFoundException("Order not found");
+      assertDispatchVersion(order.dispatchVersion, body.dispatchVersion as number | undefined);
+      if (order.status !== OrderStatus.ACCEPTED && order.status !== OrderStatus.IN_PROGRESS) throw new BadRequestException("只有已接单或服务中的订单可以换人");
+      if (!order.companionId || order.companionId === newCompanionId) throw new BadRequestException("请选择另一位陪玩");
+      if (await tx.complaint.count({ where: { orderId, status: { in: ["OPEN", "IN_REVIEW"] } } })) throw new BadRequestException("本单有待处理的投诉，请先处理投诉");
+      await this.assertAvailableCompanion(tx, newCompanionId, order);
+      const fromCompanionId = order.companionId;
+      const detail = { reason, fromCompanionId, toCompanionId: newCompanionId, servedHours: served.toString() };
+
+      if (served.eq(0)) {
+        // Nothing to pay the first companion for: the order itself returns to dispatch for the new one.
+        await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.PAID, companionId: null, acceptedAt: null, startedAt: null,
+          acceptanceDeadline: null, dispatchVersion: { increment: 1 } } });
+        await tx.orderStatusLog.create({ data: { orderId, fromStatus: order.status, toStatus: OrderStatus.PAID, actorId: adminId, reason: `COMPANION_SWAP: ${JSON.stringify(detail)}` } });
+        await tx.adminLog.create({ data: { actorId: adminId, targetUserId: fromCompanionId, action: "SWAP_COMPANION", entityType: "ORDER", entityId: orderId, detail } });
+        await enqueueJob(tx, "ORDER_CARD_REFRESH", `order-swapped:${orderId}:${order.dispatchVersion}`, { orderId, staleBeforeVersion: order.dispatchVersion + 1 });
+        return { dispatchOrderId: orderId, dispatchVersion: order.dispatchVersion + 1, settledOrderId: null as string | null };
+      }
+
+      if (order.serviceKind !== OrderServiceKind.HOURLY) throw new BadRequestException("保底和套餐订单换人时已服务时长填 0，由新陪玩接着完成");
+      if (order.orderGroupId) throw new BadRequestException("多人单中途换人请把已服务时长填 0，或联系技术处理");
+      if (order.status !== OrderStatus.IN_PROGRESS) throw new BadRequestException("还没开始服务，已服务时长应为 0");
+      if (!served.lt(order.hours)) throw new BadRequestException("已服务时长要小于订单时长；已经服务完请走正常完成");
+
+      // The served part, at the order's own unit price; the remainder keeps the exact rest of the paid amount.
+      const servedAmount = money(order.unitPrice.mul(served), true);
+      const remainingAmount = order.totalAmount.sub(servedAmount);
+      const remainingHours = order.hours.sub(served);
+      const { platformFee, companionIncome } = commissionSplit(servedAmount, order.commissionRateSnapshot);
+      const scaled = (value: Prisma.Decimal | null, hours: Prisma.Decimal) => (value && order.originalUnitPrice ? money(order.originalUnitPrice.mul(hours), true) : null);
+
+      const settled = await tx.order.updateMany({ where: { id: orderId, status: OrderStatus.IN_PROGRESS }, data: {
+        status: OrderStatus.COMPLETED, hours: served, totalAmount: servedAmount, originalAmount: scaled(order.originalAmount, served),
+        platformFee, companionIncome, reportedCompletedAt: new Date(), completedAt: new Date(), verifiedAt: new Date() } });
+      if (settled.count !== 1) throw new BadRequestException("Order was already changed");
+      const paid = await tx.wallet.updateMany({ where: { userId: order.customerId, frozenBalance: { gte: servedAmount } }, data: { frozenBalance: { decrement: servedAmount } } });
+      if (paid.count !== 1) throw new BadRequestException("Customer frozen balance is insufficient for settlement");
+      const customerWallet = await tx.wallet.findUniqueOrThrow({ where: { userId: order.customerId } });
+      const companionWallet = await tx.wallet.upsert({ where: { userId: fromCompanionId }, create: { userId: fromCompanionId, availableIncome: companionIncome },
+        update: { availableIncome: { increment: companionIncome } } });
+      await tx.walletTransaction.create({ data: { walletId: customerWallet.id, userId: order.customerId, operatorId: adminId, businessKey: `order-swap-settle-customer:${orderId}`,
+        type: WalletTransactionType.ORDER_SETTLEMENT, direction: TransactionDirection.DEBIT, amount: servedAmount, balanceAfter: customerWallet.frozenBalance,
+        referenceType: "ORDER", referenceId: orderId, note: `中途换人：已服务 ${served.toString()} 小时结算给原陪玩` } });
+      await tx.walletTransaction.create({ data: { walletId: companionWallet.id, userId: fromCompanionId, operatorId: adminId, businessKey: `order-swap-settle-companion:${orderId}`,
+        type: WalletTransactionType.ORDER_SETTLEMENT, direction: TransactionDirection.CREDIT, amount: companionIncome, balanceAfter: companionWallet.availableIncome,
+        referenceType: "ORDER", referenceId: orderId, note: `中途换人：已服务 ${served.toString()} 小时` } });
+      await tx.orderStatusLog.create({ data: { orderId, fromStatus: OrderStatus.IN_PROGRESS, toStatus: OrderStatus.COMPLETED, actorId: adminId, reason: `COMPANION_SWAP_SETTLED: ${JSON.stringify(detail)}` } });
+
+      const newProfile = await tx.companionProfile.findUniqueOrThrow({ where: { userId: newCompanionId }, select: { commissionRate: true } });
+      const followOn = await tx.order.create({ data: {
+        storeKey: order.storeKey, isTest: order.isTest, orderNo: this.generateOrderNo(), customerId: order.customerId, assignmentType: OrderAssignmentType.DIRECT_COMPANION,
+        game: order.game, mode: order.mode, hours: remainingHours, priceTier: order.priceTier, rankTierKey: order.rankTierKey, rankTierNameSnapshot: order.rankTierNameSnapshot,
+        originalUnitPrice: order.originalUnitPrice, unitPrice: order.unitPrice, discountPerHour: order.discountPerHour, originalAmount: scaled(order.originalAmount, remainingHours),
+        memberDiscountRate: order.memberDiscountRate, totalAmount: remainingAmount, commissionRateSnapshot: newProfile.commissionRate, status: OrderStatus.PAID,
+        notes: `中途换人续单：原订单 ${order.orderNo}，剩余 ${remainingHours.toString()} 小时`, voiceTrialRequested: false, sourcePlatform: order.sourcePlatform
+      } });
+      await tx.orderStatusLog.create({ data: { orderId: followOn.id, fromStatus: OrderStatus.PENDING_PAYMENT, toStatus: OrderStatus.PAID, actorId: adminId,
+        reason: `COMPANION_SWAP_FOLLOW_ON: ${JSON.stringify({ ...detail, fromOrderId: orderId })}` } });
+      await tx.adminLog.create({ data: { actorId: adminId, targetUserId: fromCompanionId, action: "SWAP_COMPANION", entityType: "ORDER", entityId: orderId,
+        detail: { ...detail, servedAmount: servedAmount.toFixed(2), remainingAmount: remainingAmount.toFixed(2), followOnOrderId: followOn.id } } });
+      await enqueueJob(tx, "ORDER_CARD_REFRESH", `order-swapped:${orderId}:${order.dispatchVersion}`, { orderId, staleBeforeVersion: order.dispatchVersion + 1 });
+      return { dispatchOrderId: followOn.id, dispatchVersion: followOn.dispatchVersion, settledOrderId: orderId as string | null };
+    });
+
+    // Send it to the new companion like any direct dispatch; if that fails the order waits on the dispatch desk.
+    let dispatchError: string | undefined;
+    try {
+      await this.dispatchOrder(moved.dispatchOrderId, adminId, { mode: "DIRECT", companionId: newCompanionId, reason: `COMPANION_SWAP: ${reason}`, dispatchVersion: moved.dispatchVersion });
+    } catch (error) {
+      dispatchError = error instanceof Error ? error.message : "派单失败";
+    }
+    return { orderId: moved.dispatchOrderId, settledOrderId: moved.settledOrderId, dispatched: !dispatchError, dispatchError };
+  }
+
   async declineOrder(orderId: string, companionId: string, reason: string, dispatchVersion?: number, kookContext?: { platformUserId: string; expiresAt: number }) {
     if (typeof reason !== "string" || !reason.trim()) throw new BadRequestException("Decline reason is required");
     return this.prisma.$transaction(async tx => {
@@ -1123,13 +1282,17 @@ export class OrdersService {
       if (order.status !== OrderStatus.IN_PROGRESS || !order.companionId) throw new BadRequestException("Only an in-progress assigned order can report completion");
       if (order.serviceKind === OrderServiceKind.GUARANTEE) {
         // Outcome-priced: the evidenced vault gain, not elapsed time, decides when completion may be reported.
-        const evidence = await tx.orderEvidence.findMany({ where: { orderId, kind: { in: [OrderEvidenceKind.VAULT_START, OrderEvidenceKind.VAULT_END] } },
+        const evidence = await tx.orderEvidence.findMany({ where: { orderId, kind: { in: [OrderEvidenceKind.VAULT_START, OrderEvidenceKind.VAULT_END, OrderEvidenceKind.BLOWN_RUN] } },
           select: { kind: true, vaultValueWan: true, createdAt: true } });
-        const progress = guaranteeProgress(order.guaranteeTargetWan!, evidence);
+        const progress = guaranteeProgress(order.guaranteeTargetWan!, evidence, order.guaranteeBlownBonusWan ?? 0);
         if (!progress.reached) throw new BadRequestException(progress.gainWan === null
           ? "保底单需先上传开局和结束仓库截图"
-          : `保底未达成：当前净增 ${progress.gainWan} 万 / 目标 ${order.guaranteeTargetWan} 万，可继续服务或由客服按争议处理`);
-      } else if (!order.startedAt || Date.now() - order.startedAt.getTime() < order.hours.mul(3_600_000).toNumber()) throw new BadRequestException("Agreed service duration has not elapsed; use a documented dispute resolution for early termination");
+          : `保底未达成：当前净增 ${progress.gainWan} 万 / 目标 ${progress.targetWan} 万${progress.blownRuns ? `（含炸单补 ${progress.blownRuns} 次）` : ""}，可继续服务或由客服按争议处理`);
+      } else if (order.serviceKind === OrderServiceKind.HOURLY &&
+        (!order.startedAt || Date.now() - order.startedAt.getTime() < order.hours.mul(3_600_000).toNumber())) {
+        // Hourly orders run their agreed time; package orders are done when the item is delivered.
+        throw new BadRequestException("Agreed service duration has not elapsed; use a documented dispute resolution for early termination");
+      }
       if (await tx.complaint.count({ where: { orderId, status: { in: ["OPEN", "IN_REVIEW"] } } })) throw new BadRequestException("An unresolved complaint blocks completion");
       const split = commissionSplit(order.totalAmount, order.commissionRateSnapshot);
       const changed = await tx.order.updateMany({ where: { id: orderId, status: OrderStatus.IN_PROGRESS }, data: { status: OrderStatus.AWAITING_ACCEPTANCE, reportedCompletedAt: new Date(), ...split } });
@@ -1849,6 +2012,78 @@ export class OrdersService {
     return setting?.value ?? process.env[key];
   }
 
+  /** The customer's member price: the highest discount level they have reached by approved recharges decides. */
+  async memberDiscount(customerId: string | undefined, db: Prisma.TransactionClient = this.prisma): Promise<MemberDiscount> {
+    if (!customerId) return null;
+    const total = await db.rechargeRequest.aggregate({ where: { customerId, status: ReviewStatus.APPROVED }, _sum: { amount: true } });
+    const membership = getCustomerMembershipLevel(total._sum.amount ?? 0);
+    const reached = MEMBER_DISCOUNT_LEVELS.find(level => membership.level >= level);
+    if (!reached) return null;
+    const raw = await this.readPlatformSettingValue(`MEMBER_LV${reached}_DISCOUNT_RATE`, db);
+    if (!raw) return null;
+    const rate = fixedDecimal(raw, `MEMBER_LV${reached}_DISCOUNT_RATE`, { scale: 4, max: "1" });
+    return rate.lt(1) ? { rate, level: membership.level, name: membership.name } : null;
+  }
+
+  /**
+   * A customer's thank-you on top of a finished order. It leaves the customer's available balance and lands in the
+   * companion's withdrawable income at once (less TIP_COMMISSION_RATE). requestId makes a retried tap pay once.
+   */
+  async tipCompanion(orderId: string, customerId: string, body: { amount?: unknown; requestId?: unknown }) {
+    const requestId = typeof body.requestId === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(body.requestId) ? body.requestId : null;
+    if (!requestId) throw new BadRequestException("页面已过期，请刷新后再试");
+    const amount = money(fixedDecimal(typeof body.amount === "number" ? body.amount.toString() : String(body.amount ?? ""), "amount", { max: "500" }), true);
+    if (amount.lt(1)) throw new BadRequestException("小费至少 1 元");
+    const businessKey = `order-tip:${requestId}`;
+    return this.prisma.$transaction(async tx => {
+      await lockOrder(tx, orderId);
+      const replay = await tx.walletTransaction.findUnique({ where: { businessKey }, select: { referenceId: true } });
+      if (replay) {
+        if (replay.referenceId !== orderId) throw new BadRequestException("页面已过期，请刷新后再试");
+        return { replayed: true, ...(await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { id: true, tipAmount: true } })) };
+      }
+      const order = await tx.order.findFirst({ where: { id: orderId, customerId } });
+      if (!order?.companionId) throw new NotFoundException("订单不存在或无权操作");
+      if (order.status !== OrderStatus.AWAITING_ACCEPTANCE && order.status !== OrderStatus.COMPLETED) throw new BadRequestException("陪玩报完成后才能给小费");
+      if (order.tipAmount.add(amount).gt(2000)) throw new BadRequestException("每笔订单小费累计不超过 2000 元");
+      const rate = fixedDecimal((await this.readPlatformSettingValue("TIP_COMMISSION_RATE", tx)) ?? "0", "TIP_COMMISSION_RATE", { scale: 4, zero: true, max: "1" });
+      const income = money(amount.mul(new Prisma.Decimal(1).sub(rate)), true);
+
+      const debit = await tx.wallet.updateMany({ where: { userId: customerId, availableBalance: { gte: amount } }, data: { availableBalance: { decrement: amount } } });
+      if (debit.count !== 1) throw new BadRequestException("Insufficient balance");
+      const customerWallet = await tx.wallet.findUniqueOrThrow({ where: { userId: customerId } });
+      const companionWallet = await tx.wallet.upsert({ where: { userId: order.companionId }, create: { userId: order.companionId, availableIncome: income },
+        update: { availableIncome: { increment: income } } });
+      await tx.walletTransaction.create({ data: { walletId: customerWallet.id, userId: customerId, businessKey, type: WalletTransactionType.ORDER_TIP,
+        direction: TransactionDirection.DEBIT, amount, balanceAfter: customerWallet.availableBalance, referenceType: "ORDER", referenceId: orderId, note: "给陪玩的小费" } });
+      await tx.walletTransaction.create({ data: { walletId: companionWallet.id, userId: order.companionId, businessKey: `${businessKey}:income`, type: WalletTransactionType.TIP_INCOME,
+        direction: TransactionDirection.CREDIT, amount: income, balanceAfter: companionWallet.availableIncome, referenceType: "ORDER", referenceId: orderId,
+        note: rate.gt(0) ? `客户小费 ¥${amount.toFixed(2)}，平台抽成 ${rate.mul(100).toString()}%` : "客户小费" } });
+      const updated = await tx.order.update({ where: { id: orderId }, data: { tipAmount: { increment: amount } }, select: { id: true, tipAmount: true } });
+      return { replayed: false, ...updated };
+    });
+  }
+
+  /** Wan added to a guarantee target per recorded blown run; 0 turns the rule off. Snapshotted onto each new order. */
+  private async blownRunBonusWan(db: Prisma.TransactionClient) {
+    const raw = (await this.readPlatformSettingValue("GUARANTEE_BLOWN_RUN_BONUS_WAN", db)) ?? "50";
+    const value = Number.parseInt(raw, 10);
+    return Number.isSafeInteger(value) && value > 0 ? Math.min(value, 10_000) : null;
+  }
+
+  private memberUnitPrice(unitPrice: Prisma.Decimal, discount: MemberDiscount) {
+    return discount ? unitPrice.mul(discount.rate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP) : unitPrice;
+  }
+
+  private memberQuote(unitPrice: Prisma.Decimal, hours: Prisma.Decimal, discount: MemberDiscount) {
+    const memberPrice = this.memberUnitPrice(unitPrice, discount);
+    return {
+      unitPrice: memberPrice.toFixed(2), totalAmount: money(memberPrice.mul(hours), true).toFixed(2),
+      originalTotalAmount: money(unitPrice.mul(hours), true).toFixed(2),
+      memberDiscount: discount && memberPrice.lt(unitPrice) ? { level: discount.level, name: discount.name, rate: discount.rate.toString() } : null
+    };
+  }
+
   private async resolveMultiCompanionDiscountConfig(db: Prisma.TransactionClient = this.prisma) {
     const enabledRaw = (await this.readPlatformSettingValue("MULTI_COMPANION_DISCOUNT_ENABLED", db)) ?? "1";
     const minCountRaw = (await this.readPlatformSettingValue("MULTI_COMPANION_DISCOUNT_MIN_COUNT", db)) ?? "2";
@@ -1927,6 +2162,8 @@ export class OrdersService {
     serviceKind?: OrderServiceKind;
     guaranteePlatform?: string | null;
     guaranteeTargetWan?: number | null;
+    memberDiscountRate?: Prisma.Decimal | null;
+    tipAmount?: Prisma.Decimal;
     isTest?: boolean;
     storeKey?: string;
     id: string;
@@ -1985,6 +2222,8 @@ export class OrdersService {
       serviceKind: order.serviceKind ?? OrderServiceKind.HOURLY,
       guaranteePlatform: order.guaranteePlatform ?? null,
       guaranteeTargetWan: order.guaranteeTargetWan ?? null,
+      memberDiscountRate: order.memberDiscountRate?.toString() ?? null,
+      tipAmount: order.tipAmount?.toFixed(2) ?? "0.00",
       isTest: order.isTest === true,
       storeKey: order.storeKey,
       customerId: order.customerId,

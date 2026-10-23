@@ -174,6 +174,34 @@ export class OrdersController {
     });
   }
 
+  @Get("service-packages")
+  listServicePackages() {
+    return this.orders.listServicePackages();
+  }
+
+  @Post("package/preview")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  previewPackageOrder(@CurrentUser() user: AuthenticatedUser, @Body() body: { packageId: string; companionId?: string; testEnvironment?: string }) {
+    return customerOrderAction(() => {
+      validateGuaranteeInput(body, "请选择套餐");
+      return this.orders.previewPackageOrder(user.id, body);
+    });
+  }
+
+  @Post("package")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  createPackageOrder(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { requestId?: string; packageId: string; companionId?: string; expectedTotalAmount?: string; notes?: string; testEnvironment?: string }
+  ) {
+    return customerOrderAction(() => {
+      validateGuaranteeInput(body, "请选择套餐");
+      return this.orders.createPackageOrder(user.id, { ...body, requestId: requireOrderRequestId(body.requestId) });
+    });
+  }
+
   @Get(":id/evidence")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
@@ -228,5 +256,12 @@ export class OrdersController {
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   confirmCompletion(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { note?: string } = {}) {
     return this.orders.acceptCompletion(id, user.id, body.note);
+  }
+
+  @Post(":id/tip")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  tip(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { amount?: unknown; requestId?: unknown } = {}) {
+    return this.orders.tipCompanion(id, user.id, body);
   }
 }

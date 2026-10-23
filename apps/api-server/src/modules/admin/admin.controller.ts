@@ -1075,6 +1075,11 @@ export class AdminController {
       if (key.endsWith("_RATE") && decimal.gt(1)) {
         throw new BadRequestException(`${key} cannot be greater than 1`);
       }
+      // A typo like 0 or 0.05 would sell orders for nearly nothing.
+      if (key.startsWith("MEMBER_") && decimal.lt("0.5")) throw new BadRequestException("会员折扣不能低于 5 折（0.5）");
+      if (key === "GUARANTEE_BLOWN_RUN_BONUS_WAN" && (!decimal.isInteger() || decimal.gt(10000))) {
+        throw new BadRequestException("炸单补保底填 0 到 10000 之间的整数（单位：万）");
+      }
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -1635,6 +1640,36 @@ export class AdminController {
     };
   }
 
+  /** Staff-only trust marks shown to customers: identity checked offline (nothing stored) and up to four badges. */
+  @Patch("companions/:id/credentials")
+  async updateCompanionCredentials(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: { verified?: unknown; badges?: unknown }
+  ) {
+    const data: { verified?: boolean; badges?: string[] } = {};
+    if (body.verified !== undefined) {
+      if (typeof body.verified !== "boolean") throw new BadRequestException("实名状态不正确");
+      data.verified = body.verified;
+    }
+    if (body.badges !== undefined) {
+      if (!Array.isArray(body.badges) || body.badges.length > 4 || !body.badges.every(b => typeof b === "string" && b.trim().length >= 1 && b.trim().length <= 8)) {
+        throw new BadRequestException("标识最多 4 个，每个 1 到 8 个字");
+      }
+      data.badges = [...new Set((body.badges as string[]).map(b => b.trim()))];
+    }
+    if (!Object.keys(data).length) throw new BadRequestException("没有需要修改的内容");
+    const profile = await this.prisma.companionProfile.findUnique({ where: { userId: id }, select: { id: true } });
+    if (!profile) throw new NotFoundException("陪玩不存在");
+    const updated = await this.prisma.$transaction(async tx => {
+      const row = await tx.companionProfile.update({ where: { userId: id }, data, select: { id: true, userId: true, nickname: true, verified: true, badges: true } });
+      await tx.adminLog.create({ data: { actorId: user.id, targetUserId: id, action: "UPDATE_COMPANION_CREDENTIALS", entityType: "COMPANION_PROFILE",
+        entityId: row.id, detail: { verified: row.verified, badges: row.badges } } });
+      return row;
+    });
+    return updated;
+  }
+
   @Patch("companions/:id/games")
   async updateCompanionGames(
     @CurrentUser() user: AuthenticatedUser,
@@ -1704,6 +1739,12 @@ export class AdminController {
   @Patch("orders/:id/dispatch")
   dispatchOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { mode: "DIRECT" | "OPEN"; companionId?: string; reason: string; acceptanceDeadline?: string | null; dispatchVersion?: number }) {
     return this.orders.dispatchOrder(id, user.id, body);
+  }
+
+  @Post("orders/:id/swap-companion")
+  swapCompanion(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string,
+    @Body() body: { newCompanionId?: unknown; servedHours?: unknown; reason?: unknown; dispatchVersion?: unknown }) {
+    return this.orders.swapCompanion(id, user.id, body ?? {});
   }
 
   @Post("orders/expire-assignments")
@@ -1791,7 +1832,13 @@ function promotionSettingDefaults(): Record<string, string> {
     MULTI_COMPANION_DISCOUNT_ENABLED: "多陪玩折扣开关，1 表示开启，0 表示关闭。",
     MULTI_COMPANION_DISCOUNT_MIN_COUNT: "同一客户点多少个陪玩起享受多陪玩折扣，默认 2。",
     MULTI_COMPANION_DISCOUNT_AMOUNT: "同一客户点 2 个及以上陪玩时，每个陪玩每小时减免金额，默认 10。",
-    MULTI_COMPANION_DISCOUNT_FLOOR_PRICE: "多陪玩折扣后的单价地板价，默认 68。"
+    MULTI_COMPANION_DISCOUNT_FLOOR_PRICE: "多陪玩折扣后的单价地板价，默认 68。",
+    MEMBER_LV3_DISCOUNT_RATE: "会员 Lv.3 及以上下单折扣，0.98 表示 98 折，1 表示不打折。按客户达到的最高档计算，多人单不叠加。",
+    MEMBER_LV5_DISCOUNT_RATE: "会员 Lv.5 及以上下单折扣，0.95 表示 95 折，1 表示不打折。",
+    MEMBER_LV8_DISCOUNT_RATE: "会员 Lv.8 及以上下单折扣，0.92 表示 92 折，1 表示不打折。",
+    MEMBER_LV10_DISCOUNT_RATE: "会员 Lv.10 及以上下单折扣，0.9 表示 9 折，1 表示不打折。",
+    GUARANTEE_BLOWN_RUN_BONUS_WAN: "保底护航每记录一次炸单，保底目标增加多少万（可累计），0 表示不补。下单时锁定，之后修改不影响已下订单。",
+    TIP_COMMISSION_RATE: "客户给陪玩小费时平台抽成比例，0 表示小费全给陪玩。"
   };
 }
 
@@ -1806,7 +1853,13 @@ function defaultPromotionSettingValue(key: string) {
     MULTI_COMPANION_DISCOUNT_ENABLED: "1",
     MULTI_COMPANION_DISCOUNT_MIN_COUNT: "2",
     MULTI_COMPANION_DISCOUNT_AMOUNT: "10",
-    MULTI_COMPANION_DISCOUNT_FLOOR_PRICE: "68"
+    MULTI_COMPANION_DISCOUNT_FLOOR_PRICE: "68",
+    MEMBER_LV3_DISCOUNT_RATE: "1",
+    MEMBER_LV5_DISCOUNT_RATE: "1",
+    MEMBER_LV8_DISCOUNT_RATE: "1",
+    MEMBER_LV10_DISCOUNT_RATE: "1",
+    GUARANTEE_BLOWN_RUN_BONUS_WAN: "50",
+    TIP_COMMISSION_RATE: "0"
   };
   return defaults[key] ?? "0";
 }

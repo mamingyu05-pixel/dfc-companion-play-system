@@ -11,9 +11,11 @@ const GAME_LABELS: Record<string, string> = {
 
 // Public dispatch never interpolates free text from a private demand or note: a mode is shown
 // only when it is one of the standard values, otherwise the price tier's generic label is used.
-export function publicServiceLabel(tier: ServicePriceTier, mode?: string | null): string {
+export function publicServiceLabel(tier: ServicePriceTier, mode?: string | null, serviceKind?: string | null): string {
   const standard = mode?.trim();
   if (standard && PUBLIC_MODES.has(standard)) return standard;
+  // Guarantee tiers and service packages are named by the system or by staff, never by the customer.
+  if (standard && (serviceKind === "GUARANTEE" || serviceKind === "PACKAGE")) return serviceKind === "PACKAGE" ? `套餐 · ${standard}` : standard;
   return { ENTERTAINMENT: "娱乐陪玩", RANKED: "上分陪玩", HIGH_RANKED: "高段位陪玩", CUSTOM: "定制服务（详情联系授权客服）" }[tier];
 }
 

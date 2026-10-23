@@ -134,6 +134,7 @@ enum ServicePriceTier {
 enum OrderServiceKind {
   HOURLY
   GUARANTEE
+  PACKAGE
 }
 
 enum GamePlatform {
@@ -146,6 +147,7 @@ enum OrderEvidenceKind {
   VAULT_END
   RECORDING
   OTHER
+  BLOWN_RUN
 }
 
 enum OrderDraftStatus {
@@ -199,6 +201,8 @@ enum WalletTransactionType {
   ADMIN_ADJUSTMENT
   PROMOTION_BONUS
   REFERRAL_REWARD
+  ORDER_TIP
+  TIP_INCOME
 }
 
 enum ReferralRewardStatus {
@@ -432,6 +436,9 @@ model CompanionProfile {
   onlineStatus    OnlineStatus           @default(OFFLINE)
   bio             String?
   voicePreference VoicePreference        @default(OPTIONAL)
+  // Set by staff only: identity checked offline (no ID documents are stored) and display badges such as 金牌护航.
+  verified        Boolean                @default(false)
+  badges          String[]               @default([])
   status          CompanionProfileStatus @default(PENDING_REVIEW)
   payoutMethod    String?
   payoutAccountName String?
@@ -468,6 +475,14 @@ model Order {
   serviceKind OrderServiceKind @default(HOURLY)
   guaranteePlatform GamePlatform?
   guaranteeTargetWan Int?
+  // Each blown run raises the guarantee target by this many wan, snapshotted at purchase.
+  guaranteeBlownBonusWan Int?
+  // Set when the customer paid a member price; originalUnitPrice/originalAmount hold the list price.
+  memberDiscountRate Decimal? @db.Decimal(5, 4)
+  // Tips are paid on top of the order and go to the companion; they never count toward the order total.
+  tipAmount Decimal @default(0) @db.Decimal(12, 2)
+  servicePackageId String?
+  servicePackage ServicePackage? @relation(fields: [servicePackageId], references: [id])
   evidence OrderEvidence[]
   @@index([status, reportedCompletedAt])
   @@index([status, acceptanceDeadline])
@@ -1010,4 +1025,21 @@ model KookOrderFlow {
 
   @@index([userId, platformUserId, createdAt])
   @@map("kook_order_flows")
+}
+
+// Fixed-price services staff list in admin (指定大红, 跑刀, 3x3 保险箱...). Orders snapshot name and price.
+model ServicePackage {
+  id          String   @id @default(cuid())
+  game        GameCode @default(DELTA_FORCE)
+  category    String   @db.VarChar(32)
+  name        String   @db.VarChar(40)
+  description String?  @db.VarChar(200)
+  price       Decimal  @db.Decimal(12, 2)
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  orders      Order[]
+
+  @@map("service_packages")
 }

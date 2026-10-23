@@ -56,17 +56,24 @@ export function parseEvidenceInput(body: unknown): EvidenceInput {
   return { kind, imageUrl, linkUrl, vaultValueWan, note };
 }
 
-export type GuaranteeProgress = { startWan: number | null; endWan: number | null; gainWan: number | null; reached: boolean };
+export type GuaranteeProgress = {
+  startWan: number | null; endWan: number | null; gainWan: number | null; reached: boolean;
+  /** Target after blown runs: the purchased target plus the bonus for each recorded blown run. */
+  targetWan: number; blownRuns: number;
+};
 
 /** Earliest start snapshot against the latest end snapshot; re-uploading the start cannot lower the baseline. */
 export function guaranteeProgress(
-  targetWan: number,
+  baseTargetWan: number,
   evidence: Array<{ kind: OrderEvidenceKind | string; vaultValueWan: number | null; createdAt: Date }>,
+  blownBonusWan = 0,
 ): GuaranteeProgress {
   const ordered = [...evidence].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const blownRuns = ordered.filter(e => e.kind === OrderEvidenceKind.BLOWN_RUN).length;
+  const targetWan = baseTargetWan + blownRuns * blownBonusWan;
   const start = ordered.find(e => e.kind === OrderEvidenceKind.VAULT_START && e.vaultValueWan !== null);
   const end = [...ordered].reverse().find(e => e.kind === OrderEvidenceKind.VAULT_END && e.vaultValueWan !== null);
-  if (!start || !end) return { startWan: start?.vaultValueWan ?? null, endWan: end?.vaultValueWan ?? null, gainWan: null, reached: false };
+  if (!start || !end) return { startWan: start?.vaultValueWan ?? null, endWan: end?.vaultValueWan ?? null, gainWan: null, reached: false, targetWan, blownRuns };
   const gainWan = end.vaultValueWan! - start.vaultValueWan!;
-  return { startWan: start.vaultValueWan, endWan: end.vaultValueWan, gainWan, reached: gainWan >= targetWan };
+  return { startWan: start.vaultValueWan, endWan: end.vaultValueWan, gainWan, reached: gainWan >= targetWan, targetWan, blownRuns };
 }

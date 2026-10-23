@@ -78,7 +78,9 @@ export function GuaranteeEvidencePanel({ orderId, status, tokenKey, defaultKind,
     finally { setBusy(false); }
   }
 
-  const kinds: EvidenceKind[] = [...(guarantee && canUploadVault(status) ? ["VAULT_START", "VAULT_END"] as EvidenceKind[] : []), "RECORDING", "OTHER"];
+  // A blown run is recorded with a screenshot and raises the target by the order's snapshotted bonus.
+  const blownRule = guarantee && canUploadVault(status) && view?.blownBonusWan ? ["BLOWN_RUN"] as EvidenceKind[] : [];
+  const kinds: EvidenceKind[] = [...(guarantee && canUploadVault(status) ? ["VAULT_START", "VAULT_END"] as EvidenceKind[] : []), ...blownRule, "RECORDING", "OTHER"];
   return (
     <div className="mt-3">
       <button type="button" className="text-sm text-cyan-200 underline" aria-expanded={open}
@@ -116,6 +118,9 @@ export function GuaranteeEvidencePanel({ orderId, status, tokenKey, defaultKind,
                 </select></label>
                 {vault ? <label>仓库总价值 <input inputMode="numeric" className="rounded border border-cyan-300/30 bg-[#050711] text-white ml-1 w-28 p-1" placeholder="万" value={value} onChange={e => setValue(e.target.value)} /> 万</label> : null}
               </div>
+              {kind === "BLOWN_RUN" && view?.blownBonusWan ? (
+                <p className="text-xs text-amber-100">上传炸单截图后，本单保底目标增加 {view.blownBonusWan} 万（可累计），客户能看到。</p>
+              ) : null}
               <label className="block">截图 <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e => void pick(e.target.files?.[0])} /></label>
               {!vault ? <input className="rounded border border-cyan-300/30 bg-[#050711] text-white w-full p-1" placeholder="录屏链接（可选）https://…" value={link} onChange={e => setLink(e.target.value)} /> : null}
               <input className="rounded border border-cyan-300/30 bg-[#050711] text-white w-full p-1" maxLength={200} placeholder="备注（可选）" value={note} onChange={e => setNote(e.target.value)} />

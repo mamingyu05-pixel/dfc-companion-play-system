@@ -33,7 +33,7 @@ export class QuickOrderController {
   async preview(@Body() body: OrderInput) {
     const customer = await this.customer(body.customerId);
     // Priced as a KOOK order, exactly as create() will place it.
-    const quote = await this.orders.quoteOrder({ ...this.orderFields(body), sourcePlatform: OrderSourcePlatform.KOOK });
+    const quote = await this.orders.quoteOrder({ ...this.orderFields(body), sourcePlatform: OrderSourcePlatform.KOOK }, customer.id);
     const balance = customer.wallet?.availableBalance ?? new Prisma.Decimal(0);
     const shortfall = Prisma.Decimal.max(new Prisma.Decimal(quote.totalAmount).sub(balance), 0);
     return { ...quote, balance: balance.toFixed(2), shortfall: shortfall.toFixed(2) };
@@ -92,7 +92,12 @@ export class QuickOrderController {
       if (!packageId) throw new BadRequestException("请选择保底档位");
       return { guaranteePackageId: packageId, companionId, mode: undefined as string | undefined, hours: undefined as string | undefined };
     }
-    if (body.kind !== "HOURLY") throw new BadRequestException("请选择小时陪玩或保底护航");
+    if (body.kind === "PACKAGE") {
+      const packageId = str(body.packageId);
+      if (!packageId) throw new BadRequestException("请选择套餐");
+      return { servicePackageId: packageId, companionId, mode: undefined as string | undefined, hours: undefined as string | undefined };
+    }
+    if (body.kind !== "HOURLY") throw new BadRequestException("请选择小时陪玩、保底护航或套餐");
     const game = str(body.game) || GameCode.DELTA_FORCE;
     if (!(Object.values(GameCode) as string[]).includes(game)) throw new BadRequestException("不支持的游戏");
     const customUnitPrice = str(body.customUnitPrice) || undefined;

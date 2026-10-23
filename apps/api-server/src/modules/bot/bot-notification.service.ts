@@ -148,8 +148,9 @@ export class BotNotificationService {
       acceptanceDeadline: order.acceptanceDeadline?.toISOString(),
       game: order.game,
       orderNo: order.orderNo,
-      mode: publicServiceLabel(order.priceTier, order.mode),
-      hours: order.hours.toString(),
+      mode: publicServiceLabel(order.priceTier, order.mode, order.serviceKind),
+      // Guarantee tiers and packages are one fixed-price unit; an hour count would mislead companions.
+      hours: order.serviceKind === "HOURLY" ? order.hours.toString() : "",
       totalAmount: order.totalAmount.toString(),
       companionId: order.companionId ?? undefined,
       companionName: order.companion?.companionProfile?.nickname ?? order.companion?.displayName
@@ -538,7 +539,7 @@ export class BotNotificationService {
               fields: [
                 { name: "游戏", value: publicGameLabel(payload.game), inline: true },
                 { name: "模式", value: payload.mode, inline: true },
-                { name: "时长", value: `${payload.hours} 小时`, inline: true },
+                { name: "时长", value: payload.hours ? `${payload.hours} 小时` : "一口价", inline: true },
                 { name: "金额", value: payload.totalAmount, inline: true },
                 { name: "陪玩", value: payload.companionName ?? "开放抢单", inline: true },
                 { name: "接单期限", value: payload.acceptanceDeadline ?? "未设置", inline: false },
@@ -626,7 +627,7 @@ export class BotNotificationService {
                 `**订单号**：${payload.orderNo}`,
                 `**游戏**：${publicGameLabel(payload.game)}`,
                 `**模式**：${payload.mode}`,
-                `**时长**：${payload.hours} 小时`,
+                `**时长**：${payload.hours ? `${payload.hours} 小时` : "一口价（按结果交付）"}`,
                 `**金额**：¥${payload.totalAmount}`,
                 `**接单期限**：${payload.acceptanceDeadline ?? "未设置"}`,
                 "**拒接**：指定陪玩可到陪玩端填写原因，退回客服待办。",

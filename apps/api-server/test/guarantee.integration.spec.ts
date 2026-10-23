@@ -84,7 +84,7 @@ test("guarantee: completion requires evidenced net gain, then settles through no
   await orders.addOrderEvidence(order.id, actor(companion), parseEvidenceInput({ kind: "VAULT_END", vaultValueWan: 1000 + p.targetWan, image: PNG, note: "最后一局撤离" }));
 
   const view = await orders.listOrderEvidence(order.id, actor(customer));
-  expect(view.progress).toEqual({ startWan: 1000, endWan: 1000 + p.targetWan, gainWan: p.targetWan, reached: true });
+  expect(view.progress).toEqual({ startWan: 1000, endWan: 1000 + p.targetWan, gainWan: p.targetWan, reached: true, targetWan: p.targetWan, blownRuns: 0 });
   expect(view.evidence.map(e => e.uploader)).toEqual(["客户", "陪玩", "陪玩", "陪玩"]);
   // The list carries flags only; each image is fetched on demand by a participant.
   expect(view.evidence.every(e => e.hasImage && !("imageUrl" in e))).toBe(true);
@@ -151,11 +151,18 @@ test("guarantee evidence input: rejects malformed bodies and keeps the earliest 
   ] as const) expect(() => parseEvidenceInput(body)).toThrow(message);
 
   const at = (s: number) => new Date(s * 1000);
-  expect(guaranteeProgress(100, [])).toEqual({ startWan: null, endWan: null, gainWan: null, reached: false });
+  expect(guaranteeProgress(100, [])).toEqual({ startWan: null, endWan: null, gainWan: null, reached: false, targetWan: 100, blownRuns: 0 });
   expect(guaranteeProgress(100, [
     { kind: "VAULT_END", vaultValueWan: 400, createdAt: at(3) },
     { kind: "VAULT_START", vaultValueWan: 350, createdAt: at(2) },
     { kind: "VAULT_START", vaultValueWan: 300, createdAt: at(1) },
     { kind: "VAULT_END", vaultValueWan: 390, createdAt: at(4) },
-  ])).toEqual({ startWan: 300, endWan: 390, gainWan: 90, reached: false });
+  ])).toEqual({ startWan: 300, endWan: 390, gainWan: 90, reached: false, targetWan: 100, blownRuns: 0 });
+  // Each blown run raises the target by the order's bonus, cumulatively.
+  expect(guaranteeProgress(100, [
+    { kind: "VAULT_START", vaultValueWan: 300, createdAt: at(1) },
+    { kind: "BLOWN_RUN", vaultValueWan: null, createdAt: at(2) },
+    { kind: "BLOWN_RUN", vaultValueWan: null, createdAt: at(3) },
+    { kind: "VAULT_END", vaultValueWan: 450, createdAt: at(4) },
+  ], 50)).toEqual({ startWan: 300, endWan: 450, gainWan: 150, reached: false, targetWan: 200, blownRuns: 2 });
 });

@@ -75,7 +75,7 @@ test("quick order: guarantee package and input validation", async () => {
   expect(result.dispatched).toBe(true);
   expect((await prisma.order.findUniqueOrThrow({ where: { id: result.order.id } })).serviceKind).toBe("GUARANTEE");
 
-  await expect(quick.preview({ customerId: customer.id, kind: "NOPE" })).rejects.toThrow("小时陪玩或保底护航");
+  await expect(quick.preview({ customerId: customer.id, kind: "NOPE" })).rejects.toThrow("小时陪玩、保底护航或套餐");
   await expect(quick.preview({ customerId: "missing", kind: "HOURLY", mode: "x", hours: "1" })).rejects.toThrow("有效的客户");
   await expect(quick.create(staff, { customerId: customer.id, kind: "HOURLY", mode: "x", hours: "1", requestId: "short", expectedTotalAmount: "1" })).rejects.toThrow("requestId");
 });

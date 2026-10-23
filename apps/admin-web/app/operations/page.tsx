@@ -48,6 +48,12 @@ type Report = {
     repeatCustomers: number;
     uniqueCustomers: number;
     verifiedComplaintOrders: number;
+    avgServiceMinutes?: number | null;
+    avgGuaranteeMinutes?: number | null;
+    guaranteeCompleted?: number;
+    blownRuns?: number;
+    complaintRate?: number;
+    qualityFlags?: string[];
     sampleWarning: string | null;
     orderIds: string[];
   }>;
@@ -462,6 +468,10 @@ export default function OperationsPage() {
                 "陪玩",
                 "有效完成/样本",
                 "服务工时",
+                "平均结单",
+                "保底平均结单",
+                "炸单",
+                "投诉率",
                 "复购客/独立客",
                 "已核实投诉单",
                 "提示",
@@ -471,9 +481,15 @@ export default function OperationsPage() {
                 c.name,
                 `${c.completed}/${c.completionDenominator}`,
                 c.serviceHours,
+                c.avgServiceMinutes != null ? `${c.avgServiceMinutes} 分钟` : "—",
+                c.avgGuaranteeMinutes != null ? `${c.avgGuaranteeMinutes} 分钟 · ${c.guaranteeCompleted ?? 0} 单` : "—",
+                c.guaranteeCompleted ? `${c.blownRuns ?? 0} 次` : "—",
+                c.complaintRate != null ? `${Math.round(c.complaintRate * 100)}%` : "—",
                 `${c.repeatCustomers}/${c.uniqueCustomers}`,
                 String(c.verifiedComplaintOrders),
-                c.sampleWarning || "请在相同分组内比较",
+                c.qualityFlags?.length
+                  ? <span className="font-bold text-dfc-danger">{c.qualityFlags.join("；")}</span>
+                  : c.sampleWarning || "请在相同分组内比较",
                 drill(c.orderIds),
               ])}
             />
