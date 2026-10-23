@@ -24,25 +24,25 @@ export function useSelection() {
 }
 
 export function SelectBox({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
-  return <input type="checkbox" aria-label={label} className="h-4 w-4 accent-cyan-300" checked={checked} onChange={onChange} />;
+  return <input type="checkbox" aria-label={label} className="h-4 w-4 accent-[#ff6a3d]" checked={checked} onChange={onChange} />;
 }
 
 // Sticks to the bottom of the screen while something is selected, so actions stay reachable on long lists.
 export function BatchBar({ count, onClear, children }: { count: number; onClear: () => void; children: ReactNode }) {
   if (!count) return null;
   return (
-    <div className="sticky bottom-3 z-20 mt-4 flex flex-wrap items-center gap-2 rounded-dfc border border-cyan-300/50 bg-[#07101d]/95 p-3 shadow-lg backdrop-blur">
-      <span className="text-sm font-black text-white">已选 {count} 项</span>
+    <div className="sticky bottom-3 z-20 mt-4 flex flex-wrap items-center gap-2 rounded-[14px] border border-[#ffc2ad] bg-white/95 p-3 shadow-card backdrop-blur">
+      <span className="text-sm font-black text-dfc-text">已选 {count} 项</span>
       {children}
-      <button className="ml-auto rounded border border-cyan-300/30 px-3 py-1 text-xs" onClick={onClear}>取消选择</button>
+      <button className="ml-auto rounded-[9px] border border-[#e6e8ef] px-3 py-1 text-xs text-dfc-subtext" onClick={onClear}>取消选择</button>
     </div>
   );
 }
 
 export function BatchButton({ onClick, disabled, tone = "primary", children }: { onClick: () => void; disabled?: boolean; tone?: "primary" | "danger" | "plain"; children: ReactNode }) {
-  const cls = tone === "primary" ? "border-cyan-300/60 bg-cyan-300 text-slate-950"
-    : tone === "danger" ? "border-dfc-danger/60 text-dfc-danger" : "border-cyan-300/40 text-cyan-100";
-  return <button className={`rounded border px-3 py-1.5 text-sm font-black disabled:opacity-50 ${cls}`} disabled={disabled} onClick={onClick}>{children}</button>;
+  const cls = tone === "primary" ? "border-brand bg-brand text-white hover:bg-brand-ink"
+    : tone === "danger" ? "border-[#f6c3c4] bg-white text-dfc-danger" : "border-[#e6e8ef] bg-white text-dfc-text hover:border-brand";
+  return <button className={`rounded-[9px] border px-3 py-1.5 text-sm font-black disabled:opacity-50 ${cls}`} disabled={disabled} onClick={onClick}>{children}</button>;
 }
 
 export function ExportButton({ kind, label }: { kind: "users" | "orders" | "recharges"; label: string }) {

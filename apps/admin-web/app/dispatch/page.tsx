@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
+import { AdminShell, StatusBadge } from "../components";
 
 type AdminOrder = {
   id: string;
@@ -19,6 +19,10 @@ type AdminOrder = {
   assignmentType: string;
   dispatchVersion: number;
   acceptanceDeadline?: string | null;
+  notes?: string | null;
+  sourcePlatform?: string | null;
+  serviceKind?: string | null;
+  createdAt?: string;
   dispatchReminder?: { dispatchVersion: number; assignedAt: string | null; dueAt: string | null; due: boolean; checkedAt: string };
   statusLogs?: Array<{ reason: string | null }>;
   customer?: { email: string; displayName: string };
@@ -39,9 +43,11 @@ type Companion = {
   pricePerHour: string;
 };
 
+const QUICK_REASONS = ["客户在 KOOK 确认", "客户指定这位陪玩", "原陪玩未回应，换人", "客户要求换人"];
+
 export default function DispatchPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
-  const [showWaiting, setShowWaiting] = useState(true);
+  const [onlyAttention, setOnlyAttention] = useState(false);
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [selectedCompanionId, setSelectedCompanionId] = useState("");
@@ -49,6 +55,7 @@ export default function DispatchPage() {
   const [dispatchMode, setDispatchMode] = useState<"DIRECT" | "OPEN">("DIRECT");
   const [reason, setReason] = useState("");
   const [deadline, setDeadline] = useState("");
+  const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -69,36 +76,44 @@ export default function DispatchPage() {
   }
 
   useEffect(() => {
-    void loadData(new URLSearchParams(window.location.search).get("orderId") ?? undefined).catch(() => setError("无法加载真实派单数据"));
+    void loadData(new URLSearchParams(window.location.search).get("orderId") ?? undefined).catch(() => setError("无法加载派单数据，请确认已登录"));
   }, []);
+
+  function selectOrder(id: string) {
+    setSelectedOrderId(id);
+    setSelectedCompanionId("");
+    setDispatchMode("DIRECT");
+    setStatus("");
+  }
 
   async function assign() {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
     if (!selectedOrderId || (dispatchMode === "DIRECT" && !selectedCompanionId) || !reason.trim()) {
-      setError("请选择订单、分配方式并填写原因；指定派单需要选择陪玩");
+      setError("请选择订单、陪玩，并写一句派单依据");
       return;
     }
-
+    setBusy(true);
     setError("");
     setStatus("");
-    const response = await fetch(`/api/admin/orders/${selectedOrderId}/dispatch`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ dispatchVersion: orders.find(order => order.id === selectedOrderId)?.dispatchVersion, mode: dispatchMode, companionId: dispatchMode === "DIRECT" ? selectedCompanionId : undefined, reason: reason.trim(), acceptanceDeadline: deadline ? new Date(deadline).toISOString() : null })
-    });
-    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    if (!response.ok) {
-      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(toFriendlyError(message));
-      return;
+    try {
+      const response = await fetch(`/api/admin/orders/${selectedOrderId}/dispatch`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ dispatchVersion: orders.find(order => order.id === selectedOrderId)?.dispatchVersion, mode: dispatchMode, companionId: dispatchMode === "DIRECT" ? selectedCompanionId : undefined, reason: reason.trim(), acceptanceDeadline: deadline ? new Date(deadline).toISOString() : null })
+      });
+      const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+      if (!response.ok) {
+        const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+        setError(toFriendlyError(message));
+        return;
+      }
+      setStatus(dispatchMode === "OPEN" ? "已发到派单频道，等陪玩抢单。" : "已派出，等陪玩本人在 KOOK 点接单。");
+      setReason("");
+      await loadData();
+    } finally {
+      setBusy(false);
     }
-
-    setStatus("分配已保存，等待符合资格的陪玩本人接单。通知异常可在通知核对台处理。");
-    await loadData();
   }
 
   async function expireDue() {
@@ -107,195 +122,183 @@ export default function DispatchPage() {
     const response = await fetch("/api/admin/orders/expire-assignments", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
     if (!response.ok) { setError("超时处置失败，请重试"); return; }
     const result = await response.json();
-    setStatus(`已将 ${result.expired} 笔超时订单退回客服待办。`);
+    setStatus(`已将 ${result.expired} 笔超时订单退回待派单。`);
     await loadData();
   }
 
   const eligible = orders.filter((order) => ["PAID", "ASSIGNED"].includes(order.status));
-  const pending = eligible.filter(order => showWaiting || needsDispatchAttention(order));
+  const attention = eligible.filter(needsDispatchAttention);
+  const pending = onlyAttention ? attention : eligible;
   const reminded = eligible.filter(order => hasDispatchReminder(order));
-  const selectedOrder = pending.find((order) => order.id === selectedOrderId);
+  const selectedOrder = eligible.find((order) => order.id === selectedOrderId);
   const listedCompanions = companions.filter((companion) => {
     const keyword = companionQuery.trim().toLowerCase();
     const matchesKeyword = !keyword || [companion.nickname, companion.email].some((value) => value.toLowerCase().includes(keyword));
     return companion.status === "LISTED" && companion.userStatus === "ACTIVE" && matchesKeyword &&
       (!selectedOrder || companion.game === selectedOrder.game || companion.games?.includes(selectedOrder.game));
-  }).sort((a, b) => Number(b.onlineStatus === "ONLINE" && !b.activeServiceCount) - Number(a.onlineStatus === "ONLINE" && !a.activeServiceCount));
-  const onlineCount = listedCompanions.filter((companion) => companion.onlineStatus === "ONLINE").length;
+  }).sort((a, b) => availability(a) - availability(b));
+  const onlineCount = companions.filter((companion) => companion.status === "LISTED" && companion.onlineStatus === "ONLINE").length;
   const selectedCompanion = listedCompanions.find((companion) => companion.userId === selectedCompanionId && companion.onlineStatus !== "BUSY" && !companion.activeServiceCount);
-  const pendingAmount = useMemo(() => pending.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0), [pending]);
+  const waitingAmount = useMemo(() => eligible.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0), [eligible]);
+  const canSubmit = Boolean(selectedOrder && (dispatchMode === "OPEN" || selectedCompanion) && reason.trim() && !busy);
 
   return (
     <AdminShell>
-      <SectionHeader eyebrow="Dispatch Desk" title="单人订单派单" desc="同一已支付订单可指定陪玩或开放抢单。仅在本人接单前可改派；拒接或接单期限到期回待办，由客服决定下一步。" />
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-dfc-text">派单台</h1>
+          <p className="mt-1 text-sm text-dfc-muted">左边点一个订单，右边选陪玩，写一句依据就能派出。陪玩在 KOOK 点接单前都可以换人。</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/quick-order" className="rounded-[10px] bg-brand px-4 py-2 text-sm font-black text-white hover:bg-brand-ink">＋ 新开一单</Link>
+          <Link href="/order-drafts" className="rounded-[10px] border border-[#e6e8ef] bg-white px-4 py-2 text-sm font-bold text-dfc-text hover:border-brand">多人派单入口</Link>
+          <button type="button" className="rounded-[10px] border border-[#e6e8ef] bg-white px-4 py-2 text-sm font-bold text-dfc-text hover:border-brand" onClick={() => void loadData().catch(() => setError("刷新失败，当前显示仍是上次结果"))}>刷新</button>
+        </div>
+      </div>
+
+      <section className="mb-5 grid gap-3 sm:grid-cols-3">
+        <Stat label="等待派出 / 接单" value={String(eligible.length)} hint={`共 ¥${formatMoney(String(waitingAmount))}`} />
+        <Stat label="需要处理" value={String(attention.length)} hint={reminded.length ? `${reminded.length} 笔等接单超过 10 分钟` : "没有超时的单"} warn={attention.length > 0} />
+        <Stat label="在线陪玩" value={String(onlineCount)} hint={`已上架 ${companions.filter(c => c.status === "LISTED").length} 人`} />
+      </section>
+
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
-      <section className="mb-5 grid gap-4 md:grid-cols-3">
-        <Signal label="待派单订单" value={String(pending.length)} hint={`待派金额 ¥${formatMoney(String(pendingAmount))}`} tone="gold" />
-        <Signal label="上架陪玩" value={String(listedCompanions.length)} hint={`${onlineCount} 位在线`} tone="cyan" />
-        <Signal label="当前模式" value="人工确认" hint="不自动支付、不自动提现" tone="green" />
-      </section>
-
-      <section className="admin-panel mb-6">
-        <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
-          <div>
-            <h2 className="text-base font-black text-white">多人陪玩订单组</h2>
-            <p className="mt-1 text-xs leading-5 text-dfc-muted">
-              多人单需要在扣款前确定人数、陪玩和折扣。请从群消息建草稿，在草稿台勾选多个陪玩后，统一转正式订单。
-            </p>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_440px]">
+        <section className="admin-panel">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex rounded-[10px] border border-[#e6e8ef] bg-[#f8f9fc] p-1">
+              <TabButton on={!onlyAttention} onClick={() => setOnlyAttention(false)}>全部等待（{eligible.length}）</TabButton>
+              <TabButton on={onlyAttention} onClick={() => setOnlyAttention(true)}>需要处理（{attention.length}）</TabButton>
+            </div>
           </div>
-          <Link href="/order-drafts" className="rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-center text-sm font-black text-slate-950 transition hover:bg-cyan-200">
-            多人派单入口
-          </Link>
-        </div>
-      </section>
-
-      <section className="admin-panel mb-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-base font-black text-white">等待接单已满 10 分钟：{reminded.length} 笔</h2>
-            <p className="mt-1 text-xs text-dfc-muted">本次刷新结果（最近 100 笔订单）。从当前轮派单开始计时；仅提醒联系核对，不撤回派单或改变资金。请刷新确认最新状态。</p></div>
-          <ActionButton onClick={() => void loadData().catch(() => setError("刷新失败，当前显示仍是上次结果"))}>刷新待办</ActionButton>
-        </div>
-        <label className="mb-4 flex items-center gap-2 text-sm text-dfc-subtext">
-          <input type="checkbox" checked={showWaiting} onChange={event => { setShowWaiting(event.target.checked); setSelectedOrderId(""); }} />
-          显示正常等待接单的订单（可直接换人，无需等满10分钟）
-        </label>
-        <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr_1fr_180px]">
-          <label>
-            <span className="mb-2 block text-xs font-black text-dfc-muted">1 · 选择订单</span>
-            <select value={selectedOrderId} onChange={(event) => { setSelectedOrderId(event.target.value); setSelectedCompanionId(""); setDispatchMode("DIRECT"); }} className="input">
-              <option value="">选择待派单订单</option>
-              {pending.map((order) => (
-                <option key={order.id} value={order.id}>
-                  {order.orderNo} / {gameName(order.game)} / {order.customer?.displayName ?? "-"} / {orderRankLabel(order)} / ¥{formatMoney(order.totalAmount)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="mb-2 block text-xs font-black text-dfc-muted">搜索陪玩</span>
-            <input value={companionQuery} onChange={(event) => setCompanionQuery(event.target.value)} className="input" placeholder="陪玩昵称/邮箱" />
-          </label>
-          <label>
-            <span className="mb-2 block text-xs font-black text-dfc-muted">2 · 选择陪玩</span>
-            <select value={selectedCompanionId} onChange={(event) => setSelectedCompanionId(event.target.value)} className="input">
-              <option value="">选择陪玩</option>
-              {listedCompanions.map((companion) => (
-                <option key={companion.userId} value={companion.userId} disabled={companion.onlineStatus === "BUSY" || companion.activeServiceCount > 0}>
-                  {companion.nickname} / {companion.activeServiceCount ? "服务中" : toOnlineStatus(companion.onlineStatus)} / {companion.skillModes?.join("、") || "模式待沟通"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex items-end">
-            <button type="button" disabled={!selectedOrder || (dispatchMode === "DIRECT" && !selectedCompanion) || !reason.trim()} onClick={() => void assign()} className="w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200">
-              {selectedOrder?.status === "ASSIGNED" ? "确认换人" : "确认派单"}
-            </button>
+          <div className="grid gap-2">
+            {pending.map((order) => (
+              <button key={order.id} type="button" data-order-id={order.id} aria-pressed={order.id === selectedOrderId} onClick={() => selectOrder(order.id)}
+                className={`grid gap-1 rounded-[12px] border p-3 text-left transition ${order.id === selectedOrderId ? "border-brand bg-brand-soft" : "border-[#e6e8ef] bg-white hover:border-[#ffc2ad]"}`}>
+                <span className="flex flex-wrap items-center gap-2">
+                  <b className="text-dfc-text">{order.customer?.displayName ?? "-"}</b>
+                  <span className="text-sm text-dfc-subtext">{gameName(order.game)} · {order.mode}{order.serviceKind !== "GUARANTEE" && Number(order.hours) ? ` · ${Number(order.hours)} 小时` : ""}</span>
+                  <span className="ml-auto font-black tabular-nums text-brand-ink">¥{formatMoney(order.totalAmount)}</span>
+                </span>
+                <span className="flex flex-wrap items-center gap-2 text-xs text-dfc-muted">
+                  <StatusBadge tone={order.status === "PAID" || hasDispatchReminder(order) ? "warning" : "default"}>{orderState(order)}</StatusBadge>
+                  {order.companion ? <span>陪玩：{order.companion.displayName}</span> : null}
+                  <span>{order.orderNo}</span>
+                  {order.sourcePlatform === "KOOK" ? <span>来自 KOOK</span> : null}
+                </span>
+                {hasDispatchReminder(order) ? <span className="text-xs font-bold text-dfc-warning">等接单已超过 10 分钟，建议联系陪玩或换人</span> : null}
+                {dispatchReason(order.statusLogs?.[0]?.reason) ? <span className="text-xs text-dfc-muted">{dispatchReason(order.statusLogs?.[0]?.reason)}</span> : null}
+              </button>
+            ))}
+            {!pending.length ? <p className="py-10 text-center text-sm text-dfc-muted">{onlyAttention ? "没有需要处理的订单" : "没有等待派单的订单"}</p> : null}
           </div>
-        </div>
+        </section>
 
-        <label className="mt-4 block"><span className="mb-2 block text-xs text-dfc-muted">3 · 填写派单依据，再确认派单（必填，留在客服审计）</span>
-          <input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder="记录客户确认或改派依据" />
-        </label>
-        <p className="mt-2 text-xs text-dfc-muted">常规派单只需选订单、选陪玩、填写依据。保存后仍须陪玩本人接单；需要开放抢单或设置期限时再展开下方选项。</p>
+        <aside className="admin-panel xl:sticky xl:top-20">
+          {selectedOrder ? (
+            <div className="grid gap-4">
+              <div>
+                <div className="text-xs font-bold text-dfc-muted">当前订单 · {selectedOrder.orderNo}</div>
+                <div className="mt-1 text-lg font-black text-dfc-text">{selectedOrder.customer?.displayName ?? "-"} · ¥{formatMoney(selectedOrder.totalAmount)}</div>
+                <div className="text-sm text-dfc-subtext">{gameName(selectedOrder.game)} · {selectedOrder.mode}{selectedOrder.serviceKind === "GUARANTEE" ? "" : ` · ${orderRankLabel(selectedOrder)}`}</div>
+                {selectedOrder.notes ? <div className="mt-1 text-sm text-dfc-subtext">备注：{selectedOrder.notes}</div> : null}
+                {selectedOrder.companion ? <div className="mt-1 text-sm text-dfc-subtext">现在派给：{selectedOrder.companion.displayName}</div> : null}
+              </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <Preview title="当前订单" lines={selectedOrder ? [selectedOrder.orderNo, `${gameName(selectedOrder.game)} / ${selectedOrder.mode}`, orderRankLabel(selectedOrder), `客户：${selectedOrder.customer?.displayName ?? "-"}`, `保留的陪玩选择：${selectedOrder.companion?.displayName ?? "未指定"}`, `金额：¥${formatMoney(selectedOrder.totalAmount)}`] : ["未选择订单"]} />
-          <Preview title="当前陪玩" lines={selectedCompanion ? [selectedCompanion.nickname, `状态：${toOnlineStatus(selectedCompanion.onlineStatus)}`, selectedCompanion.email] : ["未选择陪玩"]} />
-        </div>
-        <details className="mt-4 rounded-dfc-control border border-cyan-300/20 p-3">
-          <summary className="cursor-pointer text-sm font-bold text-cyan-100">更多派单选项：{dispatchMode === "OPEN" ? "开放抢单" : "客服指定"}{deadline ? " · 已设置接单期限" : ""}</summary>
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <label><span className="mb-2 block text-xs text-dfc-muted">分配方式</span>
-            <select className="input" value={dispatchMode} onChange={e => setDispatchMode(e.target.value as "DIRECT" | "OPEN")}>
-              <option value="DIRECT">客服指定，等待本人接受</option><option value="OPEN">无合适人选时，手动启用备用抢单</option>
-            </select>
-          </label>
-          <label><span className="mb-2 block text-xs text-dfc-muted">接单截止（可选，按本机时区）</span>
-            <input className="input" type="datetime-local" value={deadline} onChange={e => setDeadline(e.target.value)} />
-          </label>
-        </div>
-        <p className="mt-3 text-xs text-dfc-muted">留空不设置接单期限；此处不表示服务预约时间。接单后由陪玩开始服务才计时。</p>
-        <button className="mt-3 text-sm text-cyan-200" onClick={() => void expireDue()}>处理已到期派单并刷新待办</button>
-        </details>
-      </section>
+              <div className="inline-flex w-fit rounded-[10px] border border-[#e6e8ef] bg-[#f8f9fc] p-1">
+                <TabButton on={dispatchMode === "DIRECT"} onClick={() => setDispatchMode("DIRECT")}>指定陪玩</TabButton>
+                <TabButton on={dispatchMode === "OPEN"} onClick={() => { setDispatchMode("OPEN"); setSelectedCompanionId(""); }}>发到派单频道抢单</TabButton>
+              </div>
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
-        <Panel title="客服派单待办" hint="默认展示待分配和待接订单；陪玩未回应时可直接选择另一位改派。">
-          <DataTable
-            columns={["订单", "游戏", "客户", "金额", "状态 / 最近处置"]}
-            rows={pending.map((order) => [
-              <span key={`${order.id}-no`} className="font-black text-white">{order.orderNo}</span>,
-              gameName(order.game),
-              order.customer?.displayName ?? "-",
-              <span key={`${order.id}-amount`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(order.totalAmount)}</span>,
-              <div key={order.id}><StatusBadge tone="warning">{order.status === "PAID" ? "客服待办" : order.assignmentType === "PLATFORM_MATCH" ? "开放待抢" : "指定待接"}</StatusBadge><p className="mt-1 text-xs text-dfc-muted">{order.acceptanceDeadline ? new Date(order.acceptanceDeadline).toLocaleString() : "未设置接单期限"}</p><p className="mt-1 max-w-xs break-words text-xs text-dfc-muted">{dispatchReason(order.statusLogs?.[0]?.reason)}</p>{hasDispatchReminder(order) ? <p className="mt-1 text-xs font-bold text-dfc-gold">当前轮等待接单已满 10 分钟，请联系核对</p> : order.status === "ASSIGNED" && !order.dispatchReminder?.assignedAt ? <p className="mt-1 text-xs text-dfc-muted">当前轮派单时间待核，请刷新或人工核对</p> : null}</div>
-            ])}
-          />
-        </Panel>
+              {dispatchMode === "DIRECT" ? (
+                <div>
+                  <input value={companionQuery} onChange={(event) => setCompanionQuery(event.target.value)} className="input" placeholder="搜陪玩昵称" />
+                  <div className="mt-2 grid max-h-72 gap-2 overflow-y-auto">
+                    {listedCompanions.map((companion) => {
+                      const unavailable = companion.onlineStatus === "BUSY" || companion.activeServiceCount > 0;
+                      return (
+                        <button key={companion.userId} type="button" data-companion-id={companion.userId} disabled={unavailable} aria-pressed={companion.userId === selectedCompanionId}
+                          onClick={() => setSelectedCompanionId(companion.userId)}
+                          className={`flex items-center gap-3 rounded-[12px] border p-2.5 text-left disabled:opacity-50 ${companion.userId === selectedCompanionId ? "border-brand bg-brand-soft" : "border-[#e6e8ef] bg-white hover:border-[#ffc2ad]"}`}>
+                          <span className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-[#7c5cff] to-brand" />
+                          <span className="min-w-0 flex-1">
+                            <b className="block text-sm text-dfc-text">{companion.nickname}</b>
+                            <span className="block truncate text-xs text-dfc-muted">{companion.skillModes?.join("、") || "模式待沟通"} · ¥{formatMoney(companion.pricePerHour)}/小时</span>
+                          </span>
+                          <span className={`text-xs font-bold ${companion.activeServiceCount ? "text-dfc-warning" : companion.onlineStatus === "ONLINE" ? "text-dfc-success" : companion.onlineStatus === "BUSY" ? "text-dfc-warning" : "text-dfc-muted"}`}>
+                            {companion.activeServiceCount ? "服务中" : toOnlineStatus(companion.onlineStatus)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {!listedCompanions.length ? <p className="text-sm text-dfc-muted">没有能接这个游戏的已上架陪玩。</p> : null}
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-[12px] bg-[#f8f9fc] p-3 text-sm text-dfc-subtext">KOOK 派单频道会收到这张单，第一个点接单的陪玩接走。</p>
+              )}
 
-        <Panel title="已上架陪玩" hint="优先选择在线且资料完整的陪玩">
-          <DataTable
-            columns={["昵称", "在线", "邮箱", "操作"]}
-            rows={listedCompanions.map((companion) => [
-              <span key={`${companion.userId}-name`} className="font-semibold text-white">{companion.nickname}</span>,
-              <StatusBadge key={`${companion.userId}-online`} tone={companion.onlineStatus === "ONLINE" ? "success" : "default"}>{toOnlineStatus(companion.onlineStatus)}</StatusBadge>,
-              companion.email,
-              <ActionButton key={companion.userId} disabled={companion.onlineStatus === "BUSY" || companion.activeServiceCount > 0} onClick={() => setSelectedCompanionId(companion.userId)}>{companion.activeServiceCount ? "服务中" : "选择"}</ActionButton>
-            ])}
-          />
-        </Panel>
-      </section>
+              <div>
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {QUICK_REASONS.map(text => (
+                    <button key={text} type="button" onClick={() => setReason(text)}
+                      className={`rounded-full border px-3 py-1 text-xs ${reason === text ? "border-brand bg-brand-soft text-brand-ink" : "border-[#e6e8ef] bg-white text-dfc-subtext"}`}>{text}</button>
+                  ))}
+                </div>
+                <input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder="记录客户确认或改派依据" />
+              </div>
+
+              <details className="rounded-[12px] border border-[#e6e8ef] p-3 text-sm">
+                <summary className="cursor-pointer font-bold text-dfc-subtext">接单期限（选填）{deadline ? " · 已设置" : ""}</summary>
+                <input className="input mt-2" type="datetime-local" value={deadline} onChange={e => setDeadline(e.target.value)} />
+                <p className="mt-2 text-xs text-dfc-muted">到期还没人接会退回待派单。这里不是服务预约时间。</p>
+                <button type="button" className="mt-2 text-xs font-bold text-brand-ink" onClick={() => void expireDue()}>立即处理已到期的派单</button>
+              </details>
+
+              <button type="button" disabled={!canSubmit} onClick={() => void assign()}
+                className="w-full rounded-[12px] bg-brand px-4 py-3 text-base font-black text-white hover:bg-brand-ink disabled:cursor-not-allowed disabled:opacity-40">
+                {selectedOrder.status === "ASSIGNED" ? "确认换人" : "确认派单"}
+              </button>
+            </div>
+          ) : (
+            <div className="py-16 text-center text-sm text-dfc-muted">在左边点一个订单开始派单</div>
+          )}
+        </aside>
+      </div>
     </AdminShell>
   );
 }
 
-function Panel({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
-  return (
-    <section className="admin-panel">
-      <div className="admin-panel-header">
-        <div>
-          <h2 className="text-base font-black text-white">{title}</h2>
-          <p className="mt-1 text-xs text-dfc-muted">{hint}</p>
-        </div>
-      </div>
-      {children}
-    </section>
-  );
+function TabButton({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button type="button" onClick={onClick} className={`rounded-[8px] px-3 py-1.5 text-sm font-bold ${on ? "bg-brand text-white" : "text-dfc-subtext"}`}>{children}</button>;
 }
 
-function Preview({ title, lines }: { title: string; lines: string[] }) {
+function Stat({ label, value, hint, warn = false }: { label: string; value: string; hint: string; warn?: boolean }) {
   return (
-    <div className="admin-queue-item">
-      <div className="text-xs font-black text-dfc-muted">{title}</div>
-      <div className="mt-2 space-y-1">
-        {lines.map((line) => (
-          <div key={line} className="text-sm text-dfc-subtext">{line}</div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" }) {
-  const styles = {
-    cyan: "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
-    gold: "border-dfc-gold/30 bg-dfc-gold/10 text-dfc-gold",
-    green: "border-dfc-success/30 bg-dfc-success/10 text-dfc-success"
-  };
-  return (
-    <div className={`rounded-dfc border p-4 ${styles[tone]}`}>
-      <div className="text-xs font-black">{label}</div>
-      <div className="mt-2 text-3xl font-black tabular-nums">{value}</div>
-      <div className="mt-1 text-xs opacity-80">{hint}</div>
+    <div className="admin-metric-card">
+      <div className="text-xs font-bold text-dfc-muted">{label}</div>
+      <div className={`mt-1 text-3xl font-black tabular-nums ${warn ? "text-dfc-warning" : "text-dfc-text"}`}>{value}</div>
+      <div className="mt-1 text-xs text-dfc-muted">{hint}</div>
     </div>
   );
 }
 
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
-  const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
-  return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+  const cls = tone === "danger" ? "border-[#f6c3c4] bg-[#fff1f1] text-dfc-danger" : "border-[#b9ead2] bg-[#effaf4] text-dfc-success";
+  return <div className={`mb-4 rounded-[12px] border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+}
+
+// Free, online companions first; busy or serving ones last.
+function availability(companion: Companion) {
+  if (companion.activeServiceCount || companion.onlineStatus === "BUSY") return 2;
+  return companion.onlineStatus === "ONLINE" ? 0 : 1;
+}
+
+function orderState(order: AdminOrder) {
+  if (order.status === "PAID") return "待派单";
+  return order.assignmentType === "PLATFORM_MATCH" ? "频道抢单中" : "等陪玩接单";
 }
 
 function formatMoney(value: string) {
@@ -306,13 +309,14 @@ function toFriendlyError(message?: string) {
   if (!message) return "派单失败";
   if (message.includes("Only PAID orders can be assigned")) return "只有已支付订单可以派单";
   if (message.includes("Companion is not listed")) return "陪玩未上架或账号不可用";
-  if (message.includes("already been assigned")) return "订单已被派单或状态已变化";
+  if (message.includes("Companion is busy")) return "这位陪玩正在忙";
+  if (message.includes("already been assigned") || message.includes("dispatchVersion")) return "订单状态已变化，请刷新后再派";
   return message;
 }
 
 function orderRankLabel(order: Pick<AdminOrder, "rankTierNameSnapshot" | "originalUnitPrice" | "unitPrice">) {
   const unitPrice = order.originalUnitPrice || order.unitPrice;
-  return `${order.rankTierNameSnapshot || "平台单价"} ¥${formatMoney(unitPrice)}/h`;
+  return `${order.rankTierNameSnapshot || "平台单价"} ¥${formatMoney(unitPrice)}/小时`;
 }
 
 function toOnlineStatus(status: string) {
@@ -341,8 +345,9 @@ function dispatchReason(raw?: string | null) {
   try {
     const detail = JSON.parse(raw.startsWith("CUSTOMER_SELECTED_DISPATCH:") ? raw.slice("CUSTOMER_SELECTED_DISPATCH:".length) : raw);
     const reason = detail.reason === "ACCEPTANCE_DEADLINE_EXPIRED" ? "接单超时，待客服处理" : String(detail.reason || raw).replace("COMPANION_DECLINED: ", "陪玩拒接：");
+    if (/^(QUICK_ORDER_|CUSTOMER_CREATE_ORDER|ADMIN_ASSIGN_ORDER)/.test(reason)) return "";
     return `${reason}${detail.customerSelectionRetained ? "；陪玩选择已保留，不自动改派" : ""}`;
-  } catch { return raw; }
+  } catch { return /^[A-Z_]+$/.test(raw) ? "" : raw; }
 }
 
 function hasDispatchReminder(order: Pick<AdminOrder, "status" | "dispatchVersion" | "dispatchReminder">) {

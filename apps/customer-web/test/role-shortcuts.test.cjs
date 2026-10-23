@@ -60,9 +60,9 @@ test("normal waiting order deep link is selected and submits current version for
     return ok(url.endsWith("/orders") ? [row] : [{ userId: "demo-b", nickname: "演示乙", email: "demo@example.invalid", status: "LISTED", userStatus: "ACTIVE", onlineStatus: "ONLINE", activeServiceCount: 0, game: "DELTA_FORCE" }]);
   }, "?orderId=waiting");
   p.mount(); await tick();
-  const selects = p.all().filter(e => e.type === "select");
-  assert.equal(selects[0].props.value, "waiting");
-  selects[1].props.onChange({ target: { value: "demo-b" } });
+  const selectedOrder = p.all().find(e => e.type === "button" && e.props["data-order-id"] === "waiting");
+  assert.equal(selectedOrder.props["aria-pressed"], true);
+  p.all().find(e => e.type === "button" && e.props["data-companion-id"] === "demo-b").props.onClick();
   p.all().find(e => e.type === "input" && e.props.placeholder === "记录客户确认或改派依据").props.onChange({ target: { value: "演示客户要求换人" } });
   const button = p.all().find(e => e.type === "button" && e.props.children === "确认换人");
   assert.equal(button.props.disabled, false); button.props.onClick(); await tick();

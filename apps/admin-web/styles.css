@@ -2,142 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  box-sizing: border-box;
+/* Light admin theme (direction B). */
+:root {
+  --ink: #1d2233; --sub: #4b5266; --muted: #7a8197; --line: #e6e8ef; --soft: #f8f9fc; --bg: #f5f6fa;
+  --brand: #ff6a3d; --brand-soft: #fff1ec; --brand-ink: #e2552a; --violet: #7c5cff;
+  --ok: #15a060; --warn: #e07b00; --bad: #e5484d;
+  --shadow: 0 1px 2px rgba(20, 24, 40, .06), 0 8px 24px rgba(20, 24, 40, .06);
 }
 
-*:focus-visible {
-  outline: 2px solid rgba(34, 211, 238, 0.9);
-  outline-offset: 3px;
-}
-
-html {
-  min-height: 100%;
-  background: #050711;
-}
-
-body {
-  min-height: 100%;
-  margin: 0;
-  background: #050711;
-}
+* { box-sizing: border-box; }
+*:focus-visible { outline: 2px solid rgba(255, 106, 61, .7); outline-offset: 2px; }
+html, body { min-height: 100%; margin: 0; background: var(--bg); color: var(--ink); }
 
 @layer components {
   .input {
-    @apply w-full rounded-dfc-control border border-cyan-300/20 bg-[#070d19] px-3 py-3 text-sm text-dfc-text outline-none placeholder:text-dfc-muted focus:border-cyan-300/60 focus:shadow-dfc-focus;
+    @apply w-full rounded-[10px] border border-[#e6e8ef] bg-white px-3 py-2.5 text-sm text-dfc-text outline-none placeholder:text-dfc-muted focus:border-brand focus:shadow-dfc-focus;
   }
 }
 
-.admin-console-bg {
-  position: relative;
-  background:
-    radial-gradient(circle at 10% 8%, rgba(236, 72, 153, 0.12), transparent 30%),
-    radial-gradient(circle at 88% 4%, rgba(34, 211, 238, 0.14), transparent 28%),
-    linear-gradient(180deg, #050711 0%, #080a0f 54%, #050711 100%);
-}
+.admin-console-bg { background: var(--bg); color: var(--ink); }
 
-.admin-console-bg::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
-    linear-gradient(112deg, transparent 0 18%, rgba(236, 72, 153, 0.14) 18.1%, transparent 18.36%),
-    linear-gradient(292deg, transparent 0 78%, rgba(34, 211, 238, 0.16) 78.08%, transparent 78.32%);
-  background-size: 56px 56px, 56px 56px, 100% 100%, 100% 100%;
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.82), transparent 88%);
-}
-
-.admin-console-bg > * {
-  position: relative;
-  z-index: 1;
-}
-
-.admin-sidebar {
-  border-right: 1px solid rgba(125, 211, 252, 0.15);
-  background:
-    linear-gradient(180deg, rgba(13, 18, 32, 0.96), rgba(5, 7, 17, 0.98)),
-    #080a0f;
-  box-shadow:
-    18px 0 60px rgba(0, 0, 0, 0.26),
-    inset -1px 0 0 rgba(255, 255, 255, 0.025);
-}
+.admin-sidebar { background: #fff; border-right: 1px solid var(--line); }
 
 .admin-nav-item {
-  display: block;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 9px 12px;
-  color: #aab3c5;
-  font-size: 14px;
-  font-weight: 700;
-  transition:
-    border-color 160ms ease,
-    background 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
+  display: block; border-radius: 9px; padding: 8px 12px; color: var(--sub); font-size: 14px; font-weight: 600;
+  transition: background 150ms ease, color 150ms ease;
 }
+.admin-nav-item:hover { background: var(--soft); color: var(--ink); }
+.admin-nav-item[aria-current="page"] { background: var(--brand-soft); color: var(--brand-ink); font-weight: 800; }
 
-.admin-nav-item:hover {
-  border-color: rgba(34, 211, 238, 0.28);
-  background: rgba(34, 211, 238, 0.08);
-  color: #f4f7fb;
-  transform: translateX(1px);
-}
+.admin-status-pill { border-width: 1px; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 800; }
 
-.admin-status-pill {
-  border-width: 1px;
-  border-radius: 6px;
-  padding: 7px 10px;
-  font-size: 12px;
-  font-weight: 900;
+.admin-metric-card, .admin-panel, .admin-table-wrap {
+  border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow);
 }
+.admin-metric-card, .admin-panel { padding: 18px; }
+.admin-table-wrap { overflow: hidden; }
+.admin-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.admin-queue-item { border: 1px solid var(--line); border-radius: 12px; background: var(--soft); padding: 12px; }
 
-.admin-metric-card,
-.admin-panel,
-.admin-table-wrap {
-  border: 1px solid rgba(125, 211, 252, 0.18);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(17, 24, 39, 0.82), rgba(5, 7, 17, 0.88)),
-    rgba(7, 17, 31, 0.78);
-  box-shadow:
-    0 18px 54px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.admin-metric-card {
-  padding: 16px;
-}
-
-.admin-panel {
-  padding: 16px;
-}
-
-.admin-panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.admin-queue-item {
-  border: 1px solid rgba(125, 211, 252, 0.16);
-  border-radius: 8px;
-  background: rgba(7, 17, 31, 0.64);
-  padding: 12px;
-}
+/*
+ * Compatibility layer: pages not yet redesigned still carry the old dark utility classes.
+ * Within the admin shell these are remapped to the light palette so every page stays readable.
+ * Rules sit after @tailwind utilities and use a scoped selector, so they win over the utilities.
+ */
+.admin-console-bg [class~="text-white"],
+.admin-console-bg [class~="text-dfc-text"] { color: var(--ink); }
+.admin-console-bg [class*="text-cyan-"] { color: var(--brand-ink); }
+.admin-console-bg [class*="text-fuchsia-"], .admin-console-bg [class*="text-indigo-"] { color: var(--violet); }
+.admin-console-bg [class~="text-red-200"] { color: var(--bad); }
+.admin-console-bg [class~="text-green-200"] { color: var(--ok); }
+.admin-console-bg [class~="text-amber-200"] { color: var(--warn); }
+.admin-console-bg [class*="border-cyan-"], .admin-console-bg [class*="border-indigo-"], .admin-console-bg [class*="border-amber-"],
+.admin-console-bg [class*="divide-cyan-"] > * + * { border-color: var(--line); }
+.admin-console-bg [class*="border-cyan-300/60"], .admin-console-bg [class*="border-cyan-300/50"],
+.admin-console-bg [class~="border-cyan-300"], .admin-console-bg [class~="border-cyan-200"] { border-color: #ffc2ad; }
+.admin-console-bg [class~="border-red-300"] { border-color: #f6c3c4; }
+.admin-console-bg [class*="bg-[#"], .admin-console-bg [class*="bg-black/"], .admin-console-bg [class~="bg-slate-950"],
+.admin-console-bg [class*="bg-slate-700"] { background-color: #fff; }
+.admin-console-bg [class*="bg-cyan-300/"], .admin-console-bg [class*="bg-cyan-200/"] { background-color: var(--brand-soft); }
+.admin-console-bg [class~="bg-cyan-300"], .admin-console-bg [class~="bg-cyan-200"] { background-color: var(--brand); color: #fff; border-color: var(--brand); }
+.admin-console-bg [class~="bg-cyan-300"]:hover { background-color: var(--brand-ink); }
+.admin-console-bg [class~="bg-dfc-gold"] { color: #fff; }
+.admin-console-bg input[type="checkbox"], .admin-console-bg input[type="radio"] { accent-color: var(--brand); }
+.admin-console-bg select.input, .admin-console-bg textarea.input { background-color: #fff; }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0.01ms !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-  }
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }

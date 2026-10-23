@@ -64,21 +64,21 @@ const isActive = (pathname: string | null, href: string) =>
 
 function Badge({ value }: { value: number }) {
   if (!value) return null;
-  return <span className="ml-auto rounded-full bg-dfc-gold px-2 text-xs font-black text-slate-950 tabular-nums">{value > 99 ? "99+" : value}</span>;
+  return <span className="ml-auto rounded-full bg-brand px-2 text-xs font-black text-white tabular-nums">{value > 99 ? "99+" : value}</span>;
 }
 
 export function AdminSidebarNav() {
   const counts = usePendingCounts();
   const pathname = usePathname();
   return (
-    <nav className="space-y-4 p-3" aria-label="后台导航">
+    <nav className="space-y-4 px-3 pb-6" aria-label="后台导航">
       {navGroups.map(group => (
         <div key={group.title}>
           <div className="px-3 pb-1 text-xs font-black text-dfc-muted">{group.title}</div>
           <div className="space-y-1">
             {group.items.map(item => (
               <Link key={item.href} href={item.href} aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                className={`admin-nav-item flex items-center gap-2 ${isActive(pathname, item.href) ? "text-white" : ""}`}>
+                className="admin-nav-item flex items-center gap-2">
                 {item.label}
                 {counts && item.badge ? <Badge value={item.badge(counts)} /> : null}
               </Link>
@@ -97,7 +97,7 @@ export function AdminMobileNav() {
     <div className="flex gap-2 overflow-x-auto pb-1">
       {navGroups.flatMap(group => group.items).map(item => (
         <Link key={item.href} href={item.href} aria-current={isActive(pathname, item.href) ? "page" : undefined}
-          className={`flex shrink-0 items-center gap-1 rounded-dfc-control border px-3 py-2 text-xs font-semibold ${isActive(pathname, item.href) ? "border-cyan-300/60 text-white" : "border-cyan-300/20 text-dfc-subtext"} bg-[#050711]/80`}>
+          className={`flex shrink-0 items-center gap-1 rounded-dfc-control border px-3 py-2 text-xs font-semibold ${isActive(pathname, item.href) ? "border-brand bg-brand-soft text-brand-ink" : "border-[#e6e8ef] bg-white text-dfc-subtext"}`}>
           {item.label}
           {counts && item.badge ? <Badge value={item.badge(counts)} /> : null}
         </Link>

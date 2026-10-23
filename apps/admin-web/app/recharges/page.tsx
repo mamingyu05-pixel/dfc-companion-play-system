@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
+import { ActionButton, AdminShell, DataTable, StatusBadge } from "../components";
 import { LazyImage } from "../lazy-image";
 import Link from "next/link";
 import { adminApi, BatchBar, BatchButton, ExportButton, SelectBox, sumYuan, useSelection } from "../batch-tools";
@@ -38,6 +38,7 @@ export default function RechargesPage() {
   const [uncertainIds, setUncertainIds] = useState<string[]>([]);
   const selection = useSelection();
   const [batchBusy, setBatchBusy] = useState(false);
+  const [view, setView] = useState<"pending" | "done" | "all">("pending");
 
   async function loadRecharges() {
     const token = localStorage.getItem("dfc_admin_token");
@@ -126,71 +127,77 @@ export default function RechargesPage() {
 
   const pendingRows = recharges.filter((item) => item.status === "PENDING").map((item) => item.id);
   const selectedPending = recharges.filter((item) => selection.has(item.id) && item.status === "PENDING");
-  const rows = recharges.map((item) => [
+  const visible = recharges.filter((item) => view === "all" || (view === "pending" ? item.status === "PENDING" : item.status !== "PENDING"));
+  const rows = visible.map((item) => [
     item.status === "PENDING"
       ? <SelectBox key={`${item.id}-pick`} label={`选择 ${item.id}`} checked={selection.has(item.id)} onChange={() => selection.toggle(item.id)} />
       : <span key={`${item.id}-pick`} />,
-    <div key={`${item.id}-id`}>
-      <div className="font-black text-white">{shortId(item.id)}</div>
-      <div className="mt-1 text-xs text-dfc-muted">{formatDateTime(item.createdAt)}</div>
-      {item.note ? <div className="mt-1 max-w-56 truncate text-xs text-dfc-subtext">备注：{item.note}</div> : null}
-    </div>,
     <div key={`${item.id}-customer`}>
-      <div className="font-semibold text-white">{item.customer.displayName}</div>
-      <div className="mt-1 text-xs text-dfc-subtext">{item.customer.email}</div>
-      <div className="mt-1 text-xs text-dfc-muted">当前余额 ¥{formatMoney(item.customer.availableBalance)}</div>
+      <div className="font-bold text-dfc-text">{item.customer.displayName}</div>
+      <div className="mt-0.5 text-xs text-dfc-muted">余额 ¥{formatMoney(item.customer.availableBalance)} · {formatDateTime(item.createdAt)}</div>
     </div>,
-    <span key={`${item.id}-amount`} className="font-black tabular-nums text-dfc-gold">¥{formatMoney(item.amount)}</span>,
+    <span key={`${item.id}-amount`} className="text-base font-black tabular-nums text-dfc-text">¥{formatMoney(item.amount)}</span>,
     item.screenshotInline ? (
       <LazyImage key={`${item.id}-shot`} path={`/api/admin/recharges/${encodeURIComponent(item.id)}/screenshot`} field="screenshotUrl" label="查看截图" />
     ) : hasRechargeScreenshot(item.screenshotUrl) ? (
-      <a key={`${item.id}-shot`} href={item.screenshotUrl} target="_blank" rel="noreferrer" className="font-bold text-cyan-200 hover:text-white">
-        查看截图
-      </a>
+      <a key={`${item.id}-shot`} href={item.screenshotUrl} target="_blank" rel="noreferrer" className="font-bold text-brand-ink">查看截图</a>
     ) : (
-      <span key={`${item.id}-shot`} className="rounded-dfc-control border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-xs font-black text-cyan-100">
-        客服确认
-      </span>
+      <span key={`${item.id}-shot`} className="text-xs text-dfc-muted">无截图</span>
     ),
+    <div key={`${item.id}-note`} className="max-w-[220px] whitespace-normal text-xs text-dfc-subtext">
+      {isStaffRecorded(item) ? <span className="mr-1 rounded-full bg-[#f1edff] px-2 py-0.5 font-bold text-[#6a4de0]">客服代录</span> : null}
+      {item.reviewNote || item.note || "—"}
+    </div>,
     <StatusBadge key={`${item.id}-status`} tone={item.status === "APPROVED" ? "success" : item.status === "REJECTED" ? "danger" : "warning"}>
       {toRechargeStatus(item.status)}
     </StatusBadge>,
     item.status === "PENDING" ? (
-      <div key={`${item.id}-actions`} className="flex flex-wrap gap-2">
-        {item.status === "PENDING" || item.status === "APPROVED" ? <input aria-label={`审核备注 ${item.id}`} value={reviewNotes[item.id] ?? ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [item.id]: event.target.value }))} className="input" placeholder="本笔审核备注（选填）" /> : null}
+      <div key={`${item.id}-actions`} className="flex items-center gap-2">
+        <input aria-label={`审核备注 ${item.id}`} value={reviewNotes[item.id] ?? ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [item.id]: event.target.value }))} className="input w-40 py-1.5" placeholder="备注（选填）" />
         <ActionButton disabled={pendingIds.includes(item.id) || uncertainIds.includes(item.id)} onClick={() => void reviewRecharge(item, "APPROVED")}>通过</ActionButton>
         <ActionButton tone="danger" disabled={pendingIds.includes(item.id) || uncertainIds.includes(item.id)} onClick={() => void reviewRecharge(item, "REJECTED")}>拒绝</ActionButton>
       </div>
     ) : (
-      <span key={`${item.id}-done`} className="text-xs text-dfc-muted">
-        {item.reviewedBy ? item.reviewedBy.displayName : "已处理"}
-      </span>
+      <span key={`${item.id}-done`} className="text-xs text-dfc-muted">{item.reviewedBy ? `${item.reviewedBy.displayName} 处理` : "已处理"}</span>
     )
   ]);
 
   return (
     <AdminShell>
-      <SectionHeader eyebrow="Finance Review" title="充值审核" desc="核对客户转账截图或人工客服到账确认后再入账。通过后系统会增加客户余额并生成钱包流水。" />
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-dfc-text">充值审核</h1>
+          <p className="mt-1 text-sm text-dfc-muted">客户在网页提交的充值，核对截图后通过才会入账。客户直接转账给客服的，用「代客充值」，不用在这里审。</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/staff-recharge" className="rounded-[10px] bg-brand px-4 py-2 text-sm font-black text-white hover:bg-brand-ink">代客充值</Link>
+          <ExportButton kind="recharges" label="充值记录" />
+        </div>
+      </div>
 
-      <section className="mb-5 grid gap-4 md:grid-cols-3">
-        <Signal label="待审核" value={String(stats.pendingCount)} hint={`待核金额 ¥${formatMoney(String(stats.pendingAmount))}`} tone="gold" />
-        <Signal label="已通过" value={String(stats.approvedCount)} hint="已写入钱包流水" tone="green" />
-        <Signal label="总申请" value={String(recharges.length)} hint="当前列表记录" tone="cyan" />
+      <section className="mb-5 grid gap-3 sm:grid-cols-3">
+        <Signal label="待审核" value={String(stats.pendingCount)} hint={`共 ¥${formatMoney(String(stats.pendingAmount))}`} warn={stats.pendingCount > 0} />
+        <Signal label="已通过" value={String(stats.approvedCount)} hint="已入账，计入会员等级" />
+        <Signal label="当前列表" value={String(recharges.length)} hint="待审核全部 + 最近处理的记录" />
       </section>
 
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {status ? <Alert tone="success">{status}</Alert> : null}
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Link href="/staff-recharge" className="rounded border border-dfc-gold/60 bg-dfc-gold px-3 py-1.5 text-sm font-black text-slate-950">客户转账给客服？代客充值</Link>
-        <ActionButton onClick={() => void loadRecharges().catch(() => setError("刷新失败，请保留原操作上下文"))}>刷新并核对状态</ActionButton>
-        {pendingRows.length ? <BatchButton tone="plain" onClick={() => selection.toggleAll(pendingRows)}>全选待审核（{pendingRows.length}）</BatchButton> : null}
-        <ExportButton kind="recharges" label="充值记录" />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex gap-1 rounded-[10px] border border-[#e6e8ef] bg-white p-1">
+          {([["pending", `待审核 ${stats.pendingCount}`], ["done", "已处理"], ["all", "全部"]] as const).map(([key, label]) => (
+            <button key={key} type="button" onClick={() => setView(key)}
+              className={`rounded-[8px] px-3 py-1.5 text-sm font-bold ${view === key ? "bg-brand text-white" : "text-dfc-subtext hover:bg-[#f8f9fc]"}`}>{label}</button>
+          ))}
+        </div>
+        {view !== "done" && pendingRows.length ? <BatchButton tone="plain" onClick={() => selection.toggleAll(pendingRows)}>全选待审核</BatchButton> : null}
+        <BatchButton tone="plain" onClick={() => void loadRecharges().catch(() => setError("刷新失败，请保留原操作上下文"))}>刷新</BatchButton>
       </div>
 
-      <DataTable columns={["", "编号", "客户", "金额", "凭证", "状态", "操作"]} rows={rows} />
+      <DataTable columns={["", "客户", "金额", "凭证", "备注", "状态", "操作"]} rows={rows} />
       <BatchBar count={selectedPending.length} onClear={selection.clear}>
-        <span className="text-sm text-dfc-gold">合计 ¥{sumYuan(selectedPending.map((item) => item.amount))}</span>
+        <span className="text-sm font-bold text-dfc-text">合计 ¥{sumYuan(selectedPending.map((item) => item.amount))}</span>
         <BatchButton disabled={batchBusy} onClick={() => void reviewSelected("APPROVED")}>批量通过</BatchButton>
         <BatchButton tone="danger" disabled={batchBusy} onClick={() => void reviewSelected("REJECTED")}>批量拒绝</BatchButton>
       </BatchBar>
@@ -198,24 +205,23 @@ export default function RechargesPage() {
   );
 }
 
-function Signal({ label, value, hint, tone }: { label: string; value: string; hint: string; tone: "cyan" | "gold" | "green" }) {
-  const styles = {
-    cyan: "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
-    gold: "border-dfc-gold/30 bg-dfc-gold/10 text-dfc-gold",
-    green: "border-dfc-success/30 bg-dfc-success/10 text-dfc-success"
-  };
+function Signal({ label, value, hint, warn = false }: { label: string; value: string; hint: string; warn?: boolean }) {
   return (
-    <div className={`rounded-dfc border p-4 ${styles[tone]}`}>
-      <div className="text-xs font-black">{label}</div>
-      <div className="mt-2 text-3xl font-black tabular-nums">{value}</div>
-      <div className="mt-1 text-xs opacity-80">{hint}</div>
+    <div className="admin-metric-card">
+      <div className="text-xs font-bold text-dfc-muted">{label}</div>
+      <div className={`mt-1 text-3xl font-black tabular-nums ${warn ? "text-dfc-warning" : "text-dfc-text"}`}>{value}</div>
+      <div className="mt-1 text-xs text-dfc-muted">{hint}</div>
     </div>
   );
 }
 
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
-  const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
-  return <div className={`mb-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+  const cls = tone === "danger" ? "border-[#f6c3c4] bg-[#fff1f1] text-dfc-danger" : "border-[#b9ead2] bg-[#effaf4] text-dfc-success";
+  return <div className={`mb-4 rounded-[12px] border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+}
+
+function isStaffRecorded(item: RechargeRequest) {
+  return (item.reviewNote ?? item.note ?? "").startsWith("客服代录");
 }
 
 function formatMoney(value: string) {
@@ -224,10 +230,6 @@ function formatMoney(value: string) {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function shortId(id: string) {
-  return id.length > 12 ? `${id.slice(0, 8)}...` : id;
 }
 
 function hasRechargeScreenshot(url: string) {
