@@ -1,4 +1,5 @@
-export type FlowButton = { label: string; value: string; primary?: boolean };
+// A button with url opens that address in the browser instead of returning a value to the bot.
+export type FlowButton = { label: string; value: string; primary?: boolean; url?: string };
 export type FlowCard = ReturnType<typeof flowCard>;
 
 // Keep every group within KOOK's four-button limit. Use plain text for user data.
@@ -9,8 +10,8 @@ export function flowCard(title: string, lines: string[], buttons: FlowButton[] =
   ];
   for (let i = 0; i < buttons.length; i += 4) modules.push({
     type: "action-group", elements: buttons.slice(i, i + 4).map(button => ({
-      type: "button", theme: button.primary ? "primary" : "secondary", click: "return-val",
-      value: button.value, text: { type: "plain-text", content: button.label.slice(0, 40) }
+      type: "button", theme: button.primary ? "primary" : "secondary", click: button.url ? "link" : "return-val",
+      value: button.url ?? button.value, text: { type: "plain-text", content: button.label.slice(0, 40) }
     }))
   });
   return [{ type: "card", theme: "secondary", size: "lg", modules }];
@@ -19,6 +20,10 @@ export function flowCard(title: string, lines: string[], buttons: FlowButton[] =
 // Navigation only. The service checks the exact issued private card before routing.
 export function entryButton(action: "order" | "orders" | "demands", label: string, primary = false): FlowButton {
   return { label, primary, value: `dfc.entry.${action}.${Math.floor(Date.now() / 1000) + 900}` };
+}
+
+export function webButton(url: string, label = "在网页查看"): FlowButton {
+  return { label, value: "", url };
 }
 
 export function parseEntryAction(value: string) {

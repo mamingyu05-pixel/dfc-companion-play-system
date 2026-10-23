@@ -6,9 +6,11 @@ import { parseOrderAcceptAction } from "@dfc/shared";
 import { DispatchVersionException } from "../orders/dispatch-version";
 import { OrderDraftsService } from "../orders/order-drafts.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { AuthService } from "../auth/auth.service";
+import { getCustomerMembershipLevel } from "../customer-membership";
 import { requireKookActor } from "./kook-flow-identity";
 import { kookOnboardingCard, parseKookOnboardingAction, createConfirmedKookCustomer } from "./kook-customer-onboarding";
-import { entryButton, flowCard, FlowCard, FlowButton, orderFlowCard, parseEntryAction, parseFlowAction, parseOrderFlowAction } from "./kook-flow-card";
+import { entryButton, flowCard, FlowCard, FlowButton, orderFlowCard, parseEntryAction, parseFlowAction, parseOrderFlowAction, webButton } from "./kook-flow-card";
 import { KOOK_FLOW_PORT, KookFlowPort } from "./kook-flow-port";
 
 type Choice = { id: string; name: string; companionId?: string };
@@ -26,9 +28,10 @@ const HOURS = ["1", "2", "3", "4"];
 @Injectable()
 export class KookOrderFlowService {
   constructor(private readonly prisma: PrismaService, private readonly orders: OrdersService,
-    private readonly drafts: OrderDraftsService, @Inject(KOOK_FLOW_PORT) private readonly port: KookFlowPort) {}
+    private readonly drafts: OrderDraftsService, @Inject(KOOK_FLOW_PORT) private readonly port: KookFlowPort,
+    private readonly auth: AuthService) {}
 
-  acceptsCommand(content: string) { return /^(下单|我要下单|我的需求|我的订单|陪玩工作台|首次使用|建档)$/.test(content.trim()); }
+  acceptsCommand(content: string) { return /^(下单|我要下单|我的需求|我的订单|陪玩工作台|首次使用|建档|余额|我的余额|钱包)$/.test(content.trim()); }
 
   async applyDraft(input: VerifiedKookAction, channelId?: string) {
     let card: FlowCard;
@@ -71,7 +74,8 @@ export class KookOrderFlowService {
       card = ["首次使用", "建档"].includes(content.trim()) ? await this.onboarding(userId)
         : content.trim() === "下单" || content.trim() === "我要下单"
         ? await this.openCustomerFlow(userId, eventId)
-        : content.trim() === "我的需求" ? await this.demandDesk(userId) : await this.orderDesk(userId);
+        : content.trim() === "我的需求" ? await this.demandDesk(userId)
+        : ["余额", "我的余额", "钱包"].includes(content.trim()) ? await this.balanceDesk(userId) : await this.orderDesk(userId);
     } catch (error) { card = this.problemCard(error); }
     return this.port.send(userId, card, `kook-flow-command:${userId}:${eventId}`);
   }
@@ -294,9 +298,35 @@ export class KookOrderFlowService {
       const companion = user.role === UserRole.COMPANION;
       if (!companion && user.role !== UserRole.CUSTOMER) throw new BadRequestException("管理员请使用管理后台处理异常。");
       const orders = await tx.order.findMany({ where: companion ? { companionId: user.id } : { customerId: user.id }, orderBy: { createdAt: "desc" }, take: 4 });
-      if (!orders.length) return flowCard(companion ? "陪玩工作台" : "我的订单", [companion ? "暂时没有派给你的订单。报名/试音不等于接到正式订单。收到正式订单后，依次接单、开始服务、提交完成。" : "暂时没有订单。点击“开始下单”选择模式、时长和陪玩；公开报名中的需求可在“我的需求”查看。"], companion ? [entryButton("orders", "刷新工作台", true)] : [entryButton("order", "开始下单", true), entryButton("demands", "我的需求")]);
-      return orders.flatMap(order => orderFlowCard(order, companion));
+      return { user, companion, orders };
+    }).then(async ({ user, companion, orders }) => {
+      const web = webButton(await this.auth.issueWebLoginLink(user.id), companion ? "在网页打开工作台" : "在网页查看全部订单");
+      if (!orders.length) return flowCard(companion ? "陪玩工作台" : "我的订单", [companion ? "暂时没有派给你的订单。报名/试音不等于接到正式订单。收到正式订单后，依次接单、开始服务、提交完成。" : "暂时没有订单。点击“开始下单”选择模式、时长和陪玩；公开报名中的需求可在“我的需求”查看。"], companion ? [entryButton("orders", "刷新工作台", true), web] : [entryButton("order", "开始下单", true), entryButton("demands", "我的需求"), web]);
+      return [...orders.flatMap(order => orderFlowCard(order, companion)),
+        ...flowCard("更多", ["点下面按钮直接打开网页，已自动登录，不用输入密码。链接 10 分钟内有效、只能用一次，不要转发给别人。"], [web])];
     });
+  }
+
+  private async balanceDesk(platformUserId: string) {
+    const data = await this.prisma.$transaction(async tx => {
+      const user = await requireKookActor(tx, platformUserId);
+      if (user.role !== UserRole.CUSTOMER && user.role !== UserRole.COMPANION) throw new BadRequestException("管理员请使用管理后台。");
+      const wallet = await tx.wallet.findUnique({ where: { userId: user.id } });
+      const recharged = await tx.rechargeRequest.aggregate({ where: { customerId: user.id, status: "APPROVED" }, _sum: { amount: true } });
+      return { user, wallet, totalRecharge: recharged._sum.amount ?? new Prisma.Decimal(0) };
+    });
+    const web = webButton(await this.auth.issueWebLoginLink(data.user.id));
+    const yuan = (value?: Prisma.Decimal | null) => `¥${(value ?? new Prisma.Decimal(0)).toFixed(2)}`;
+    if (data.user.role === UserRole.COMPANION) {
+      return flowCard("我的收益", [`可提现 ${yuan(data.wallet?.availableIncome)} · 待结算 ${yuan(data.wallet?.pendingIncome)}`,
+        "待结算的收益在客户验收后转为可提现。提现请在网页的陪玩端申请。"], [entryButton("orders", "陪玩工作台", true), web]);
+    }
+    const level = getCustomerMembershipLevel(data.totalRecharge);
+    return flowCard("我的余额", [
+      `可用余额 ${yuan(data.wallet?.availableBalance)}${data.wallet?.frozenBalance.gt(0) ? ` · 订单冻结中 ${yuan(data.wallet.frozenBalance)}` : ""}`,
+      `累计充值 ${yuan(data.totalRecharge)} · 会员等级 ${level.name}${level.nextMinRecharge ? `（累计充值满 ¥${level.nextMinRecharge} 升下一级）` : ""}`,
+      "充值请直接转账给客服，客服入账后余额立即更新。"
+    ], [entryButton("order", "开始下单", true), entryButton("orders", "我的订单"), web]);
   }
 
   private async orderAction(platformUserId: string, action: NonNullable<ReturnType<typeof parseOrderFlowAction>>, messageId: string) {

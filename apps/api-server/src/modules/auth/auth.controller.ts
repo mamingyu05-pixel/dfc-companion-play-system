@@ -68,6 +68,12 @@ export class AuthController {
     return this.auth.createPlatformBindingCode(user.id, body);
   }
 
+  // Opened from a private KOOK card; never requires a password.
+  @Get("web-link")
+  async redeemWebLink(@Query("t") token: string | undefined, @Res() response: { redirect: (url: string) => void }) {
+    response.redirect(await this.auth.redeemWebLoginLink(token));
+  }
+
   @Get("oauth/:platform/start")
   startOAuth(
     @Param("platform") platform: "discord" | "kook",

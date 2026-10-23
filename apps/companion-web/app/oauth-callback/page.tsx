@@ -12,6 +12,8 @@ export default function CompanionOAuthCallbackPage() {
     const error = params.get("error");
     const token = params.get("token");
     const displayName = params.get("displayName");
+    // Keep the session token out of browser history and anything copied from the address bar.
+    window.history.replaceState(null, "", window.location.pathname);
 
     if (error || !token) {
       setFailed(true);

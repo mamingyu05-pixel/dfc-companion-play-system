@@ -6,7 +6,7 @@ import { DispatchVersionException } from "../src/modules/orders/dispatch-version
 function fixture() {
   const orders = { acceptOrderFromPlatform: jest.fn().mockResolvedValue({ status: "ACCEPTED" }) };
   const port = { wasIssuedTo: jest.fn().mockResolvedValue(false), wasIssuedInChannel: jest.fn().mockResolvedValue(false), send: jest.fn().mockResolvedValue({}) };
-  const flows = new KookOrderFlowService({} as any, orders as any, {} as any, port);
+  const flows = new KookOrderFlowService({} as any, orders as any, {} as any, port, {} as any);
   const notifications = { sendKookDirectMessage: jest.fn().mockResolvedValue({ status: "SENT" }) };
   const controller = new KookWebhookController(orders as any, {} as any, {} as any, notifications as any, {} as any, {} as any, {} as any, flows);
   const process = (value = "order.accept.order-1.0", eventId?: string, actor: string | undefined = "owner") =>

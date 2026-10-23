@@ -324,6 +324,7 @@ model User {
   createdPromotionCodes      PromotionCode[]     @relation("PromotionCodeCreator")
   botEvents                  BotEvent[]          @relation("BotEventActor")
   externalAccounts           UserExternalAccount[]
+  webLoginLinks              WebLoginLink[]
   wechatIdentities            WechatIdentity[]
   platformBindingCodes       PlatformBindingCode[]
   supportConversations       AiSupportConversation[]
@@ -358,6 +359,22 @@ model EmailVerificationCode {
   @@index([email, purpose])
   @@index([expiresAt])
   @@map("email_verification_codes")
+}
+
+// One-time links sent in a private KOOK card that sign the owner into the website without a password.
+// Only a hash of the token is stored; a link works once and expires quickly.
+model WebLoginLink {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("web_login_links")
 }
 
 model UserExternalAccount {

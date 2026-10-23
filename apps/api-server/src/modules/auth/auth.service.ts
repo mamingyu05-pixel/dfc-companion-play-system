@@ -698,6 +698,39 @@ export class AuthService {
     return url.toString();
   }
 
+  // A one-time link for a private KOOK card: tapping it signs the owner into their own portal.
+  // The raw token only ever exists in that card; the database keeps its hash.
+  async issueWebLoginLink(userId: string) {
+    const token = randomBytes(32).toString("base64url");
+    await this.prisma.webLoginLink.create({ data: {
+      tokenHash: hashLoginLinkToken(token), userId, expiresAt: new Date(Date.now() + WEB_LOGIN_LINK_TTL_MS)
+    } });
+    const origin = new URL(getPortalWebUrl("customer")).origin;
+    return `${origin}/api/auth/web-link?t=${token}`;
+  }
+
+  async redeemWebLoginLink(token: unknown) {
+    const fail = (portal: OAuthPortal) =>
+      `${getPortalWebUrl(portal)}/oauth-callback?error=${encodeURIComponent("链接已失效或已经用过。请回到 KOOK 私聊机器人，重新发送“我的订单”或“余额”获取新链接。")}`;
+    if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token)) return fail("customer");
+    const tokenHash = hashLoginLinkToken(token);
+    // Claim the link atomically, so two taps (or a forwarded copy) cannot both sign in.
+    const claimed = await this.prisma.webLoginLink.updateMany({
+      where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() }
+    });
+    if (claimed.count !== 1) return fail("customer");
+    const link = await this.prisma.webLoginLink.findUniqueOrThrow({ where: { tokenHash }, include: { user: true } });
+    const user = link.user;
+    const portal: OAuthPortal = user.role === UserRole.COMPANION ? "companion" : "customer";
+    if (user.status !== "ACTIVE" || (user.role !== UserRole.CUSTOMER && user.role !== UserRole.COMPANION)) return fail(portal);
+    const redirect = new URL(`${getPortalWebUrl(portal)}/oauth-callback`);
+    redirect.searchParams.set("token", await this.issueToken({ sub: user.id, email: user.email, role: user.role }));
+    redirect.searchParams.set("displayName", user.displayName);
+    redirect.searchParams.set("platform", "kook");
+    redirect.searchParams.set("role", user.role);
+    return redirect.toString();
+  }
+
   async completeOAuth(platform: OAuthPlatform, body: { code?: string; state?: string; error?: string }) {
     const state = body.state ? parseOAuthState(body.state) : null;
     const portal = state?.portal ?? "customer";
@@ -1384,6 +1417,12 @@ function isOAuthPlatform(value: string): value is OAuthPlatform {
 
 function isOAuthPortal(value: string): value is OAuthPortal {
   return value === "customer" || value === "companion" || value === "admin";
+}
+
+const WEB_LOGIN_LINK_TTL_MS = 10 * 60 * 1000;
+
+function hashLoginLinkToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 function getPortalWebUrl(portal: OAuthPortal) {
