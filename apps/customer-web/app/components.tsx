@@ -29,8 +29,24 @@ type Companion = {
 };
 
 export function CustomerShell({ children }: { children: ReactNode }) {
-  const kookUrl = process.env.NEXT_PUBLIC_SUPPORT_KOOK_URL?.trim() || "";
-  const discordUrl = process.env.NEXT_PUBLIC_SUPPORT_DISCORD_URL?.trim() || "";
+  // The server owns the community links, so changing them never needs a rebuild; build-time values are only a fallback.
+  const [links, setLinks] = useState({
+    kook: process.env.NEXT_PUBLIC_SUPPORT_KOOK_URL?.trim() || "",
+    discord: process.env.NEXT_PUBLIC_SUPPORT_DISCORD_URL?.trim() || ""
+  });
+  useEffect(() => {
+    let live = true;
+    fetch("/api/auth/public-config")
+      .then(response => (response.ok ? response.json() : null))
+      .then((config: { support?: { kookUrl?: string | null; discordUrl?: string | null } } | null) => {
+        if (!live || !config?.support) return;
+        setLinks(current => ({ kook: config.support?.kookUrl?.trim() || current.kook, discord: config.support?.discordUrl?.trim() || current.discord }));
+      })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, []);
+  const kookUrl = links.kook;
+  const discordUrl = links.discord;
 
   return (
     <main className="maycat-neon-bg min-h-screen text-dfc-text">
