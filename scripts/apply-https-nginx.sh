@@ -9,7 +9,7 @@ if [ ! -f ".env" ]; then
 fi
 
 # Read only the keys we need instead of sourcing .env as shell code.
-env_value() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- | sed 's/^"//; s/"$//'; }
+env_value() { { grep -E "^$1=" .env || true; } | tail -1 | cut -d= -f2- | sed 's/^"//; s/"$//'; }
 DOMAIN="$(env_value DOMAIN)"
 
 if [ -z "${DOMAIN}" ] || [ "${DOMAIN}" = "example.com" ]; then

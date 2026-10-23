@@ -8,7 +8,7 @@ if [ ! -f ".env" ]; then
   exit 1
 fi
 
-env_value() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- | sed 's/^"//; s/"$//'; }
+env_value() { { grep -E "^$1=" .env || true; } | tail -1 | cut -d= -f2- | sed 's/^"//; s/"$//'; }
 DOMAIN="$(env_value DOMAIN)"
 LETSENCRYPT_EMAIL="$(env_value LETSENCRYPT_EMAIL)"
 

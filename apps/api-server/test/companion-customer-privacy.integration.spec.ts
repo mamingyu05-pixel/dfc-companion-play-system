@@ -31,6 +31,17 @@ test("companions see the customer's name on their orders but never the customer'
   expect(JSON.stringify(mine)).not.toContain(customer.email);
 });
 
+test("the public companion list shows no companion emails or platform user IDs", async () => {
+  const companion = await user("COMPANION");
+  const externalUserId = `9${Date.now()}`;
+  await prisma.userExternalAccount.create({ data: { userId: companion.id, platform: BotPlatform.KOOK, externalUserId, displayName: "kook-name" } });
+  const listed = (await orders.listOrderableCompanions()).find(c => c.id === companion.id)!;
+  expect(listed.externalAccounts).toEqual([{ platform: "KOOK", displayName: "kook-name" }]);
+  const text = JSON.stringify(await orders.listOrderableCompanions());
+  expect(text).not.toContain(companion.email);
+  expect(text).not.toContain(externalUserId);
+});
+
 test("the companion customer search cannot be used to list customers' emails or platform IDs", async () => {
   const tag = randomUUID().slice(0, 8);
   const customer = await user("CUSTOMER", `老板${tag}`);

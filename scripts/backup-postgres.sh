@@ -4,7 +4,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-env_value() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | sed 's/^"//; s/"$//'; }
+env_value() { { grep -E "^$1=" .env 2>/dev/null || true; } | tail -1 | cut -d= -f2- | sed 's/^"//; s/"$//'; }
 DB_USER="$(env_value POSTGRES_USER)"; DB_USER="${DB_USER:-dfc}"
 DB_NAME="$(env_value POSTGRES_DB)"; DB_NAME="${DB_NAME:-dfc}"
 KEEP_DAYS="$(env_value BACKUP_KEEP_DAYS)"; KEEP_DAYS="${KEEP_DAYS:-14}"

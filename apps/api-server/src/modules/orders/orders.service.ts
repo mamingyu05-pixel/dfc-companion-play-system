@@ -92,16 +92,9 @@ export class OrdersService {
         user: {
           select: {
             id: true,
-            email: true,
             displayName: true,
             _count: { select: { companionOrders: { where: { status: { in: [OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS] } } } } },
-            externalAccounts: {
-              select: {
-                platform: true,
-                externalUserId: true,
-                displayName: true
-              }
-            }
+            externalAccounts: { select: { platform: true, displayName: true } }
           }
         }
       }
@@ -115,13 +108,9 @@ export class OrdersService {
     return companions.map((profile) => ({
       ...this.companionReviewSummary(reviews.filter(review => review.order.companionId === profile.userId)),
       id: profile.userId,
-      email: profile.user.email,
       displayName: profile.user.displayName,
-      externalAccounts: profile.user.externalAccounts.map((account) => ({
-        platform: account.platform,
-        externalUserId: account.externalUserId,
-        displayName: account.displayName
-      })),
+      // This list is public: never the companion's email or platform user IDs, or anyone could scrape them to poach companions.
+      externalAccounts: profile.user.externalAccounts.map((account) => ({ platform: account.platform, displayName: account.displayName })),
       nickname: profile.nickname,
       avatarUrl: profile.avatarUrl,
       photoUrls: profile.photoUrls,
@@ -156,7 +145,8 @@ export class OrdersService {
       include: {
         review: { select: { id: true } },
         complaints: { where: { status: { notIn: ["RESOLVED", "REJECTED"] } }, select: { id: true } },
-        companion: { select: { id: true, email: true, displayName: true } },
+        // Customers see the companion's name, never their email: private contact invites off-platform deals.
+        companion: { select: { id: true, displayName: true } },
         orderGroup: { select: { id: true, groupNo: true, companionCount: true, originalAmount: true, discountAmount: true, totalAmount: true } },
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
       }
@@ -1974,7 +1964,7 @@ export class OrdersService {
     completedAt: Date | null;
     cancelledAt?: Date | null;
     customer?: { id: string; email: string; displayName: string };
-    companion?: { id: string; email: string; displayName: string } | null;
+    companion?: { id: string; email?: string; displayName: string } | null;
     assignedBy?: { id: string; email: string; displayName: string } | null;
     orderGroup?: {
       id: string;
