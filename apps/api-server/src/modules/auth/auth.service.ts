@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { BotPlatform, CompanionProfileStatus, DeltaForceRank, GameCode, OnlineStatus, OrderStatus, Prisma, ReviewStatus, UserRole, VoicePreference } from "@prisma/client";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
@@ -532,6 +532,9 @@ export class AuthService {
     // (Kept free of type syntax: a customer-web test evaluates this method body as plain JavaScript.)
     const env = process.env;
     const login = {
+      // Same rule as smtpConfig(), inlined because this method body must stay self-contained.
+      email: Boolean(env.SMTP_HOST?.trim() && env.SMTP_USER?.trim() && env.SMTP_PASS &&
+        !/example.(com|org|net)|.invalid|replace[-_ ]?with|change[-_ ]?me|your[-_]/i.test(`${env.SMTP_HOST} ${env.SMTP_USER} ${env.SMTP_PASS}`)),
       kook: Boolean(env.KOOK_CLIENT_ID?.trim() && env.KOOK_CLIENT_SECRET?.trim() && env.KOOK_REDIRECT_URI?.trim()),
       discord: Boolean(env.DISCORD_CLIENT_ID?.trim() && env.DISCORD_CLIENT_SECRET?.trim() && env.DISCORD_REDIRECT_URI?.trim())
     };
@@ -1264,16 +1267,10 @@ export class AuthService {
     return user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
   }
 
-  private async sendVerificationEmail(email: string, code: string, _actionLabel = "注册") {
-    const host = process.env.SMTP_HOST?.trim();
-    const user = process.env.SMTP_USER?.trim();
-    const pass = process.env.SMTP_PASS;
-    const from = process.env.SMTP_FROM?.trim() || user;
-    const port = Number(process.env.SMTP_PORT ?? "587");
-
-    if (!host || !user || !pass || !from || !Number.isFinite(port)) {
-      throw new InternalServerErrorException("Email service is not configured");
-    }
+  private async sendVerificationEmail(email: string, code: string, actionLabel = "注册") {
+    const config = smtpConfig();
+    if (!config) throw new ServiceUnavailableException(EMAIL_UNAVAILABLE_MESSAGE);
+    const { host, user, pass, from, port } = config;
 
     const transporter = nodemailer.createTransport({
       host,
@@ -1282,13 +1279,19 @@ export class AuthService {
       auth: { user, pass }
     });
 
-    await transporter.sendMail({
-      from,
-      to: email,
-      subject: "小小电竞注册验证码",
-      text: `你的 小小电竞注册验证码是：${code}。验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。`,
-      html: `<p>你的 小小电竞注册验证码是：</p><p style="font-size:24px;font-weight:700;letter-spacing:4px;">${code}</p><p>验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。</p>`
-    });
+    try {
+      await transporter.sendMail({
+        from,
+        to: email,
+        subject: `小小电竞${actionLabel}验证码`,
+        text: `你的小小电竞${actionLabel}验证码是：${code}。验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。`,
+        html: `<p>你的小小电竞${actionLabel}验证码是：</p><p style="font-size:24px;font-weight:700;letter-spacing:4px;">${code}</p><p>验证码 ${EMAIL_CODE_TTL_MINUTES} 分钟内有效，请勿转发给他人。</p>`
+      });
+    } catch (error) {
+      // A mail-server failure is an outage, not a bug in the request: say so instead of a bare 500.
+      new Logger(AuthService.name).error(`Verification email failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new ServiceUnavailableException("验证码邮件暂时发不出去，请稍后再试。也可以在 KOOK 私聊小小电竞机器人发送「首次使用」直接建档。");
+    }
   }
 
   private getOAuthConfig(platform: OAuthPlatform) {
@@ -1420,6 +1423,20 @@ function isOAuthPortal(value: string): value is OAuthPortal {
 }
 
 const WEB_LOGIN_LINK_TTL_MS = 10 * 60 * 1000;
+const EMAIL_UNAVAILABLE_MESSAGE = "网站邮箱注册暂未开通。请在 KOOK 私聊小小电竞机器人发送「首次使用」建档，或联系客服开通账号。";
+
+// Template values (example.com, .invalid, "replace-with...") count as not configured, so the site
+// reports email as unavailable instead of trying to reach a mail server that does not exist.
+function smtpConfig() {
+  const host = process.env.SMTP_HOST?.trim();
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.SMTP_FROM?.trim() || user;
+  const port = Number(process.env.SMTP_PORT ?? "587");
+  const placeholder = (value?: string) => !value || /example.(com|org|net)|.invalid|replace[-_ ]?with|change[-_ ]?me|your[-_]/i.test(value);
+  if (placeholder(host) || placeholder(user) || !pass || placeholder(pass) || !from || !Number.isFinite(port)) return null;
+  return { host: host!, user: user!, pass, from, port };
+}
 
 function hashLoginLinkToken(token: string) {
   return createHash("sha256").update(token).digest("hex");

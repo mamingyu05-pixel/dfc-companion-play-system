@@ -6,7 +6,7 @@ import type { FormEvent } from "react";
 type AuthMode = "register" | "login";
 
 type PublicConfig = {
-  login?: { kook?: boolean; discord?: boolean };
+  login?: { email?: boolean; kook?: boolean; discord?: boolean };
   support?: {
     wechatId?: string | null;
     discordUrl?: string | null;
@@ -166,6 +166,11 @@ export function CompanionLoginForm() {
             </button>
           </div>
 
+          {mode === "register" && publicConfig.login?.email === false ? (
+            <p className="mb-2 rounded-[10px] border border-[#ffd8b5] bg-[#fff7ef] px-3 py-2 text-sm leading-6 text-dfc-text">
+              网站邮箱注册暂未开通。请联系客服审核入驻，审核通过后由管理员建档并绑定你的 KOOK，之后在 KOOK 私聊机器人发「陪玩工作台」即可接单。
+            </p>
+          ) : null}
           {publicConfig.login?.kook ? (
             <a href="/api/auth/oauth/kook/start?portal=companion" className="mb-2 block w-full rounded-[10px] bg-brand px-4 py-3 text-center text-base font-black text-white hover:bg-brand-ink">
               KOOK 一键登录

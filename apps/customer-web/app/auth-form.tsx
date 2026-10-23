@@ -19,7 +19,7 @@ type AuthResponse = {
 };
 
 type PublicConfig = {
-  login?: { kook?: boolean; discord?: boolean };
+  login?: { email?: boolean; kook?: boolean; discord?: boolean };
   support?: {
     wechatId?: string | null;
     kookUrl?: string | null;
@@ -266,6 +266,11 @@ export function CustomerAuthForm() {
             </button>
           </div>
 
+          {(mode === "register" || mode === "forgot") && publicConfig.login?.email === false ? (
+            <p className="mt-4 rounded-[10px] border border-[#ffd8b5] bg-[#fff7ef] px-3 py-2 text-sm leading-6 text-dfc-text">
+              网站邮箱{mode === "register" ? "注册" : "找回密码"}暂未开通。请在 KOOK 私聊小小电竞机器人发送「首次使用」直接建档，之后点机器人卡片上的「在网页查看」就能免密进入网站。
+            </p>
+          ) : null}
           <form onSubmit={submit} className="mt-5 space-y-4" autoComplete={mode === "login" ? "on" : "off"}>
             {mode !== "forgot" ? (
               <>

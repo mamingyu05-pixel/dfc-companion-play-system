@@ -7,10 +7,10 @@ afterEach(() => { for (const key of KEYS) delete process.env[key]; });
 const auth = Object.create(AuthService.prototype) as AuthService;
 
 test("login pages offer KOOK one-click login only when the KOOK OAuth app is fully configured", () => {
-  expect(auth.getPublicConfig().login).toEqual({ kook: false, discord: false });
+  expect(auth.getPublicConfig().login).toEqual({ email: false, kook: false, discord: false });
   process.env.KOOK_CLIENT_ID = "id";
   process.env.KOOK_CLIENT_SECRET = "secret";
   expect(auth.getPublicConfig().login.kook).toBe(false);
   process.env.KOOK_REDIRECT_URI = "http://example.invalid/api/auth/oauth/kook/callback";
-  expect(auth.getPublicConfig().login).toEqual({ kook: true, discord: false });
+  expect(auth.getPublicConfig().login).toEqual({ email: false, kook: true, discord: false });
 });
