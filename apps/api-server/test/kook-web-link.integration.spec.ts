@@ -51,8 +51,11 @@ test("余额 shows balance and level, and its web button signs the customer in e
   const token = new URL(link.value).searchParams.get("t");
   const first = new URL(await auth.redeemWebLoginLink(token));
   expect(first.origin + first.pathname).toBe("https://demo.invalid/customer/oauth-callback");
-  expect(first.searchParams.get("role")).toBe("CUSTOMER");
-  expect(first.searchParams.get("token")).toBeTruthy();
+  // The session travels in the fragment, which browsers never send to the server (so it never lands in access logs).
+  expect(first.search).toBe("");
+  const session = new URLSearchParams(first.hash.slice(1));
+  expect(session.get("role")).toBe("CUSTOMER");
+  expect(session.get("token")).toBeTruthy();
   // A second tap or a forwarded copy no longer works.
   const second = new URL(await auth.redeemWebLoginLink(token));
   expect(second.searchParams.get("error")).toContain("链接已失效");

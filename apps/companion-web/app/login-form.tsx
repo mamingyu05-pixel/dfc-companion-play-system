@@ -289,6 +289,11 @@ export function CompanionLoginForm() {
             <button disabled={isSubmitting} className="w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-5 py-4 text-base font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60">
               {isSubmitting ? "处理中..." : mode === "register" ? "提交陪玩注册申请" : "进入陪玩工作台"}
             </button>
+            <p className="text-center text-xs leading-5 text-dfc-muted">
+              {mode === "register" ? "提交申请" : "登录"}即表示你已年满 18 周岁，并同意
+              <a href="/terms.html" target="_blank" rel="noreferrer" className="font-semibold text-cyan-300">《服务协议》</a>和
+              <a href="/privacy.html" target="_blank" rel="noreferrer" className="font-semibold text-cyan-300">《隐私政策》</a>
+            </p>
           </form>
 
           <div className="mt-4 rounded-dfc-control border border-cyan-300/15 bg-cyan-300/5 px-3 py-3 text-xs leading-5 text-dfc-subtext">

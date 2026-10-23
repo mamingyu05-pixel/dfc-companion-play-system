@@ -1,0 +1,39 @@
+/* Shared look for the terms and privacy pages; matches the entry page. */
+:root {
+  --bg: #f6f5f2; --surface: #fff; --ink: #15171c; --sub: #4f5562; --line: #e7e4de;
+  --brand: #ff6a3d; --brand-ink: #c2441a; --grid: rgba(21, 23, 28, .04);
+  --font: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font); line-height: 1.8; font-size: 15.5px;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--brand-ink); }
+.bar {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px max(20px, env(safe-area-inset-left, 0px)); background: rgba(246, 245, 242, .85);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+.brand img { width: 32px; height: 32px; border-radius: 9px; }
+.bar nav { display: flex; gap: 4px; }
+.bar nav a { text-decoration: none; color: var(--sub); font-size: 14px; font-weight: 700; padding: 6px 10px; border-radius: 8px; }
+.bar nav a[aria-current="page"] { color: var(--ink); background: rgba(255, 106, 61, .1); }
+main {
+  max-width: 760px; margin: 32px auto; padding: 32px max(20px, env(safe-area-inset-left, 0px)) 40px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+}
+.eyebrow { margin: 0; font-size: 12.5px; letter-spacing: .12em; color: var(--brand-ink); font-weight: 700; }
+h1 { margin: 8px 0 12px; font-size: clamp(26px, 5vw, 34px); line-height: 1.25; text-wrap: balance; }
+h2 { margin: 32px 0 8px; font-size: 18px; padding-top: 20px; border-top: 1px solid var(--line); }
+.lead { color: var(--sub); }
+ul { padding-left: 1.3em; margin: 8px 0; }
+li { margin: 4px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; display: block; overflow-x: auto; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--sub); font-weight: 600; white-space: nowrap; }
+footer { text-align: center; color: var(--sub); font-size: 13px; padding: 8px 20px 32px; }
+@media (max-width: 600px) { main { margin: 16px 12px; border-radius: 14px; padding: 22px 18px 28px; } }

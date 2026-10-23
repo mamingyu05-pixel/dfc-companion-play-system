@@ -4,6 +4,7 @@ http {
   resolver 127.0.0.11 valid=10s ipv6=off;
   # Uploads (payment proofs, vault screenshots) are accepted up to 20 MB by the API.
   client_max_body_size 21m;
+  server_tokens off;
 
   # Plain HTTP answers every host name and the bare IP. Platform webhooks stay on HTTP because
   # KOOK and Discord do not follow redirects; everything else moves to the HTTPS site.
@@ -52,10 +53,27 @@ http {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_cache shared:SSL:10m;
 
+    # Security headers. A location with its own add_header drops these, so such locations repeat them.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+
     location = / {
       root /usr/share/nginx/portal;
       try_files /index.html =404;
       add_header Cache-Control "no-cache";
+      add_header Strict-Transport-Security "max-age=31536000" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    }
+
+    # Terms of service and privacy policy, static like the entry page.
+    location ~ ^/(terms|privacy)\.html$|^/legal\.css$ {
+      root /usr/share/nginx/portal;
     }
 
     location = /favicon.ico {

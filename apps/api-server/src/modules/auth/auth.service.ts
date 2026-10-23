@@ -726,12 +726,7 @@ export class AuthService {
     const user = link.user;
     const portal: OAuthPortal = user.role === UserRole.COMPANION ? "companion" : "customer";
     if (user.status !== "ACTIVE" || (user.role !== UserRole.CUSTOMER && user.role !== UserRole.COMPANION)) return fail(portal);
-    const redirect = new URL(`${getPortalWebUrl(portal)}/oauth-callback`);
-    redirect.searchParams.set("token", await this.issueToken({ sub: user.id, email: user.email, role: user.role }));
-    redirect.searchParams.set("displayName", user.displayName);
-    redirect.searchParams.set("platform", "kook");
-    redirect.searchParams.set("role", user.role);
-    return redirect.toString();
+    return sessionRedirect(getPortalWebUrl(portal), await this.issueToken({ sub: user.id, email: user.email, role: user.role }), user, "kook");
   }
 
   async completeOAuth(platform: OAuthPlatform, body: { code?: string; state?: string; error?: string }) {
@@ -749,12 +744,7 @@ export class AuthService {
       const profile = platform === "discord" ? await this.fetchDiscordProfile(body.code) : await this.fetchKookProfile(body.code);
       const result = await this.findOrCreateOAuthUser(platform, portal, profile);
       const token = await this.issueToken({ sub: result.user.id, email: result.user.email, role: result.user.role });
-      const redirect = new URL(`${webUrl}/oauth-callback`);
-      redirect.searchParams.set("token", token);
-      redirect.searchParams.set("displayName", result.user.displayName);
-      redirect.searchParams.set("platform", platform);
-      redirect.searchParams.set("role", result.user.role);
-      return redirect.toString();
+      return sessionRedirect(webUrl, token, result.user, platform);
     } catch (error) {
       const message = error instanceof Error ? error.message : "第三方登录失败，请稍后重试";
       return `${webUrl}/oauth-callback?error=${encodeURIComponent(message)}`;
@@ -1436,6 +1426,13 @@ function smtpConfig() {
   const placeholder = (value?: string) => !value || /example.(com|org|net)|.invalid|replace[-_ ]?with|change[-_ ]?me|your[-_]/i.test(value);
   if (placeholder(host) || placeholder(user) || !pass || placeholder(pass) || !from || !Number.isFinite(port)) return null;
   return { host: host!, user: user!, pass, from, port };
+}
+
+// The session token rides in the URL fragment: browsers never send it to the server, so it stays out of access logs and Referer headers.
+function sessionRedirect(webUrl: string, token: string, user: { displayName: string; role: UserRole }, platform: string) {
+  const redirect = new URL(`${webUrl}/oauth-callback`);
+  redirect.hash = new URLSearchParams({ token, displayName: user.displayName, platform, role: user.role }).toString();
+  return redirect.toString();
 }
 
 function hashLoginLinkToken(token: string) {

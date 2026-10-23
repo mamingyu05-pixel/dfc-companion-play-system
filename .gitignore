@@ -10,3 +10,4 @@ coverage/
 *.baseline.fixture.ts
 uploads/
 infra/nginx/nginx.https.conf
+backups/

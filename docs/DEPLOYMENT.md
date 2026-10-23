@@ -142,15 +142,29 @@ docker compose run --rm api-server pnpm --filter @dfc/database prisma:deploy
 
 ## 数据库备份
 
+首次部署后安装每日备份任务（每天 04:20，保留 14 天，可用 `.env` 的 `BACKUP_KEEP_DAYS` 调整）：
+
 ```bash
-bash scripts/backup-postgres.sh
+sudo bash scripts/install-backup-cron.sh
 ```
 
-备份文件写入：
+手动备份：
 
-```text
-backups/
+```bash
+sudo bash scripts/backup-postgres.sh
 ```
+
+每次备份写入 `backups/dfc_时间.sql.gz`（数据库，已校验完整）和 `backups/uploads_时间.tar.gz`（上传的文件），日志在 `backups/backup.log`。备份和数据在同一块硬盘上，请定期把 `backups/` 复制到服务器以外（例如腾讯云 COS 或本地电脑）。
+
+恢复数据库（会覆盖现有数据，先停掉会写库的服务）：
+
+```bash
+docker compose stop api-server kook-bot
+gunzip -c backups/dfc_时间.sql.gz | docker compose exec -T postgres psql -U dfc -d dfc -v ON_ERROR_STOP=1 --single-transaction
+docker compose up -d api-server kook-bot
+```
+
+恢复到空库最稳妥：先 `DROP DATABASE dfc; CREATE DATABASE dfc;` 再导入。
 
 ## 生产部署要求
 

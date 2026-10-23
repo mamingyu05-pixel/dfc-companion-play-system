@@ -10,6 +10,8 @@ export default function OAuthCallbackPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // Sessions arrive in the fragment (never sent to the server); errors arrive in the query.
+    new URLSearchParams(window.location.hash.slice(1)).forEach((value, key) => params.set(key, value));
     const error = params.get("error");
     const token = params.get("token");
     const displayName = params.get("displayName");

@@ -398,6 +398,11 @@ export function CustomerAuthForm() {
             <button type="submit" disabled={isSubmitting} className="maycat-button w-full px-4 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60">
               {isSubmitting ? "提交中..." : mode === "register" ? "创建客户账号" : mode === "forgot" ? "重置密码" : "登录客户入口"}
             </button>
+            <p className="text-center text-xs leading-5 text-dfc-muted">
+              {mode === "register" ? "创建账号" : "登录"}即表示你已年满 18 周岁，并同意
+              <a href="/terms.html" target="_blank" rel="noreferrer" className="font-semibold text-cyan-300">《服务协议》</a>和
+              <a href="/privacy.html" target="_blank" rel="noreferrer" className="font-semibold text-cyan-300">《隐私政策》</a>
+            </p>
           </form>
 
           <div className="mt-4 flex items-center justify-between gap-3 text-xs text-dfc-muted">

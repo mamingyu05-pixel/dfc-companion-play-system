@@ -9,10 +9,14 @@ export default function AdminOAuthCallbackPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // Sessions arrive in the fragment (never sent to the server); errors arrive in the query.
+    new URLSearchParams(window.location.hash.slice(1)).forEach((value, key) => params.set(key, value));
     const error = params.get("error");
     const token = params.get("token");
     const displayName = params.get("displayName");
     const role = params.get("role");
+    // Keep the session token out of browser history and anything copied from the address bar.
+    window.history.replaceState(null, "", window.location.pathname);
 
     if (error || !token) {
       setFailed(true);
