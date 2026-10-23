@@ -103,3 +103,16 @@ test("admins manage knowledge with validation; changes reach answers immediately
   await expect(admin.update({ id: actor.id } as never, row.id, {})).rejects.toBeInstanceOf(BadRequestException);
   await expect(admin.update({ id: actor.id } as never, "missing", { isActive: true })).rejects.toThrow("知识条目不存在");
 });
+
+test("everyday customer questions get routed to the right answer instead of the fallback", async () => {
+  const ask = async (message: string) => support.autoReplyForWeb((await customer()).id, message);
+  expect((await ask("你们是真人还是机器人")).matchedTopic).toBe("客服身份");
+  expect((await ask("我想当陪玩怎么申请")).matchedTopic).toBe("陪玩入驻");
+  // Policy questions about money read the knowledge base; an actual missing payment still goes to a person.
+  expect((await ask("怎么充值？可以微信吗")).matchedTopic).not.toBe("人工核实");
+  expect(await ask("我充了钱没到账")).toMatchObject({ matchedTopic: "人工核实", handoffRequired: true });
+  expect((await ask("提现到账了吗")).answer).toContain("提现");
+  expect(await ask("陪玩迟到了半小时怎么办")).toMatchObject({ matchedTopic: "人工核实", handoffRequired: true });
+  // Delta Force mode names imply the game, so the price answer doesn't ask which game.
+  expect((await ask("烽火地带和全面战场价格一样吗")).answer).not.toContain("哪个游戏");
+});

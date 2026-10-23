@@ -8,6 +8,11 @@ import { OrderDraftsService } from "../orders/order-drafts.service";
 import { extractiveAnswer, groundedInstruction, KnowledgeDoc, retrieveKnowledge } from "./knowledge";
 
 const KNOWLEDGE_CACHE_MS = 60_000;
+// Someone asking to work as a companion, not to hire one.
+const COMPANION_APPLY_PATTERN = /(我想接单|我要接单|怎么接单|如何接单|陪玩入驻|成为陪玩|应聘陪玩|当陪玩|做陪玩|申请陪玩|陪玩申请|招陪玩|招募陪玩)/;
+// "How do I top up / can I withdraw" is a policy question for the knowledge base; only an actual problem needs a person.
+const MONEY_PROBLEM_PATTERN = /(没到账|未到账|不到账|到账了|到了吗|到了没|没收到|没加上|少了|扣了|多扣|重复扣|失败|异常|还没|一直|转了|已经|付了|付过|进度|多久|审核了)/;
+const INFO_QUESTION_PATTERN = /(怎么|如何|可以|能不能|能否|支持|方式|渠道|吗|么)/;
 
 type SupportRule = {
   topic: string;
@@ -391,10 +396,10 @@ export class PlatformSupportService {
     const handoff = this.handoffAnswer(message, history);
     if (handoff) return handoff;
     if (this.isOrderQuestion(message) || this.isOrderContinuation(message, history)) return this.orderAnswer(message, history, scope);
-    if (/(我想接单|我要接单|怎么接单|如何接单|陪玩入驻|成为陪玩|应聘陪玩)/.test(message)) return {
+    if (COMPANION_APPLY_PATTERN.test(message)) return {
       answer: "想成为陪玩接单，需要先联系人工提交资料和试音考核，通过后由管理员创建并上架陪玩账号。", matchedTopic: "陪玩入驻", handoffRequired: true
     };
-    if (/(你是.*(真人|机器人|人工|AI)|你是谁|真人吗|人工吗|是不是机器人)/i.test(message)) return {
+    if (/(你们?是.*(真人|机器人|人工|AI)|你是谁|真人吗|人工吗|是不是机器人)/i.test(message)) return {
       answer: "我是小小电竞的 AI 客服，可以查订单状态、整理陪玩需求。退款、争议和异常需要人工处理。", matchedTopic: "客服身份", handoffRequired: false
     };
     if (/^(谢谢|谢了|好的|好|收到|ok|嗯|明白了)[！!。.]?$/i.test(message)) {
@@ -467,7 +472,7 @@ export class PlatformSupportService {
   }
 
   private handoffAnswer(message: string, history: SupportHistoryTurn[]): SupportResult | null {
-    const issue = /(退款|退钱|投诉|纠纷|争议|不满意|取消订单|取消陪玩|重复扣|多扣|异常|失败|没反应|充值|到账|余额|转账|提现|人工|真人客服|撤销|先别|不要发|别发|不下单|不找了|不玩了)/.test(message);
+    const issue = /(退款|退钱|投诉|纠纷|争议|不满意|取消订单|取消陪玩|重复扣|多扣|异常|失败|没反应|充值|到账|余额|转账|提现|人工|真人客服|撤销|先别|不要发|别发|不下单|不找了|不玩了|迟到|放鸽子|没来|不来|挂机|态度差)/.test(message);
     if (!issue) {
       if (history.at(-1)?.matchedTopic === "人工核实" && /(截图|凭证|补充|还是|怎么还|多久|有人处理|发了|已经提交)/.test(message)) return {
         answer: "补充说明会保留在这段对话里。附件是否提交成功，请看上传回执；处理结果仍要从客服入口请人工核对，目前没有人工接单回执。", matchedTopic: "人工核实", handoffRequired: true
@@ -477,14 +482,16 @@ export class PlatformSupportService {
     if (/(先别|不要发|别发|不下单|不找了|不玩了)/.test(message)) return {
       answer: "好，先不继续发布。若已有需求或订单，请在对应页面取消；聊天这句不会自动撤销已提交的记录。", matchedTopic: "需求暂停", handoffRequired: false
     };
-    const refund = /(退款|退钱|投诉|纠纷|争议|不满意|取消订单|取消陪玩|重复扣|多扣)/.test(message);
+    const refund = /(退款|退钱|投诉|纠纷|争议|不满意|取消订单|取消陪玩|重复扣|多扣|迟到|放鸽子|没来|不来|挂机|态度差)/.test(message);
+    const moneyOnly = /(充值|到账|余额|转账|提现)/.test(message) && !refund && !/(人工|真人客服|撤销)/.test(message);
+    if (moneyOnly && INFO_QUESTION_PATTERN.test(message) && !MONEY_PROBLEM_PATTERN.test(message)) return null;
     const last = history.at(-1);
     const followup = last?.matchedTopic === "人工核实";
     const orderKnown = this.orderReferences([message, ...history.map(t => t.message)].join(" ")).numbers.length > 0;
     return { answer: followup ? "这条仍需要人工核实，前面的说明已在本段对话中。请从网站客服入口联系人工；这里还没有人工接单回执。" :
       refund ? `这类售后需要人工核实。${orderKnown ? "已有订单号，不用重复发；" : "请在私聊或网站提供订单号，"}补充具体问题和相关证据即可。我不能判定退款，也还没有人工接单回执。` :
-      /(充值|到账|余额|转账)/.test(message) ? "充值需要管理员审核，我这里不能确认到账。请在充值记录查看审核状态；已转账但未到账的话，从网站客服入口提供充值记录和凭证给人工核对。" :
       /提现/.test(message) ? "提现要由管理员审核并核实打款。我不能确认已打款，请从提现记录联系人工核对。" :
+      /(充值|到账|余额|转账)/.test(message) ? "充值需要管理员审核，我这里不能确认到账。请在充值记录查看审核状态；已转账但未到账的话，从网站客服入口提供充值记录和凭证给人工核对。" :
       "这项需要人工处理。请从网站客服入口联系人工；本段对话会保留，但目前没有人工接单回执。", matchedTopic: "人工核实", handoffRequired: true };
   }
 
@@ -1055,7 +1062,7 @@ export class PlatformSupportService {
   }
 
   private isDispatchIntent(message: string) {
-    if (/(我想接单|我要接单|怎么接单|如何接单|陪玩入驻|成为陪玩|应聘陪玩)/.test(message)) return false;
+    if (COMPANION_APPLY_PATTERN.test(message)) return false;
     if (this.isPureConsultation(message)) return false;
     return this.hasExplicitDispatchAction(message) || /(want.*play|need.*companion|boost|rank)/i.test(message);
   }
@@ -1153,7 +1160,9 @@ export class PlatformSupportService {
       [/(pubg|绝地求生|吃鸡)/i, GameCode.PUBG],
       [/(永劫无间|永劫)/i, GameCode.NARAKA_BLADEPOINT],
       [/(cs2|counter-strike|反恐精英)/i, GameCode.COUNTER_STRIKE_2],
-      [/(塔科夫|tarkov|cod|使命召唤|call of duty)/i, GameCode.CALL_OF_DUTY]
+      [/(塔科夫|tarkov|cod|使命召唤|call of duty)/i, GameCode.CALL_OF_DUTY],
+      // Delta Force's own mode names identify the game even when it isn't named.
+      [/(烽火地带|全面战场|摸金|哈夫币)/, GameCode.DELTA_FORCE]
     ];
 
     return games.find(([pattern]) => pattern.test(lower))?.[1];
@@ -1302,7 +1311,7 @@ export class PlatformSupportService {
   }
 
   private buildContextualFallback(_message: string) {
-    return "这句我还没确定你的意思。你是想继续刚才的需求，还是查一笔订单？";
+    return "这句我没太理解。可以问我价格、怎么下单、充值、保底规则，或者直接说想玩的游戏、模式和时长；需要人工的话回复「人工客服」。";
   }
 
   private async findServiceAdmin() {
