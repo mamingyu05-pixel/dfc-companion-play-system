@@ -43,7 +43,7 @@ export function CompanionTopNav() {
 
 export function CompanionTabBar() {
   return (
-    <nav className="dfc-tabbar grid-cols-4 lg:hidden" aria-label="移动端陪玩导航">
+    <nav className="dfc-tabbar grid grid-cols-4 lg:hidden" aria-label="移动端陪玩导航">
       {navItems.filter(item => item.tab).map(item => (
         <Tab key={item.href} href={item.href} icon={item.icon}>{"short" in item ? item.short : item.label}</Tab>
       ))}

@@ -75,7 +75,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <CustomerAuthGate><PageTransition>{children}</PageTransition></CustomerAuthGate>
       </div>
 
-      <nav className="dfc-tabbar grid-cols-5 md:hidden" aria-label="移动端导航">
+      <nav className="dfc-tabbar grid grid-cols-5 md:hidden" aria-label="移动端导航">
         {TABS.map(tab => <MobileNavLink key={tab.href} href={tab.href} icon={tab.icon}>{tab.label}</MobileNavLink>)}
       </nav>
     </main>

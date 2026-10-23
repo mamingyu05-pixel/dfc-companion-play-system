@@ -118,8 +118,10 @@ html body .admin-console-bg { background-size: auto, auto, 64px 64px, 64px 64px;
 .dfc-navlink[aria-current="page"]::after { transform: scaleX(1); }
 .dfc-violet .dfc-navlink::after { background: linear-gradient(90deg, var(--violet), #9b84ff); }
 
+/* Zero specificity, so Tailwind visibility classes on the same element (hidden lg:inline-flex) still win. */
+:where(.dfc-pill) { display: inline-flex; }
 .dfc-pill {
-  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none;
+  align-items: center; gap: 6px; white-space: nowrap; text-decoration: none;
   padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 800;
   border: 1px solid var(--line); background: #fff; color: var(--ink); box-shadow: var(--shadow-1);
   transition: transform var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease), box-shadow var(--t-std) var(--ease);
@@ -134,9 +136,9 @@ html body .admin-console-bg { background-size: auto, auto, 64px 64px, 64px 64px;
 .dfc-live::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: #22c55e; animation: dfc-ping 2.4s var(--ease) infinite; }
 @keyframes dfc-ping { 0% { transform: scale(1); opacity: .55; } 70%, 100% { transform: scale(2.8); opacity: 0; } }
 
-/* Bottom tab bar on phones. */
+/* Bottom tab bar on phones. Display comes from the markup's Tailwind classes (grid + md:hidden / lg:hidden). */
 .dfc-tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
   padding: 6px max(8px, env(safe-area-inset-left, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-right, 0px));
   background: rgba(250, 249, 246, .9); -webkit-backdrop-filter: saturate(160%) blur(14px); backdrop-filter: saturate(160%) blur(14px);
   border-top: 1px solid var(--line);
