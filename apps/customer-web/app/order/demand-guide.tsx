@@ -51,7 +51,7 @@ export default function DemandGuide() {
       <section className="maycat-order-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 md:p-5">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
           <div>
-            <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Order Guide</div>
+            <div className="maycat-chip px-3 py-1 text-xs font-black">下单指引</div>
             <h1 className="maycat-text-glow mt-4 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">
               先试音或预约：只生成需求
             </h1>

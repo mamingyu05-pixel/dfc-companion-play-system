@@ -105,7 +105,7 @@ export default function CompanionDetailPage() {
             <Link href="/companions" className="text-sm font-semibold text-cyan-300 hover:text-cyan-100">
               返回陪玩大厅
             </Link>
-            <div className="maycat-chip mt-5 px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Companion Profile</div>
+            <div className="maycat-chip mt-5 px-3 py-1 text-xs font-black">陪玩资料</div>
             <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-6xl">
               {companion.nickname}
             </h1>

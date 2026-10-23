@@ -42,8 +42,8 @@ export function AdminLoginForm() {
     <main className="admin-console-bg min-h-screen px-4 py-8 text-dfc-text">
       <section className="mx-auto grid min-h-[calc(100vh-64px)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_420px]">
         <div className="max-w-3xl">
-          <div className="inline-flex rounded-dfc-control border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-fuchsia-100">
-            Xiaoxiao Ops Console
+          <div className="inline-flex rounded-dfc-control border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-2 text-xs font-black text-fuchsia-100">
+            工作人员专用
           </div>
           <h1 className="mt-5 text-4xl font-black leading-none text-white md:text-6xl">小小电竞运营后台</h1>
           <p className="mt-5 max-w-2xl text-sm leading-7 text-dfc-subtext md:text-base">
@@ -58,7 +58,7 @@ export function AdminLoginForm() {
 
         <form onSubmit={submit} className="admin-panel p-5">
           <div className="mb-5">
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Secure Access</div>
+            <div className="text-xs font-black text-cyan-100">安全登录</div>
             <h2 className="mt-2 text-2xl font-black text-white">管理员登录</h2>
             <p className="mt-1 text-sm text-dfc-subtext">仅 ADMIN 和 SUPER_ADMIN 可进入后台。</p>
           </div>

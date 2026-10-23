@@ -37,7 +37,7 @@ export default function CompanionOAuthCallbackPage() {
   return (
     <main className="companion-console-bg flex min-h-screen items-center justify-center px-4 text-dfc-text">
       <section className="companion-card w-full max-w-md p-5">
-        <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">Maycat Companion</div>
+        <div className="text-xs font-black text-fuchsia-200">小小电竞陪玩端</div>
         <h1 className="mt-2 text-xl font-black text-white">小小电竞陪玩端</h1>
         <p className="mt-1 text-xs text-dfc-muted">Discord / KOOK 申请与登录</p>
         <div className={`mt-5 rounded-dfc-control border px-3 py-3 text-sm ${failed ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success"}`}>

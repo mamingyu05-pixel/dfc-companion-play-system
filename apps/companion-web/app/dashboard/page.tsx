@@ -121,7 +121,7 @@ export default function CompanionDashboardPage() {
             </div>
           </div>
           <div className="companion-queue-item">
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">Status</div>
+            <div className="text-xs font-black text-fuchsia-200">状态</div>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <MiniSignal label="资料" value={toProfileStatus(profile.companionProfile?.status)} />
               <MiniSignal label="在线" value={toOnlineStatus(profile.companionProfile?.onlineStatus)} />

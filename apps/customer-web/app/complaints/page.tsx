@@ -100,7 +100,7 @@ export default function CustomerComplaintsPage() {
       <section className="maycat-complaint-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 sm:p-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div>
-            <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Case Desk</div>
+            <div className="maycat-chip px-3 py-1 text-xs font-black">售后与投诉</div>
             <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-5xl">
               提交问题工单，等待人工处理。
             </h1>

@@ -18,7 +18,7 @@ export function CompanionShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-20 border-b border-cyan-300/15 bg-[#060913]/92 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-dfc border border-fuchsia-300/35 bg-fuchsia-400/10 text-xs font-black text-fuchsia-100">
+            <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-gradient-to-br from-brand to-[#7c5cff] text-xs font-black !text-white">
               XX
             </span>
             <span>
@@ -49,10 +49,10 @@ export function CompanionShell({ children }: { children: ReactNode }) {
   );
 }
 
-export function SectionHeader({ title, desc, eyebrow }: { title: string; desc?: string; eyebrow?: string }) {
+// eyebrow stays in the props for existing callers; the light theme does not show the English labels.
+export function SectionHeader({ title, desc }: { title: string; desc?: string; eyebrow?: string }) {
   return (
     <div>
-      {eyebrow ? <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">{eyebrow}</div> : null}
       <h1 className="mt-1 text-2xl font-black tracking-normal text-white md:text-3xl">{title}</h1>
       {desc ? <p className="mt-2 max-w-2xl text-sm leading-6 text-dfc-subtext">{desc}</p> : null}
     </div>

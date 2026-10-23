@@ -157,7 +157,7 @@ export default function CustomerSettingsPage() {
       <section className="maycat-settings-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 sm:p-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div>
-            <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Account Console</div>
+            <div className="maycat-chip px-3 py-1 text-xs font-black">账号设置</div>
             <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-5xl">
               账号控制台
             </h1>

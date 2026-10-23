@@ -359,7 +359,7 @@ export default function NewCompanionPage() {
         </form>
 
         <aside className="admin-panel">
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">Media Rule</div>
+          <div className="text-xs font-black text-fuchsia-200">图片要求</div>
           <h2 className="mt-2 text-lg font-black text-white">资料上传规范</h2>
           <div className="mt-4 space-y-3">
             <GuideItem title="头像真实清晰" desc="客户第一眼会看头像，尽量使用清晰、可信的个人形象或统一风格头像。" />

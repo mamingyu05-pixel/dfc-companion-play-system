@@ -102,7 +102,7 @@ export default function CompanionsPage() {
       <section className="maycat-lobby-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 md:p-5">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div>
-            <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Match Terminal</div>
+            <div className="maycat-chip px-3 py-1 text-xs font-black">挑选陪玩</div>
             <h1 className="maycat-text-glow mt-4 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">
               选择今晚的队友。
             </h1>

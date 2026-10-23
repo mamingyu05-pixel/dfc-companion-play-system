@@ -175,7 +175,7 @@ export default function RechargePage() {
       <section className="maycat-recharge-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 md:p-5">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div>
-            <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Wallet Dock</div>
+            <div className="maycat-chip px-3 py-1 text-xs font-black">我的钱包</div>
             <h1 className="maycat-text-glow mt-4 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">
               余额充值，人工确认到账。
             </h1>

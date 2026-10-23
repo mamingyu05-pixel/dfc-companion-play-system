@@ -118,7 +118,7 @@ export default function AdminDashboardPage() {
         </div>
 
         <aside className="admin-panel">
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200">Live Ops</div>
+          <div className="text-xs font-black text-fuchsia-200">今日重点</div>
           <h2 className="mt-2 text-lg font-black text-white">当前班次重点</h2>
           <div className="mt-4 space-y-3">
             <OpsNote title="充值先核图" desc="人工转账到账后再通过，避免余额提前入账。" />

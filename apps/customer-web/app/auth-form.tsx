@@ -178,7 +178,7 @@ export function CustomerAuthForm() {
             <div className="mt-6 overflow-hidden rounded-dfc border border-cyan-300/20 md:max-w-2xl">
               <div className="grid gap-4 p-4 md:grid-cols-[1fr_220px] md:p-5">
                 <div className="flex flex-col justify-center">
-                  <div className="maycat-chip px-3 py-1 text-xs font-semibold">Maycat Signal Desk</div>
+                  <div className="maycat-chip px-3 py-1 text-xs font-semibold">一条线派单</div>
                   <div className="mt-3 text-2xl font-black text-white">客服、KOOK、Discord、后台派单连成一条线</div>
                   <div className="mt-3 text-sm leading-6 text-cyan-50/80">
                     客户先说需求，客服整理信息，KOOK / DC 试音确认，管理员再转正式订单。

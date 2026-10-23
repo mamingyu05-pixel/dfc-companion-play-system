@@ -49,6 +49,8 @@ html, body { min-height: 100%; margin: 0; background: var(--bg); color: var(--in
 .admin-console-bg [class~="text-white"],
 .admin-console-bg [class~="text-dfc-text"] { color: var(--ink); }
 .admin-console-bg [class*="text-cyan-"] { color: var(--brand-ink); }
+/* Pale cyan was plain body text on the dark theme; keep it as body text, not as an accent. */
+.admin-console-bg [class*="text-cyan-50"], .admin-console-bg [class*="text-cyan-100"] { color: var(--sub); }
 .admin-console-bg [class*="text-fuchsia-"], .admin-console-bg [class*="text-indigo-"] { color: var(--violet); }
 .admin-console-bg [class~="text-red-200"] { color: var(--bad); }
 .admin-console-bg [class~="text-green-200"] { color: var(--ok); }

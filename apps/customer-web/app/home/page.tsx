@@ -154,7 +154,7 @@ export default function CustomerHomePage() {
         <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:p-7">
           <div className="flex flex-col justify-between gap-8">
             <div>
-              <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">KOOK / Discord Ready</div>
+              <div className="maycat-chip px-3 py-1 text-xs font-black">支持 KOOK / Discord 下单</div>
               <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-none text-white sm:text-5xl lg:text-7xl">
                 {profile.user.displayName}，今晚进场先试音。
               </h1>
@@ -185,7 +185,7 @@ export default function CustomerHomePage() {
           </div>
 
           <aside className="maycat-card self-start p-4 lg:p-5">
-            <div className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">快速入口</div>
+            <div className="text-xs font-black text-cyan-200">快速入口</div>
             <h2 className="mt-2 text-2xl font-black text-white">你现在可以做什么</h2>
             <div className="mt-4 grid gap-3">
               <Link href="/companions" className="maycat-button px-4 py-3 text-center text-sm font-black">

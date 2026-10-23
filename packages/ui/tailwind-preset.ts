@@ -1,44 +1,39 @@
 import type { Config } from "tailwindcss";
 
+// Light theme (direction B) shared by the customer, companion and admin sites.
 export const dfcTailwindPreset = {
   content: [],
   theme: {
     extend: {
       colors: {
         dfc: {
-          bg: "#080A0F",
-          surface: "#11141C",
-          elevated: "#181C26",
-          border: "#2A3040",
-          text: "#F4F7FB",
-          subtext: "#AAB3C5",
-          muted: "#6E778A",
-          blue: "#38BDF8",
-          violet: "#8B5CF6",
-          gold: "#F5C451",
-          success: "#22C55E",
-          warning: "#F59E0B",
-          danger: "#EF4444"
-        }
+          bg: "#F5F6FA",
+          surface: "#FFFFFF",
+          elevated: "#F8F9FC",
+          border: "#E6E8EF",
+          text: "#1D2233",
+          subtext: "#4B5266",
+          muted: "#7A8197",
+          blue: "#3B82F6",
+          violet: "#7C5CFF",
+          gold: "#D97706",
+          success: "#15A060",
+          warning: "#E07B00",
+          danger: "#E5484D"
+        },
+        brand: { DEFAULT: "#FF6A3D", soft: "#FFF1EC", ink: "#E2552A" }
       },
       borderRadius: {
-        dfc: "8px",
-        "dfc-control": "6px"
+        dfc: "14px",
+        "dfc-control": "10px"
       },
       boxShadow: {
-        "dfc-focus": "0 0 0 3px rgba(56, 189, 248, 0.24)",
-        "dfc-glow": "0 0 24px rgba(139, 92, 246, 0.22)"
+        "dfc-focus": "0 0 0 3px rgba(255, 106, 61, 0.18)",
+        "dfc-glow": "0 8px 24px rgba(255, 106, 61, 0.18)",
+        card: "0 1px 2px rgba(20, 24, 40, 0.06), 0 8px 24px rgba(20, 24, 40, 0.06)"
       },
       fontFamily: {
-        sans: [
-          "Inter",
-          "ui-sans-serif",
-          "system-ui",
-          "-apple-system",
-          "BlinkMacSystemFont",
-          "Segoe UI",
-          "sans-serif"
-        ]
+        sans: ["PingFang SC", "Microsoft YaHei", "Inter", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "sans-serif"]
       }
     }
   },

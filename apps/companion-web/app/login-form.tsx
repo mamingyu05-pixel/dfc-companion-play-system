@@ -141,7 +141,7 @@ export function CompanionLoginForm() {
 
         <section className="companion-card p-5 md:p-7">
           <div className="mb-5">
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Companion Portal</div>
+            <div className="text-xs font-black text-cyan-100">陪玩端</div>
             <h2 className="mt-2 text-3xl font-black text-white">{mode === "register" ? "注册陪玩申请" : "登录陪玩端"}</h2>
             <p className="mt-2 text-sm leading-6 text-dfc-subtext">
               陪玩注册后默认待审核。平台审核通过、上架以后才会出现在客户列表和派单匹配里。

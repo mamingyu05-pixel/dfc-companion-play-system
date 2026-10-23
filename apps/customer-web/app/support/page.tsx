@@ -137,7 +137,7 @@ export default function SupportPage() {
       <section className="maycat-support-hero overflow-hidden rounded-dfc border border-cyan-300/20 p-4 sm:p-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div>
-            <div className="maycat-chip px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">Maycat Support Control</div>
+            <div className="maycat-chip px-3 py-1 text-xs font-black">在线客服</div>
             <h1 className="maycat-text-glow mt-5 max-w-3xl text-4xl font-black leading-tight text-white md:text-5xl">
               问题进线，快速分流。
             </h1>

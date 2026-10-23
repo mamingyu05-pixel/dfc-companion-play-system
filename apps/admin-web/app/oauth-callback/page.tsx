@@ -44,7 +44,7 @@ export default function AdminOAuthCallbackPage() {
   return (
     <main className="admin-console-bg flex min-h-screen items-center justify-center px-4 text-dfc-text">
       <section className="admin-panel w-full max-w-md p-5">
-        <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Discord Admin OAuth</div>
+        <div className="text-xs font-black text-cyan-100">Discord 管理员登录</div>
         <h1 className="mt-2 text-xl font-black text-white">小小电竞运营后台</h1>
         <p className="mt-1 text-xs text-dfc-muted">仅已绑定 Discord 的管理员可进入。</p>
         <div className={`mt-5 rounded-dfc-control border px-3 py-3 text-sm ${failed ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success"}`}>
