@@ -8,6 +8,8 @@ COPY apps/kook-adapter/package.json apps/kook-adapter/package.json
 RUN pnpm install --filter @dfc/kook-adapter... --frozen-lockfile=false
 
 COPY packages/shared packages/shared
+# main.ts runs the shared KOOK configuration check from packages/config.
+COPY packages/config packages/config
 COPY apps/kook-adapter apps/kook-adapter
 RUN pnpm --filter @dfc/kook-adapter build
 
