@@ -1,6 +1,6 @@
 import { buildOrderAcceptAction } from "@dfc/shared";
 import { cardContainsAction } from "../kook/kook-flow-card";
-import { publicServiceLabel } from "../orders/public-dispatch";
+import { publicGameLabel, publicServiceLabel } from "../orders/public-dispatch";
 import { Injectable } from "@nestjs/common";
 import { BotEventStatus, BotEventType, BotPlatform, OrderSourcePlatform, OrderStatus, ReviewStatus, UserRole, type Prisma } from "@prisma/client";
 import { getConfiguredDiscordCustomerLevelRoles, getConfiguredKookCustomerLevelRoles, getCustomerMembershipLevel } from "../customer-membership";
@@ -148,7 +148,7 @@ export class BotNotificationService {
       acceptanceDeadline: order.acceptanceDeadline?.toISOString(),
       game: order.game,
       orderNo: order.orderNo,
-      mode: publicServiceLabel(order.priceTier),
+      mode: publicServiceLabel(order.priceTier, order.mode),
       hours: order.hours.toString(),
       totalAmount: order.totalAmount.toString(),
       companionId: order.companionId ?? undefined,
@@ -247,7 +247,7 @@ export class BotNotificationService {
 
     const content = [
       `小小电竞派单 ${draft.draftNo} 已流单`,
-      `游戏：${draft.game}`,
+      `游戏：${publicGameLabel(draft.game)}`,
       `模式：${publicServiceLabel(draft.priceTier)}`,
       "具体原因请联系授权客服核对。",
       "后台已取消该派单草稿，客服可重新确认需求后再次发布。"
@@ -318,7 +318,7 @@ export class BotNotificationService {
         results.push(await this.sendDiscordChannelText(channelId, [
           `小小电竞派单 ${draft.draftNo} 已指定陪玩`,
           `陪玩：${mention}`,
-          `游戏：${draft.game}`,
+          `游戏：${publicGameLabel(draft.game)}`,
           `模式：${publicServiceLabel(draft.priceTier)}`,
           "请陪玩尽快联系客户确认时间、语音和服务细节。"
         ].join("\n")));
@@ -332,7 +332,7 @@ export class BotNotificationService {
         results.push(await this.sendKookChannelText(channelId, [
           `小小电竞派单 ${draft.draftNo} 已指定陪玩`,
           `陪玩：${mention}`,
-          `游戏：${draft.game}`,
+          `游戏：${publicGameLabel(draft.game)}`,
           `模式：${publicServiceLabel(draft.priceTier)}`,
           "请陪玩尽快联系客户确认时间、语音和服务细节。"
         ].join("\n")));
@@ -536,7 +536,7 @@ export class BotNotificationService {
             {
               title: `订单 ${payload.orderNo}`,
               fields: [
-                { name: "游戏", value: payload.game, inline: true },
+                { name: "游戏", value: publicGameLabel(payload.game), inline: true },
                 { name: "模式", value: payload.mode, inline: true },
                 { name: "时长", value: `${payload.hours} 小时`, inline: true },
                 { name: "金额", value: payload.totalAmount, inline: true },
@@ -581,7 +581,7 @@ export class BotNotificationService {
             {
               title: `平台招募 ${payload.draftNo}`,
               fields: [
-                { name: "游戏", value: payload.game, inline: true },
+                { name: "游戏", value: publicGameLabel(payload.game), inline: true },
                 { name: "模式", value: payload.mode, inline: true },
                 { name: "时长", value: payload.hours ? `${payload.hours} 小时` : "待确认", inline: true },
                 { name: "预算", value: payload.budgetAmount ? `¥${payload.budgetAmount}` : "待确认", inline: true },
@@ -624,10 +624,10 @@ export class BotNotificationService {
               type: "kmarkdown",
               content: [
                 `**订单号**：${payload.orderNo}`,
-                `**游戏**：${payload.game}`,
+                `**游戏**：${publicGameLabel(payload.game)}`,
                 `**模式**：${payload.mode}`,
                 `**时长**：${payload.hours} 小时`,
-                `**金额**：${payload.totalAmount}`,
+                `**金额**：¥${payload.totalAmount}`,
                 `**接单期限**：${payload.acceptanceDeadline ?? "未设置"}`,
                 "**拒接**：指定陪玩可到陪玩端填写原因，退回客服待办。",
                 payload.companionName ? `**陪玩**：${payload.companionName}` : undefined
@@ -683,7 +683,7 @@ export class BotNotificationService {
               type: "kmarkdown",
               content: [
                 roleMentions ? `**提醒标签**：${roleMentions}` : undefined,
-                `**游戏**：${payload.game}`,
+                `**游戏**：${publicGameLabel(payload.game)}`,
                 `**模式**：${payload.mode}`,
                 `**时长**：${payload.hours ? `${payload.hours} 小时` : "待确认"}`,
                 `**预算**：${payload.budgetAmount ? `¥${payload.budgetAmount}` : "待确认"}`,

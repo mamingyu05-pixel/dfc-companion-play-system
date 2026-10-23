@@ -311,7 +311,7 @@ export class OrdersService {
       }
     });
     return orders.map(order => ({ id: order.id, orderNo: order.orderNo, game: order.game,
-      mode: publicServiceLabel(order.priceTier), hours: order.hours.toString(), totalAmount: order.totalAmount.toString(),
+      mode: publicServiceLabel(order.priceTier, order.mode), hours: order.hours.toString(), totalAmount: order.totalAmount.toString(),
       unitPrice: order.unitPrice.toString(), status: order.status, companionId: order.companionId,
       dispatchVersion: order.dispatchVersion, acceptanceDeadline: order.acceptanceDeadline }));
   }
