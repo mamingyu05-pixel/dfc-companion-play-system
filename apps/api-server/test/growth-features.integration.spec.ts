@@ -71,6 +71,9 @@ test("tips: paid once per request from available balance into the companion's wi
 
   const stranger = await user("CUSTOMER");
   await expect(orders.tipCompanion(order.id, stranger.id, { amount: "5", requestId: randomUUID() })).rejects.toThrow("订单不存在");
+  // Knowing someone else's order and request id reveals nothing: ownership is checked before the replay.
+  await expect(orders.tipCompanion(order.id, stranger.id, { amount: "20", requestId })).rejects.toThrow("订单不存在");
+  await expect(orders.tipCompanion(order.id, customer.id, { amount: "21", requestId })).rejects.toThrow("页面已过期");
   await expect(orders.tipCompanion(order.id, customer.id, { amount: "501", requestId: randomUUID() })).rejects.toThrow();
   await expect(orders.tipCompanion(order.id, customer.id, { amount: "500", requestId: randomUUID() })).rejects.toThrow("Insufficient balance");
 });
