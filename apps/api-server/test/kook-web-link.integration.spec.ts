@@ -10,6 +10,8 @@ const prisma = new PrismaService();
 const auth = new AuthService(prisma, new JwtService({}));
 beforeAll(() => { process.env.JWT_SECRET ??= "web-link-test-secret"; process.env.CUSTOMER_WEB_URL = "https://demo.invalid/customer"; process.env.COMPANION_WEB_URL = "https://demo.invalid/companion"; return prisma.$connect(); });
 afterAll(() => prisma.$disconnect());
+// The nonce cookie a real browser would hold for this login.
+const BROWSER = "synthetic-browser-nonce-0000000000000000000";
 
 async function kookUser(role: UserRole, balance = "0") {
   const name = randomUUID();
@@ -49,15 +51,17 @@ test("余额 shows balance and level, and its web button signs the customer in e
   expect(link.value).toMatch(/^https:\/\/demo\.invalid\/api\/auth\/web-link\?t=[A-Za-z0-9_-]{43}$/);
 
   const token = new URL(link.value).searchParams.get("t");
-  const first = new URL(await auth.redeemWebLoginLink(token));
+  const first = new URL(await auth.redeemWebLoginLink(token, BROWSER));
   expect(first.origin + first.pathname).toBe("https://demo.invalid/customer/oauth-callback");
-  // The session travels in the fragment, which browsers never send to the server (so it never lands in access logs).
+  // Only a one-time receipt travels in the fragment (never sent to the server, so never in access logs).
   expect(first.search).toBe("");
-  const session = new URLSearchParams(first.hash.slice(1));
-  expect(session.get("role")).toBe("CUSTOMER");
-  expect(session.get("token")).toBeTruthy();
+  const handoff = new URLSearchParams(first.hash.slice(1));
+  expect(handoff.get("token")).toBeNull();
+  const session = await auth.exchangeLoginReceipt(handoff.get("receipt"), BROWSER);
+  expect(session.user.role).toBe("CUSTOMER");
+  expect(session.confirm).toBe(true);
   // A second tap or a forwarded copy no longer works.
-  const second = new URL(await auth.redeemWebLoginLink(token));
+  const second = new URL(await auth.redeemWebLoginLink(token, BROWSER));
   expect(second.searchParams.get("error")).toContain("链接已失效");
   // Only the hash is stored.
   expect(await prisma.webLoginLink.count({ where: { tokenHash: token! } })).toBe(0);
@@ -69,13 +73,13 @@ test("companions get their earnings and a link into the companion portal; expire
   await service.command(kookId, randomUUID(), "余额");
   expect(texts(sent[0].card)).toContain("待结算 ¥80.00");
   const token = new URL(buttons(sent[0].card).find(b => b.click === "link")!.value).searchParams.get("t");
-  expect(new URL(await auth.redeemWebLoginLink(token)).pathname).toBe("/companion/oauth-callback");
+  expect(new URL(await auth.redeemWebLoginLink(token, BROWSER)).pathname).toBe("/companion/oauth-callback");
 
   await service.command(kookId, randomUUID(), "我的订单");
   const orderLink = buttons(sent[1].card).find(b => b.click === "link")!;
   expect(orderLink.text.content).toBe("在网页打开工作台");
   await prisma.webLoginLink.updateMany({ where: { userId: user.id, usedAt: null }, data: { expiresAt: new Date(Date.now() - 1000) } });
-  expect(new URL(await auth.redeemWebLoginLink(new URL(orderLink.value).searchParams.get("t"))).searchParams.get("error")).toBeTruthy();
-  expect(new URL(await auth.redeemWebLoginLink("not-a-token")).searchParams.get("error")).toBeTruthy();
-  expect(new URL(await auth.redeemWebLoginLink(undefined)).searchParams.get("error")).toBeTruthy();
+  expect(new URL(await auth.redeemWebLoginLink(new URL(orderLink.value).searchParams.get("t"), BROWSER)).searchParams.get("error")).toBeTruthy();
+  expect(new URL(await auth.redeemWebLoginLink("not-a-token", BROWSER)).searchParams.get("error")).toBeTruthy();
+  expect(new URL(await auth.redeemWebLoginLink(undefined, BROWSER)).searchParams.get("error")).toBeTruthy();
 });
