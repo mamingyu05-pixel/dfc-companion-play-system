@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { clearSubmitIntent, submitIntentId } from "@dfc/ui";
 import { CompanionShell, MetricCard, SectionHeader, StatusBadge } from "../components";
 
 type CompanionWalletSummary = {
@@ -75,6 +76,8 @@ export default function WithdrawalsPage() {
     }
 
     setIsSubmitting(true);
+    // Same amount and account, same intent: a retry returns the first request instead of freezing income twice.
+    const requestId = submitIntentId("dfc_withdrawal_intent", `${amount.trim()}|${payoutAccount.trim()}`);
     try {
       const response = await fetch("/api/wallet/withdrawal-requests", {
         method: "POST",
@@ -82,7 +85,7 @@ export default function WithdrawalsPage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ amount, payoutAccount, note })
+        body: JSON.stringify({ amount, payoutAccount, note, requestId })
       });
       const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
       if (!response.ok) {
@@ -90,6 +93,7 @@ export default function WithdrawalsPage() {
         throw new Error(toChineseError(message));
       }
 
+      clearSubmitIntent("dfc_withdrawal_intent");
       setAmount("");
       setNote("");
       setStatus("提现申请已提交，请等待管理员审核。");

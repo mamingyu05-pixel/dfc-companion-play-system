@@ -192,11 +192,25 @@ export class WalletService {
 
   async createRechargeRequest(
     customerId: string,
-    body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string }
+    body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string; requestId?: unknown }
   ) {
-    try { return await this.prisma.$transaction(tx => this.createRechargeInTransaction(tx, customerId, body)); }
+    const requestId = optionalRequestId(body.requestId);
+    const replay = async () => {
+      if (!requestId) return null;
+      const prior = await this.prisma.rechargeRequest.findUnique({ where: { customerId_requestId: { customerId, requestId } } });
+      if (prior) assertSameAmount(prior.amount, this.positiveDecimal(body.amount, "amount"));
+      return prior;
+    };
+    // A retry after a lost response returns the request the first attempt created.
+    const prior = await replay();
+    if (prior) return prior;
+    try { return await this.prisma.$transaction(tx => this.createRechargeInTransaction(tx, customerId, body, undefined, requestId)); }
     catch (error) {
-      if (isPrismaErrorCode(error, "P2002")) throw new BadRequestException("Promotion code can only be used once per customer");
+      if (isPrismaErrorCode(error, "P2002")) {
+        const raced = await replay();
+        if (raced) return raced;
+        throw new BadRequestException("Promotion code can only be used once per customer");
+      }
       throw error;
     }
   }
@@ -211,7 +225,7 @@ export class WalletService {
 
   private async createRechargeInTransaction(
     tx: Prisma.TransactionClient, customerId: string,
-    body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string }, providerEvidence?: string
+    body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string }, providerEvidence?: string, requestId?: string
   ) {
     const amount = this.positiveDecimal(body.amount, "amount");
     const screenshotUrl = providerEvidence ?? validateRechargeScreenshot(body.screenshotUrl);
@@ -263,7 +277,8 @@ export class WalletService {
         amount,
         promotionBonus,
         screenshotUrl: screenshotUrl || MANUAL_RECHARGE_EVIDENCE,
-        note: body.note
+        note: body.note,
+        requestId
       }
     });
   }
@@ -587,12 +602,18 @@ export class WalletService {
 
   async createWithdrawalRequest(
     companionId: string,
-    body: { amount: string; payoutAccount: string; note?: string }
+    body: { amount: string; payoutAccount: string; note?: string; requestId?: unknown }
   ) {
     const amount = this.positiveDecimal(body.amount, "amount");
+    const requestId = optionalRequestId(body.requestId);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${companionId} FOR UPDATE`;
+      // Under the user lock, a retried submit finds the first request instead of freezing income a second time.
+      if (requestId) {
+        const prior = await tx.withdrawalRequest.findUnique({ where: { companionId_requestId: { companionId, requestId } } });
+        if (prior) { assertSameAmount(prior.amount, amount); return prior; }
+      }
       const companion = await tx.user.findFirst({
         where: {
           id: companionId,
@@ -624,7 +645,8 @@ export class WalletService {
           companionId,
           amount,
           payoutAccount,
-          note: body.note
+          note: body.note,
+          requestId
         }
       });
 
@@ -978,4 +1000,15 @@ function buildPayoutAccount(profile?: { payoutMethod: string | null; payoutAccou
   if (!profile?.payoutAccountName || !profile.payoutAccountNo) return "";
   const method = profile.payoutMethod || "ALIPAY";
   return `${method}: ${profile.payoutAccountName} / ${profile.payoutAccountNo}`;
+}
+
+/** Optional client id for one submit intent; absent means the caller does not need replay. */
+function optionalRequestId(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !/^[A-Za-z0-9-]{8,64}$/.test(value)) throw new BadRequestException("提交编号格式不正确，请刷新页面后重试");
+  return value;
+}
+
+function assertSameAmount(prior: Prisma.Decimal, amount: Prisma.Decimal) {
+  if (!prior.equals(amount)) throw new BadRequestException("这次提交和上一次的金额不一致，请刷新页面后重新填写");
 }

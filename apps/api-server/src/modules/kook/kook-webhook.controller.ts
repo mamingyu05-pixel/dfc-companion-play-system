@@ -246,7 +246,8 @@ export class KookWebhookController {
 
   private async handleAccountBinding(body: KookWebhookBody, code: string, kookUserId: string) {
     if (body.d?.channel_type !== "PERSON") {
-      const notification = await this.botNotifications.sendKookDirectMessage(kookUserId, "请在私聊中发送绑定码。群聊这次没有执行绑定；公开过的绑定码请在网页重新生成。");
+      await this.auth.discardPlatformBindingCode(BotPlatform.KOOK, code);
+      const notification = await this.botNotifications.sendKookDirectMessage(kookUserId, "请在私聊中发送绑定码。刚才发在频道里的绑定码已作废，请回网页重新生成，再私聊发给我。");
       return { bound: false, privateRequired: true, notification };
     }
     let reply: string;

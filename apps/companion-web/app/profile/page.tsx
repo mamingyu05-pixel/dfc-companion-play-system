@@ -3,6 +3,7 @@
 import { ChangeEvent, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { CompanionShell, SectionHeader, StatusBadge } from "../components";
+import { PrivateAudio, usePrivateMediaUrl } from "../private-media";
 
 type Platform = "DISCORD" | "KOOK";
 
@@ -424,7 +425,7 @@ export default function ProfilePage() {
             <div className="text-xs text-dfc-muted">{platformLabels[bindingCode.platform]} 绑定码</div>
             <div className="mt-2 select-all break-all font-mono text-3xl font-black tracking-[0.18em] text-cyan-100">{bindingCode.code}</div>
             <div className="mt-3 rounded-dfc-control border border-dfc-border bg-[#050711]/80 px-3 py-2 text-sm text-dfc-text">
-              在 {platformLabels[bindingCode.platform]} 私聊客服机器人，或在客服接待频道发送：
+              只在 {platformLabels[bindingCode.platform]} 私聊客服机器人发送（不要发到频道里，发到频道的码会作废）：
               <span className="ml-1 font-mono text-cyan-200">绑定 {bindingCode.code}</span>
               <span className="mx-1 text-dfc-subtext">或直接发送</span>
               <span className="font-mono text-cyan-200">{bindingCode.code}</span>
@@ -460,7 +461,7 @@ export default function ProfilePage() {
             </div>
           </UploadBox>
           <UploadBox label="语音介绍" hint="建议 10-30 秒，客户可试听" accept="audio/*" uploading={uploading === "voice"} onChange={handleVoiceChange}>
-            {voiceIntroUrl ? <audio controls src={mediaUrl(voiceIntroUrl)} className="mt-2 w-full" /> : null}
+            {voiceIntroUrl ? <PrivateAudio src={voiceIntroUrl} className="mt-2 w-full" /> : null}
           </UploadBox>
         </div>
         <button type="button" disabled={isSaving} onClick={() => void saveMedia()} className="mt-5 rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
@@ -529,19 +530,15 @@ function PlatformBindingCard({
   );
 }
 
-function mediaUrl(src?: string | null): string | undefined {
-  if (!src) return undefined;
-  return src.startsWith("/uploads/") ? `/api${src}` : src;
-}
-
 function SafeMediaImage({ src, alt, className, fallbackText }: { src: string; alt: string; className: string; fallbackText: string }) {
+  const { url, failed: unavailable } = usePrivateMediaUrl(src);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     setFailed(false);
   }, [src]);
 
-  if (!src || failed) {
+  if (!src || failed || unavailable || !url) {
     return (
       <div className={`${className} flex items-center justify-center border border-cyan-300/20 bg-[#101827] px-2 text-center text-sm font-black text-cyan-200`}>
         {fallbackText}
@@ -549,7 +546,7 @@ function SafeMediaImage({ src, alt, className, fallbackText }: { src: string; al
     );
   }
 
-  return <img src={mediaUrl(src)} alt={alt} className={className} onError={() => setFailed(true)} />;
+  return <img src={url} alt={alt} className={className} onError={() => setFailed(true)} />;
 }
 
 function Field({ label, value }: { label: string; value: string }) {

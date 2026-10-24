@@ -198,7 +198,7 @@ export class AuthService {
 
       await tx.user.update({
         where: { id: user.id },
-        data: { passwordHash }
+        data: { passwordHash, sessionVersion: { increment: 1 } }
       });
       await tx.emailVerificationCode.update({
         where: { id: verificationId },
@@ -587,8 +587,19 @@ export class AuthService {
       platform,
       code,
       expiresAt,
-      instruction: `在 ${platformLabel(platform)} 客服机器人私聊或客服接待频道发送：绑定 ${code}`
+      instruction: `只在 ${platformLabel(platform)} 私聊客服机器人发送：绑定 ${code}（发到频道里的码会作废）`
     };
+  }
+
+  /** A code posted in a public channel is burned unused, so another reader cannot redeem it first. */
+  async discardPlatformBindingCode(platform: BotPlatform, rawCode?: string) {
+    const code = normalizeBindingCode(rawCode);
+    if (!code) return { discarded: false };
+    const result = await this.prisma.platformBindingCode.updateMany({
+      where: { codeHash: hashPlatformBindingCode(platform, code), platform, consumedAt: null },
+      data: { consumedAt: new Date() }
+    });
+    return { discarded: result.count > 0 };
   }
 
   async consumePlatformBindingCode(
@@ -685,7 +696,7 @@ export class AuthService {
     });
   }
 
-  getOAuthStartUrl(platform: OAuthPlatform, portal: OAuthPortal) {
+  getOAuthStartUrl(platform: OAuthPlatform, portal: OAuthPortal, browserNonce: string) {
     if (platform === "kook") {
       const url = process.env.SUPPORT_KOOK_URL?.trim();
       if (!url) throw new BadRequestException("KOOK 社区入口尚未配置，请联系管理员");
@@ -697,7 +708,8 @@ export class AuthService {
     url.searchParams.set("redirect_uri", config.redirectUri);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("scope", config.scope);
-    url.searchParams.set("state", signOAuthState(platform, portal));
+    // The state carries a hash of this browser's nonce cookie, so the callback only completes where the login began.
+    url.searchParams.set("state", signOAuthState(platform, portal, hashBrowserNonce(browserNonce)));
     return url.toString();
   }
 
@@ -712,7 +724,7 @@ export class AuthService {
     return `${origin}/api/auth/web-link?t=${token}`;
   }
 
-  async redeemWebLoginLink(token: unknown) {
+  async redeemWebLoginLink(token: unknown, browserNonce: string) {
     const fail = (portal: OAuthPortal) =>
       `${getPortalWebUrl(portal)}/oauth-callback?error=${encodeURIComponent("链接已失效或已经用过。请回到 KOOK 私聊机器人，重新发送“我的订单”或“余额”获取新链接。")}`;
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token)) return fail("customer");
@@ -726,10 +738,41 @@ export class AuthService {
     const user = link.user;
     const portal: OAuthPortal = user.role === UserRole.COMPANION ? "companion" : "customer";
     if (user.status !== "ACTIVE" || (user.role !== UserRole.CUSTOMER && user.role !== UserRole.COMPANION)) return fail(portal);
-    return sessionRedirect(getPortalWebUrl(portal), await this.issueToken({ sub: user.id, email: user.email, role: user.role }), user, "kook");
+    // A chat link can be forwarded, so the page shows whose account this is and waits for a confirm.
+    return receiptRedirect(getPortalWebUrl(portal), await this.createLoginReceipt(user.id, browserNonce, "kook", true));
   }
 
-  async completeOAuth(platform: OAuthPlatform, body: { code?: string; state?: string; error?: string }) {
+  private async createLoginReceipt(userId: string, browserNonce: string, platform: string, confirm: boolean) {
+    const code = randomBytes(32).toString("base64url");
+    await this.prisma.loginReceipt.create({ data: {
+      codeHash: hashLoginLinkToken(code), userId, browserHash: hashBrowserNonce(browserNonce), platform, confirm,
+      expiresAt: new Date(Date.now() + LOGIN_RECEIPT_TTL_MS)
+    } });
+    return code;
+  }
+
+  /** Trades a receipt for a session, once, and only in the browser the receipt was issued to. */
+  async exchangeLoginReceipt(receipt: unknown, browserNonce: string | undefined) {
+    if (typeof receipt !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(receipt) || !browserNonce) {
+      throw new UnauthorizedException("登录凭证无效，请重新登录");
+    }
+    const codeHash = hashLoginLinkToken(receipt);
+    const claimed = await this.prisma.loginReceipt.updateMany({
+      where: { codeHash, browserHash: hashBrowserNonce(browserNonce), usedAt: null, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date() }
+    });
+    if (claimed.count !== 1) throw new UnauthorizedException("登录凭证已失效，或不是在这个浏览器发起的登录，请重新登录");
+    const { user, confirm, platform } = await this.prisma.loginReceipt.findUniqueOrThrow({ where: { codeHash }, include: { user: true } });
+    if (user.status !== "ACTIVE") throw new UnauthorizedException("User is not active");
+    return {
+      accessToken: await this.issueToken({ sub: user.id, email: user.email, role: user.role }),
+      user: { id: user.id, displayName: user.displayName, role: user.role },
+      platform,
+      confirm
+    };
+  }
+
+  async completeOAuth(platform: OAuthPlatform, body: { code?: string; state?: string; error?: string }, browserNonce: string | undefined) {
     const state = body.state ? parseOAuthState(body.state) : null;
     const portal = state?.portal ?? "customer";
     const webUrl = getPortalWebUrl(portal);
@@ -739,12 +782,15 @@ export class AuthService {
     if (!body.code || !body.state || !state || state.platform !== platform || !verifyOAuthState(body.state, platform, portal)) {
       return `${webUrl}/oauth-callback?error=${encodeURIComponent("第三方授权状态无效，请重新登录")}`;
     }
+    // A callback URL replayed in another browser (for example a crafted link) has no matching nonce cookie.
+    if (!browserNonce || hashBrowserNonce(browserNonce) !== state.browserHash) {
+      return `${webUrl}/oauth-callback?error=${encodeURIComponent("请在发起登录的同一个浏览器里完成授权，然后重新登录")}`;
+    }
 
     try {
       const profile = platform === "discord" ? await this.fetchDiscordProfile(body.code) : await this.fetchKookProfile(body.code);
       const result = await this.findOrCreateOAuthUser(platform, portal, profile);
-      const token = await this.issueToken({ sub: result.user.id, email: result.user.email, role: result.user.role });
-      return sessionRedirect(webUrl, token, result.user, platform);
+      return receiptRedirect(webUrl, await this.createLoginReceipt(result.user.id, browserNonce, platform, false));
     } catch (error) {
       const message = error instanceof Error ? error.message : "第三方登录失败，请稍后重试";
       return `${webUrl}/oauth-callback?error=${encodeURIComponent(message)}`;
@@ -1243,12 +1289,14 @@ export class AuthService {
     return { companionProfile: { game: profile.game, games: profile.games.length ? profile.games : [profile.game] } };
   }
 
-  private issueToken(payload: JwtPayload) {
+  private async issueToken(payload: JwtPayload) {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
       throw new UnauthorizedException("JWT_SECRET is not configured");
     }
-    return this.jwt.signAsync(payload, { secret, expiresIn: process.env.JWT_EXPIRES_IN ?? "7d" });
+    // Stamp the current session version so a later password change or ban revokes this token.
+    const current = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { sessionVersion: true } });
+    return this.jwt.signAsync({ ...payload, sv: current?.sessionVersion ?? 0 }, { secret, expiresIn: process.env.JWT_EXPIRES_IN ?? "7d" });
   }
 
   private roleCanEnterPortal(user: { role: UserRole; companionProfile?: { status: CompanionProfileStatus } | null }, portal: Portal) {
@@ -1381,8 +1429,8 @@ async function generateUniqueReferralCode(tx: Prisma.TransactionClient, prefix: 
   return `${prefix}${randomBytes(4).toString("hex").toUpperCase()}`;
 }
 
-function signOAuthState(platform: OAuthPlatform, portal: OAuthPortal) {
-  const payload = `${platform}:${portal}:${Date.now()}:${randomBytes(12).toString("hex")}`;
+function signOAuthState(platform: OAuthPlatform, portal: OAuthPortal, browserHash: string) {
+  const payload = `${platform}:${portal}:${Date.now()}:${randomBytes(12).toString("hex")}:${browserHash}`;
   return `${Buffer.from(payload).toString("base64url")}.${signValue(payload)}`;
 }
 
@@ -1391,9 +1439,9 @@ function parseOAuthState(state: string) {
   if (!payloadBase64 || !signature) return null;
   const payload = Buffer.from(payloadBase64, "base64url").toString("utf8");
   if (signValue(payload) !== signature) return null;
-  const [platform, portal, timestamp] = payload.split(":");
-  if (!isOAuthPlatform(platform) || !isOAuthPortal(portal)) return null;
-  return { platform, portal, timestamp: Number(timestamp) };
+  const [platform, portal, timestamp, , browserHash] = payload.split(":");
+  if (!isOAuthPlatform(platform) || !isOAuthPortal(portal) || !browserHash) return null;
+  return { platform, portal, timestamp: Number(timestamp), browserHash };
 }
 
 function verifyOAuthState(state: string, platform: OAuthPlatform, portal: OAuthPortal) {
@@ -1413,6 +1461,7 @@ function isOAuthPortal(value: string): value is OAuthPortal {
 }
 
 const WEB_LOGIN_LINK_TTL_MS = 10 * 60 * 1000;
+const LOGIN_RECEIPT_TTL_MS = 2 * 60 * 1000;
 const EMAIL_UNAVAILABLE_MESSAGE = "网站邮箱注册暂未开通。请在 KOOK 私聊小小电竞机器人发送「首次使用」建档，或联系客服开通账号。";
 
 // Template values (example.com, .invalid, "replace-with...") count as not configured, so the site
@@ -1429,10 +1478,15 @@ function smtpConfig() {
 }
 
 // The session token rides in the URL fragment: browsers never send it to the server, so it stays out of access logs and Referer headers.
-function sessionRedirect(webUrl: string, token: string, user: { displayName: string; role: UserRole }, platform: string) {
+// The fragment never reaches the server, and the receipt alone is useless outside the issuing browser.
+function receiptRedirect(webUrl: string, receipt: string) {
   const redirect = new URL(`${webUrl}/oauth-callback`);
-  redirect.hash = new URLSearchParams({ token, displayName: user.displayName, platform, role: user.role }).toString();
+  redirect.hash = new URLSearchParams({ receipt }).toString();
   return redirect.toString();
+}
+
+function hashBrowserNonce(nonce: string) {
+  return createHash("sha256").update(`login-nonce:${nonce}`).digest("hex");
 }
 
 function hashLoginLinkToken(token: string) {

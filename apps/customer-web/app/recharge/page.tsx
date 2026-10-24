@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
+import { clearSubmitIntent, submitIntentId } from "@dfc/ui";
 import { CustomerShell } from "../components";
 
 const MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024;
@@ -131,6 +132,8 @@ export default function RechargePage() {
     }
 
     setIsSubmitting(true);
+    // Same amount, same intent: a retry or a resubmit after refresh returns the first request.
+    const requestId = submitIntentId("dfc_recharge_intent", amount.trim());
     try {
       const response = await fetch("/api/wallet/recharge-requests", {
         method: "POST",
@@ -138,7 +141,7 @@ export default function RechargePage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ amount, screenshotUrl: screenshotUrl || undefined, note, promotionCode: promotionCode.trim() || undefined })
+        body: JSON.stringify({ amount, screenshotUrl: screenshotUrl || undefined, note, promotionCode: promotionCode.trim() || undefined, requestId })
       });
       const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
       if (!response.ok) {
@@ -147,6 +150,7 @@ export default function RechargePage() {
         throw new Error(toChineseError(message));
       }
 
+      clearSubmitIntent("dfc_recharge_intent");
       if (screenshotInput.current) screenshotInput.current.value = "";
       setAmount("");
       setScreenshotUrl("");

@@ -94,7 +94,8 @@ export class WechatAuthService {
     if (user.role !== UserRole.CUSTOMER || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException("客户账户当前不可用");
     }
-    const accessToken = await this.jwt.signAsync({ sub: user.id, email: user.email, role: user.role },
+    const current = await this.prisma.user.findUnique({ where: { id: user.id }, select: { sessionVersion: true } });
+    const accessToken = await this.jwt.signAsync({ sub: user.id, email: user.email, role: user.role, sv: current?.sessionVersion ?? 0 },
       { secret: config.jwtSecret, algorithm: "HS256", expiresIn: TOKEN_SECONDS });
     return { mode: "wechat-api", user: { id: user.id, role: user.role, displayName: user.displayName },
       accessToken, expiresIn: TOKEN_SECONDS, payment: "NOT_CONNECTED", nativeOrdering: "NOT_CONNECTED" };

@@ -21,6 +21,7 @@ const EXACT: Record<string, string> = {
   "User does not exist": "账号不存在",
   "Missing bearer token": "请先登录",
   "Invalid token": "登录已失效，请重新登录",
+  "Session expired": "密码已修改或账号状态有变化，请重新登录",
   "Insufficient role": "这个账号没有权限进行此操作",
   "Invalid portal": "登录入口不正确",
   "Invalid role": "账号角色不正确",

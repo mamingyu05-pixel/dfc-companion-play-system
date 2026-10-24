@@ -2037,13 +2037,14 @@ export class OrdersService {
     const businessKey = `order-tip:${requestId}`;
     return this.prisma.$transaction(async tx => {
       await lockOrder(tx, orderId);
-      const replay = await tx.walletTransaction.findUnique({ where: { businessKey }, select: { referenceId: true } });
-      if (replay) {
-        if (replay.referenceId !== orderId) throw new BadRequestException("页面已过期，请刷新后再试");
-        return { replayed: true, ...(await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { id: true, tipAmount: true } })) };
-      }
+      // Ownership first: a replay must never reveal anything about an order this customer does not own.
       const order = await tx.order.findFirst({ where: { id: orderId, customerId } });
       if (!order?.companionId) throw new NotFoundException("订单不存在或无权操作");
+      const replay = await tx.walletTransaction.findUnique({ where: { businessKey }, select: { referenceId: true, userId: true, amount: true } });
+      if (replay) {
+        if (replay.referenceId !== orderId || replay.userId !== customerId || !replay.amount.equals(amount)) throw new BadRequestException("页面已过期，请刷新后再试");
+        return { replayed: true, id: order.id, tipAmount: order.tipAmount };
+      }
       if (order.status !== OrderStatus.AWAITING_ACCEPTANCE && order.status !== OrderStatus.COMPLETED) throw new BadRequestException("陪玩报完成后才能给小费");
       if (order.tipAmount.add(amount).gt(2000)) throw new BadRequestException("每笔订单小费累计不超过 2000 元");
       const rate = fixedDecimal((await this.readPlatformSettingValue("TIP_COMMISSION_RATE", tx)) ?? "0", "TIP_COMMISSION_RATE", { scale: 4, zero: true, max: "1" });

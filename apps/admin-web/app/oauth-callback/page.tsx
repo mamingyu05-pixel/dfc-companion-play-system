@@ -2,47 +2,27 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { redeemLoginReceipt } from "@dfc/ui";
 
 export default function AdminOAuthCallbackPage() {
   const [message, setMessage] = useState("正在完成管理员登录...");
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    // Sessions arrive in the fragment (never sent to the server); errors arrive in the query.
-    new URLSearchParams(window.location.hash.slice(1)).forEach((value, key) => params.set(key, value));
-    const error = params.get("error");
-    const token = params.get("token");
-    const displayName = params.get("displayName");
-    const role = params.get("role");
-    // Keep the session token out of browser history and anything copied from the address bar.
-    window.history.replaceState(null, "", window.location.pathname);
-
-    if (error || !token) {
-      setFailed(true);
-      setMessage(error || "Discord 管理员登录失败，请重新尝试。");
-      return;
-    }
-
-    if (role !== "ADMIN" && role !== "SUPER_ADMIN") {
-      setFailed(true);
-      setMessage("这个 Discord 账号没有后台权限。");
-      return;
-    }
-
-    localStorage.setItem("dfc_admin_token", token);
-    localStorage.setItem(
-      "dfc_admin_user",
-      JSON.stringify({
-        displayName: displayName || "小小电竞管理员",
-        role
-      })
-    );
-
-    setMessage("登录成功，正在进入运营后台...");
-    window.setTimeout(() => {
-      window.location.href = "/admin/dashboard/";
-    }, 500);
+    // Admin sign-in only comes from an OAuth flow this browser started, so there is no confirm step.
+    void redeemLoginReceipt("Discord 管理员登录失败，请重新尝试。").then((result) => {
+      if (!result.ok) { setFailed(true); setMessage(result.message); return; }
+      const role = result.user.role;
+      if (role !== "ADMIN" && role !== "SUPER_ADMIN") {
+        setFailed(true);
+        setMessage("这个 Discord 账号没有后台权限。");
+        return;
+      }
+      localStorage.setItem("dfc_admin_token", result.accessToken);
+      localStorage.setItem("dfc_admin_user", JSON.stringify({ displayName: result.user.displayName || "小小电竞管理员", role }));
+      setMessage("登录成功，正在进入运营后台...");
+      window.setTimeout(() => { window.location.href = "/admin/dashboard/"; }, 500);
+    });
   }, []);
 
   return (

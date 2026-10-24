@@ -293,6 +293,8 @@ model User {
   displayName                String
   displayNameKey             String
   referralCode               String?             @unique
+  // Bumped on password change or ban; tokens carrying an older value are rejected.
+  sessionVersion             Int                 @default(0)
   createdAt                  DateTime            @default(now())
   updatedAt                  DateTime            @updatedAt
 
@@ -329,6 +331,7 @@ model User {
   botEvents                  BotEvent[]          @relation("BotEventActor")
   externalAccounts           UserExternalAccount[]
   webLoginLinks              WebLoginLink[]
+  loginReceipts              LoginReceipt[]
   wechatIdentities            WechatIdentity[]
   platformBindingCodes       PlatformBindingCode[]
   supportConversations       AiSupportConversation[]
@@ -367,6 +370,25 @@ model EmailVerificationCode {
 
 // One-time links sent in a private KOOK card that sign the owner into the website without a password.
 // Only a hash of the token is stored; a link works once and expires quickly.
+// One-time hand-off from a login redirect to the page: only the browser holding the matching nonce cookie can redeem it.
+model LoginReceipt {
+  id          String    @id @default(cuid())
+  codeHash    String    @unique
+  userId      String
+  browserHash String
+  platform    String
+  // Links opened from a chat card were not started in this browser, so the page asks the person to confirm the account.
+  confirm     Boolean   @default(false)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("login_receipts")
+}
+
 model WebLoginLink {
   id        String    @id @default(cuid())
   tokenHash String    @unique
@@ -738,6 +760,8 @@ model RechargeRequest {
   promotionBonus Decimal      @default(0) @db.Decimal(12, 2)
   screenshotUrl  String
   note           String?
+  // Client-generated per submit intent; a retry with the same id returns the original request.
+  requestId      String?
   status         ReviewStatus @default(PENDING)
   reviewedById   String?
   reviewedAt     DateTime?
@@ -749,6 +773,7 @@ model RechargeRequest {
   promotionCode  PromotionCode? @relation(fields: [promotionCodeId], references: [id])
   reviewedBy     User?        @relation("RechargeReviewer", fields: [reviewedById], references: [id])
 
+  @@unique([customerId, requestId])
   @@index([status])
   @@index([promotionCodeId])
   @@map("recharge_requests")
@@ -787,6 +812,8 @@ model WithdrawalRequest {
   amount          Decimal          @db.Decimal(12, 2)
   payoutAccount   String
   note            String?
+  // Client-generated per submit intent; a retry with the same id returns the original request instead of freezing again.
+  requestId       String?
   status          WithdrawalStatus @default(PENDING)
   reviewedById    String?
   reviewedAt      DateTime?
@@ -799,6 +826,7 @@ model WithdrawalRequest {
   companion       User             @relation("WithdrawalCompanion", fields: [companionId], references: [id])
   reviewedBy      User?            @relation("WithdrawalReviewer", fields: [reviewedById], references: [id])
 
+  @@unique([companionId, requestId])
   @@index([status])
   @@map("withdrawal_requests")
 }

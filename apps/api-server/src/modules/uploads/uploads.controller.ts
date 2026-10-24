@@ -180,11 +180,15 @@ export class UploadsController {
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, role: true, status: true }
+      select: { id: true, email: true, role: true, status: true, sessionVersion: true }
     });
 
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException("User is not active");
+    }
+    // Same revocation rule as JwtAuthGuard: private media must not outlive a password change.
+    if ((payload.sv ?? 0) !== user.sessionVersion) {
+      throw new UnauthorizedException("Session expired");
     }
 
     return { id: user.id, email: user.email, role: user.role };

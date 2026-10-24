@@ -31,6 +31,7 @@ function page(relative, fetch, search = "") {
         if (id === "next/link") return props => React.createElement("a", props);
         if (id === "../components") return components;
         if (id === "./pending-direct-order") return load(path.join(path.dirname(filename), "pending-direct-order.ts"));
+        if (id === "../private-media") return { usePrivateMediaUrl: src => ({ url: src || undefined, failed: false }) };
         if (id === "../batch-tools") return load(path.join(path.dirname(filename), "..", "batch-tools.tsx"));
         throw new Error(`Unexpected import ${id}`);
       } }); return exports;

@@ -118,7 +118,8 @@ export class AdminBatchController {
     const status = body.status === "ACTIVE" ? UserStatus.ACTIVE : UserStatus.BANNED;
     return this.prisma.$transaction(async tx => {
       const targets = await tx.user.findMany({ where: { id: { in: list }, role: { in: [UserRole.CUSTOMER, UserRole.COMPANION] } }, select: { id: true } });
-      await tx.user.updateMany({ where: { id: { in: targets.map(t => t.id) } }, data: { status } });
+      await tx.user.updateMany({ where: { id: { in: targets.map(t => t.id) } },
+        data: status === UserStatus.BANNED ? { status, sessionVersion: { increment: 1 } } : { status } });
       await tx.adminLog.createMany({ data: targets.map(t => ({
         actorId: user.id, targetUserId: t.id, action: status === UserStatus.ACTIVE ? "ACTIVATE_USER" : "BAN_USER",
         entityType: "USER", entityId: t.id, detail: { batch: true }

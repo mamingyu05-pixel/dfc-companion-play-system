@@ -91,6 +91,12 @@ export class DiscordWebhookController {
     });
   }
 
+  @Post("account-bindings/discard")
+  @UseGuards(BotInternalGuard)
+  discardAccountBinding(@Body() body: { code: string }) {
+    return this.auth.discardPlatformBindingCode(BotPlatform.DISCORD, body.code);
+  }
+
   @Post("members/ensure")
   @UseGuards(BotInternalGuard)
   async ensureMember(@Body() body: { discordUserId: string; displayName?: string; guildId?: string }) {

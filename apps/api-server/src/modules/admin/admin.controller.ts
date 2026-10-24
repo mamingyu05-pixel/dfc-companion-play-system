@@ -296,25 +296,42 @@ export class AdminController {
     if (user.id === id && body.status === "BANNED") {
       throw new BadRequestException("Admin cannot ban self");
     }
+    const banning = body.status === "BANNED";
 
-    const target = await this.prisma.user.update({
-      where: { id },
-      data: { status: body.status === "ACTIVE" ? UserStatus.ACTIVE : UserStatus.BANNED },
-      select: { id: true, email: true, role: true, status: true, displayName: true }
-    });
-
-    await this.prisma.adminLog.create({
-      data: {
-        actorId: user.id,
-        targetUserId: id,
-        action: body.status === "ACTIVE" ? "ACTIVATE_USER" : "BAN_USER",
-        entityType: "USER",
-        entityId: id,
-        detail: { email: target.email, role: target.role, note: body.note }
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.user.findUnique({ where: { id }, select: { role: true } });
+      if (!current) throw new BadRequestException("User does not exist");
+      // Operations admins look after customers and companions; staff accounts are the super admin's call.
+      if ((current.role === UserRole.ADMIN || current.role === UserRole.SUPER_ADMIN) && user.role !== UserRole.SUPER_ADMIN) {
+        throw new ForbiddenException("只有超级管理员可以启用或封禁管理员账号");
       }
-    });
+      if (banning && current.role === UserRole.SUPER_ADMIN) {
+        // Lock the active super admins so two concurrent bans cannot leave none.
+        const active = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "users" WHERE "role" = 'SUPER_ADMIN' AND "status" = 'ACTIVE' FOR UPDATE`;
+        if (!active.some((row) => row.id !== id)) throw new BadRequestException("至少要保留一个可用的超级管理员");
+      }
 
-    return target;
+      const target = await tx.user.update({
+        where: { id },
+        // A ban also ends every session the account already has.
+        data: banning ? { status: UserStatus.BANNED, sessionVersion: { increment: 1 } } : { status: UserStatus.ACTIVE },
+        select: { id: true, email: true, role: true, status: true, displayName: true }
+      });
+
+      await tx.adminLog.create({
+        data: {
+          actorId: user.id,
+          targetUserId: id,
+          action: banning ? "BAN_USER" : "ACTIVATE_USER",
+          entityType: "USER",
+          entityId: id,
+          detail: { email: target.email, role: target.role, note: body.note }
+        }
+      });
+
+      return target;
+    });
   }
 
   @Post("users/:id/balance-adjustments")
@@ -351,7 +368,7 @@ export class AdminController {
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.user.update({
         where: { id },
-        data: { passwordHash },
+        data: { passwordHash, sessionVersion: { increment: 1 } },
         select: { id: true, email: true, role: true, status: true, displayName: true }
       });
 

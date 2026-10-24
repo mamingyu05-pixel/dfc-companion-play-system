@@ -102,14 +102,21 @@ test('companion list and detail route missing trial destinations to support', ()
   }
 });
 
+// The community links moved from the top bar to the customer home page; the contract is unchanged.
 test('navigation fallback names the missing configuration and offers support', () => {
-  const { ExternalNavLink } = functions('apps/customer-web/app/components.tsx', ['ExternalNavLink'], { Link: 'a' });
-  const fallback = ExternalNavLink({ href: '', children: 'KOOK' });
+  const file = 'apps/customer-web/app/home/page.tsx';
+  const { ActionLink, getPlatformRouting } = functions(file, ['ActionLink', 'getPlatformRouting'], { Link: 'a' });
+  const missing = getPlatformRouting([], {});
+  assert.equal(missing.showChoice, true);
+  assert.equal(missing.kookHref, undefined);
+  const fallback = ActionLink({ href: missing.kookHref ?? '/support', external: Boolean(missing.kookHref), className: '', children: 'KOOK 未配置，联系客服' });
   assert.equal(fallback.props.href, '/support');
   assert.equal(fallback.props.target, undefined);
-  assert.match(text(fallback), /KOOK.*未配置.*联系客服/);
-  const configured = ExternalNavLink({ href: 'https://kook.example.invalid/community', children: 'KOOK' });
-  assert.equal(configured.props.target, '_blank');
+  assert.match(read(file), /KOOK 未配置，联系客服/);
+  const configured = getPlatformRouting([], { support: { kookUrl: ' https://kook.example.invalid/community ' } });
+  assert.equal(configured.kookHref, 'https://kook.example.invalid/community');
+  const link = ActionLink({ href: configured.kookHref, external: true, className: '', children: 'KOOK 社群' });
+  assert.equal(link.props.target, '_blank');
 });
 
 test('demand guide distinguishes missing destinations from configured community links', () => {

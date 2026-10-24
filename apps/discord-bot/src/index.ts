@@ -238,6 +238,13 @@ async function handleSupportMessage(message: Message) {
 }
 
 async function handleAccountBindingMessage(message: Message, code: string) {
+  if (message.inGuild()) {
+    // Anyone in the channel can read it: burn the code, hide the message and move the user to DMs.
+    await callApi("/discord/account-bindings/discard", { code }).catch(() => undefined);
+    await message.delete().catch(() => undefined);
+    await message.author.send("请在私聊里发送绑定码。刚才发在频道里的绑定码已作废，请回网站重新生成，再私聊发给我：绑定 你的绑定码").catch(() => undefined);
+    return;
+  }
   try {
     const response = await callApi("/discord/account-bindings/consume", {
       code,
@@ -316,7 +323,7 @@ function buildAccountBindingGuide(platform: "Discord" | "KOOK") {
     `为了让后台正确关联你的${platform}身份、充值、下单、派单和客服记录，请绑定网站账号。`,
     `客户入口：${customerUrl}`,
     `陪玩入口：${companionUrl}`,
-    "已注册：登录后进入个人中心/平台绑定，生成绑定码，然后在这里发送：绑定 你的绑定码",
+    "已注册：登录后进入个人中心/平台绑定，生成绑定码，然后私聊我发送：绑定 你的绑定码（不要发在频道里）",
     "未注册：先注册网站账号，再回来发送绑定码。",
     "只想走人工也可以直接联系人工客服，但后台绑定后处理充值、订单和售后会更快。",
     "不要把密码、邮箱验证码、后台 Token 发给任何人。"

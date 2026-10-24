@@ -102,6 +102,7 @@ export async function migrateSafePlatformPlaceholderAccount(args: MigrationArgs)
     where: { id: existingExternal.userId },
     data: {
       status: UserStatus.BANNED,
+      sessionVersion: { increment: 1 },
       displayName: mergedDisplayName,
       displayNameKey: normalizeDisplayNameKey(`merged-platform-placeholder-${existingExternal.userId}`)
     }

@@ -36,7 +36,7 @@ export class WalletController {
   @Roles(UserRole.CUSTOMER)
   createRechargeRequest(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string }
+    @Body() body: { amount: string; screenshotUrl?: string; note?: string; promotionCode?: string; requestId?: string }
   ) {
     return this.wallet.createRechargeRequest(user.id, body);
   }
@@ -46,7 +46,7 @@ export class WalletController {
   @Roles(UserRole.CUSTOMER, UserRole.COMPANION, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   createWithdrawalRequest(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { amount: string; payoutAccount: string; note?: string }
+    @Body() body: { amount: string; payoutAccount: string; note?: string; requestId?: string }
   ) {
     return this.wallet.createWithdrawalRequest(user.id, body);
   }

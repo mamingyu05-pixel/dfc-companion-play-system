@@ -235,7 +235,7 @@ export default function CustomerSettingsPage() {
               <div className="text-xs text-dfc-muted">{platformLabels[bindingCode.platform]} 绑定码</div>
               <div className="mt-2 select-all break-all font-mono text-3xl font-black tracking-[0.18em] text-cyan-100">{bindingCode.code}</div>
               <div className="mt-3 rounded-dfc-control border border-dfc-border bg-[#050711]/80 px-3 py-2 text-sm text-dfc-text">
-                在 {platformLabels[bindingCode.platform]} 客服机器人私聊或客服接待频道发送：
+                只在 {platformLabels[bindingCode.platform]} 私聊客服机器人发送（不要发到频道里，发到频道的码会作废）：
                 <span className="ml-1 font-mono text-cyan-200">绑定 {bindingCode.code}</span>
               </div>
               <div className="mt-2 text-xs text-dfc-subtext">10 分钟内有效。过期后重新生成即可。</div>

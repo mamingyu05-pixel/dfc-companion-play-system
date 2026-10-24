@@ -17,3 +17,6 @@ export { ESCROW_PROMISE, orderEscrowView } from "./order-escrow";
 export type { EscrowStep, EscrowTone, EscrowView } from "./order-escrow";
 export { canUploadEvidence, canUploadVault, evidenceKindLabel, GUARANTEE_RULES, guaranteeProgressText, parseVaultWan, platformLabel, readEvidenceImage } from "./guarantee";
 export type { EvidenceKind, GuaranteePackage, OrderEvidenceView } from "./guarantee";
+export { currentPortalUser, redeemLoginReceipt } from "./login-receipt";
+export type { LoginReceiptResult, LoginReceiptUser } from "./login-receipt";
+export { clearSubmitIntent, submitIntentId } from "./submit-intent";

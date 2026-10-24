@@ -25,8 +25,17 @@ if ! zcat "${db_file}.partial" | tail -n 5 | grep -q "PostgreSQL database dump c
 fi
 mv "${db_file}.partial" "${db_file}"
 
-docker compose exec -T api-server sh -c 'cd "${UPLOAD_DIR:-/app/uploads}" 2>/dev/null && tar czf - . || true' > "${uploads_file}"
+# The media archive must succeed too: a failed tar is an error, never an empty "backup" that pushes good ones out.
+docker compose exec -T api-server sh -c 'cd "${UPLOAD_DIR:-/app/uploads}" && tar czf - .' > "${uploads_file}.partial"
+if ! tar tzf "${uploads_file}.partial" > /dev/null; then
+  echo "Uploads archive unreadable: ${uploads_file}" >&2
+  rm -f "${uploads_file}.partial"
+  exit 1
+fi
+mv "${uploads_file}.partial" "${uploads_file}"
 
+# Rotate only after both new files are verified and in place.
+find backups -maxdepth 1 -type f -name '*.partial' -mmin +60 -delete
 find backups -maxdepth 1 -type f \( -name 'dfc_*.sql.gz' -o -name 'uploads_*.tar.gz' \) -mtime +"${KEEP_DAYS}" -delete
 
 echo "Backup written: ${db_file} ($(du -h "${db_file}" | cut -f1)), ${uploads_file} ($(du -h "${uploads_file}" | cut -f1))"

@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import { AuthRateLimitGuard } from "./auth-rate-limit.guard";
 import { AuthService } from "./auth.service";
 import { AuthenticatedUser } from "./auth.types";
@@ -70,18 +71,19 @@ export class AuthController {
 
   // Opened from a private KOOK card; never requires a password.
   @Get("web-link")
-  async redeemWebLink(@Query("t") token: string | undefined, @Res() response: { redirect: (url: string) => void }) {
-    response.redirect(await this.auth.redeemWebLoginLink(token));
+  async redeemWebLink(@Query("t") token: string | undefined, @Req() request: CookieRequest, @Res() response: RedirectResponse) {
+    response.redirect(await this.auth.redeemWebLoginLink(token, issueBrowserNonce(request, response)));
   }
 
   @Get("oauth/:platform/start")
   startOAuth(
     @Param("platform") platform: "discord" | "kook",
     @Query("portal") portal: "customer" | "companion" | "admin" | undefined,
-    @Res() response: { redirect: (url: string) => void }
+    @Req() request: CookieRequest,
+    @Res() response: RedirectResponse
   ) {
     const resolvedPortal = portal === "companion" || portal === "admin" ? portal : "customer";
-    response.redirect(this.auth.getOAuthStartUrl(platform, resolvedPortal));
+    response.redirect(this.auth.getOAuthStartUrl(platform, resolvedPortal, issueBrowserNonce(request, response)));
   }
 
   @Get("oauth/:platform/callback")
@@ -90,9 +92,17 @@ export class AuthController {
     @Query("code") code: string,
     @Query("state") state: string,
     @Query("error") error: string | undefined,
-    @Res() response: { redirect: (url: string) => void }
+    @Req() request: CookieRequest,
+    @Res() response: RedirectResponse
   ) {
-    response.redirect(await this.auth.completeOAuth(platform, { code, state, error }));
+    response.redirect(await this.auth.completeOAuth(platform, { code, state, error }, readBrowserNonce(request)));
+  }
+
+  // The callback page trades its one-time receipt for a session; the nonce cookie proves it is the same browser.
+  @Post("login-receipt")
+  @UseGuards(AuthRateLimitGuard)
+  exchangeLoginReceipt(@Body() body: { receipt?: unknown }, @Req() request: CookieRequest) {
+    return this.auth.exchangeLoginReceipt(body?.receipt, readBrowserNonce(request));
   }
 
   @Get("me")
@@ -128,4 +138,32 @@ export class AuthController {
     return this.auth.updateMyCompanionGames(user.id, body);
   }
 
+}
+
+type CookieRequest = { headers: { cookie?: string; "x-forwarded-proto"?: string | string[] }; secure?: boolean };
+type RedirectResponse = {
+  redirect: (url: string) => void;
+  cookie: (name: string, value: string, options: Record<string, unknown>) => void;
+};
+
+const LOGIN_NONCE_COOKIE = "dfc_login_nonce";
+
+function readBrowserNonce(request: CookieRequest) {
+  for (const part of (request.headers.cookie ?? "").split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === LOGIN_NONCE_COOKIE) {
+      const value = rest.join("=");
+      return /^[A-Za-z0-9_-]{43}$/.test(value) ? value : undefined;
+    }
+  }
+  return undefined;
+}
+
+// A fresh random nonce per login attempt, readable only by the API; Lax so it rides the provider's redirect back.
+function issueBrowserNonce(request: CookieRequest, response: RedirectResponse) {
+  const nonce = randomBytes(32).toString("base64url");
+  const proto = request.headers["x-forwarded-proto"];
+  const secure = Boolean(request.secure) || (Array.isArray(proto) ? proto[0] : proto)?.split(",")[0].trim() === "https";
+  response.cookie(LOGIN_NONCE_COOKIE, nonce, { httpOnly: true, sameSite: "lax", secure, path: "/api/auth", maxAge: 15 * 60 * 1000 });
+  return nonce;
 }
