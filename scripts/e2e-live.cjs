@@ -446,8 +446,9 @@ async function main() {
   });
   await step("陪玩目录：独立轻量排行榜前 5", async () => {
     expect(Array.isArray(directoryLegacy), "缺少旧版目录基线");
-    const rows = await call("GET", `/orders/public/companions/leaderboard?${directoryQuery}`);
-    const expected = [...directoryLegacy].sort(directorySort("orders")).slice(0, 5).map(row => row.id);
+    const rows = await call("GET", "/orders/public/companions/leaderboard?game=DELTA_FORCE");
+    const all = await call("GET", "/orders/public/companions?game=DELTA_FORCE");
+    const expected = [...all].sort(directorySort("orders")).slice(0, 5).map(row => row.id);
     expect(Array.isArray(rows) && rows.length === 5 && rows.map(row => row.id).join() === expected.join(), "排行榜前五或排序错误");
     expect(rows.every(row => !("reviews" in row) && !("externalAccounts" in row)), "排行榜包含完整评价或社群账号");
     return "独立接口返回正确前 5，未返回评价明细";
