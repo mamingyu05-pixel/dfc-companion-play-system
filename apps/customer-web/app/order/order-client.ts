@@ -107,7 +107,7 @@ export function createOrderClient({ fetcher, storage, getToken, makeRequestId, s
     cancelPreview() { view.preview = null; return state(); },
     refresh() { return run(async () => {
       const identity = await authenticate(); await recover(identity);
-      const [companions, walletValue, orders] = await Promise.all([request(identity,"GET","/orders/companions?game=DELTA_FORCE"),request(identity,"GET","/wallet/customer-summary"),request(identity,"GET","/orders/my")]);
+      const [companions, walletValue, orders] = await Promise.all([request(identity,"GET","/orders/companions/options?game=DELTA_FORCE"),request(identity,"GET","/wallet/customer-summary"),request(identity,"GET","/orders/my")]);
       if (!Array.isArray(companions) || !Array.isArray(orders)) throw new Error("列表返回不完整，请刷新核对。");
       const wallet = object(object(walletValue).wallet);
       view.companions = companions as Companion[]; view.orders = orders as OrderReceipt[]; view.availableBalance = String(wallet.availableBalance ?? "0");

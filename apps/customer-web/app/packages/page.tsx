@@ -45,7 +45,7 @@ export default function PackagesPage() {
     void (async () => {
       try {
         const [list, people, wallet] = await Promise.all([
-          request("/orders/service-packages"), request("/orders/companions?game=DELTA_FORCE"), request("/wallet/customer-summary")
+          request("/orders/service-packages"), request("/orders/companions/options?game=DELTA_FORCE"), request("/wallet/customer-summary")
         ]);
         if (!Array.isArray(list) || !Array.isArray(people)) throw new Error("列表返回不完整，请刷新。");
         setPackages(list); setCompanions(people);

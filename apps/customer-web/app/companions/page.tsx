@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CompanionCard, CustomerShell, SectionHeader } from "../components";
 import { games } from "../data";
 
@@ -15,6 +15,9 @@ const filters = [
 ] as const;
 
 type FilterId = (typeof filters)[number]["id"];
+type SortId = "recommended" | "rating" | "orders" | "price";
+type CompanionPage = { companions: ApiCompanion[]; total: number; page: number; limit: number };
+type RankedCompanion = Pick<ApiCompanion, "id" | "nickname" | "verified" | "averageRating" | "completedOrders">;
 
 type ExternalAccount = {
   platform: "DISCORD" | "KOOK";
@@ -55,50 +58,77 @@ type PublicConfig = {
 
 export default function CompanionsPage() {
   const [companions, setCompanions] = useState<ApiCompanion[]>([]);
+  const [leaderboard, setLeaderboard] = useState<RankedCompanion[]>([]);
   const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
+  const [sort, setSort] = useState<SortId>("recommended");
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const revision = useRef(0);
+  const inFlight = useRef(false);
 
-  async function loadCompanions() {
-    setIsLoading(true);
+  async function loadCompanions(nextPage = 1, currentRevision = revision.current) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    if (nextPage === 1) setIsLoading(true);
+    else setIsLoadingMore(true);
     setError("");
     try {
-      const response = await fetch("/api/orders/public/companions");
+      const query = new URLSearchParams({ page: String(nextPage), limit: "24", sort, filter: activeFilter });
+      const response = await fetch(`/api/orders/public/companions?${query}`);
       if (!response.ok) throw new Error("无法加载陪玩列表");
-      setCompanions((await response.json()) as ApiCompanion[]);
+      const data = await response.json() as CompanionPage;
+      if (!Array.isArray(data.companions) || !Number.isInteger(data.total) || data.total < 0 || data.page !== nextPage) {
+        throw new Error("陪玩列表返回异常");
+      }
+      if (currentRevision !== revision.current) return;
+      setCompanions(current => nextPage === 1 ? data.companions
+        : [...new Map([...current, ...data.companions].map(companion => [companion.id, companion])).values()]);
+      setTotal(data.total);
+      setPage(data.page);
     } catch {
-      setCompanions([]);
-      setError("暂时无法加载真实陪玩列表，请稍后刷新。");
+      if (currentRevision !== revision.current) return;
+      setError(nextPage === 1 ? "暂时无法加载真实陪玩列表，请稍后重试。" : "加载更多失败，已显示的陪玩仍可查看，请重试。");
     } finally {
-      setIsLoading(false);
+      if (currentRevision === revision.current) {
+        inFlight.current = false;
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      }
     }
   }
 
   useEffect(() => {
-    void loadCompanions();
+    const currentRevision = ++revision.current;
+    inFlight.current = false;
+    setCompanions([]);
+    setTotal(0);
+    setPage(0);
+    setIsLoadingMore(false);
+    void loadCompanions(1, currentRevision);
+    return () => { revision.current++; };
+  }, [activeFilter, sort]);
+
+  useEffect(() => {
+    let disposed = false;
+    void fetch("/api/orders/public/companions/leaderboard")
+      .then(async response => response.ok ? await response.json() as RankedCompanion[] : [])
+      .then(rows => { if (!disposed) setLeaderboard(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!disposed) setLeaderboard([]); });
     void fetch("/api/auth/public-config")
       .then(async (response) => {
         if (!response.ok) return {};
         return (await response.json()) as PublicConfig;
       })
-      .then(setPublicConfig)
-      .catch(() => setPublicConfig({}));
+      .then(config => { if (!disposed) setPublicConfig(config); })
+      .catch(() => { if (!disposed) setPublicConfig({}); });
+    return () => { disposed = true; };
   }, []);
 
   const onlineCount = companions.filter((companion) => companion.onlineStatus === "ONLINE").length;
-  const voiceCount = companions.filter((companion) => companion.voicePreference !== "TEXT_ONLY").length;
-  const deltaForceCount = companions.filter((companion) => getCompanionGames(companion).includes("DELTA_FORCE")).length;
-  const filteredCompanions = useMemo(() => {
-    return companions.filter((companion) => {
-      if (activeFilter === "online") return companion.onlineStatus === "ONLINE";
-      if (activeFilter === "voice") return companion.voicePreference !== "TEXT_ONLY";
-      if (activeFilter === "recommended") return companion.onlineStatus === "ONLINE" && Number(companion.pricePerHour) > 0;
-      if (activeFilter === "newbie") return isNewbieFriendly(companion);
-      if (activeFilter === "high-rank") return isHighRank(companion.deltaForceRank);
-      return true;
-    });
-  }, [activeFilter, companions]);
 
   return (
     <CustomerShell>
@@ -123,9 +153,9 @@ export default function CompanionsPage() {
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
-            <LobbyMetric label="已上架陪玩" value={String(companions.length)} hint="真实后台数据" />
-            <LobbyMetric label="当前在线" value={String(onlineCount)} hint="可优先试音/群内发单" />
-            <LobbyMetric label="三角洲行动" value={String(deltaForceCount)} hint="首期重点游戏" />
+            <LobbyMetric label="匹配陪玩" value={String(total)} hint="当前筛选的服务端总数" />
+            <LobbyMetric label="已展示在线" value={String(onlineCount)} hint="已加载的陪玩中在线人数" />
+            <LobbyMetric label="当前已展示" value={String(companions.length)} hint="点击加载更多继续查看" />
           </div>
         </div>
       </section>
@@ -146,13 +176,18 @@ export default function CompanionsPage() {
         ))}
       </section>
 
-      <Leaderboard companions={companions} />
+      <Leaderboard companions={leaderboard} />
 
       <section className="mt-7 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <SectionHeader title="陪玩大厅" desc={`共 ${companions.length} 位陪玩，${onlineCount} 位在线，${voiceCount} 位支持语音。`} />
-        <div className="rounded-dfc-control border border-cyan-300/20 bg-[#050711]/70 px-3 py-2 text-sm text-dfc-subtext">
-          当前筛选：{filters.find((filter) => filter.id === activeFilter)?.label}
-        </div>
+        <SectionHeader title="陪玩大厅" desc={`共 ${total} 位匹配陪玩，已展示 ${companions.length} 位。`} />
+        <label className="text-sm text-dfc-subtext">排序
+          <select aria-label="陪玩排序" value={sort} onChange={event => setSort(event.target.value as SortId)} className="maycat-input ml-2 px-3 py-2">
+            <option value="recommended">综合推荐</option>
+            <option value="rating">评分优先</option>
+            <option value="orders">完成单数</option>
+            <option value="price">价格从低到高</option>
+          </select>
+        </label>
       </section>
 
       <section className="mt-5 flex gap-2 overflow-x-auto pb-2" aria-label="陪玩筛选">
@@ -178,12 +213,12 @@ export default function CompanionsPage() {
         {error ? (
           <div className="maycat-card border-dfc-danger/40 bg-dfc-danger/10 p-4 text-sm text-dfc-danger md:col-span-2 xl:col-span-3">
             <div>{error}</div>
-            <button type="button" onClick={() => void loadCompanions()} className="maycat-button-secondary mt-3 px-3 py-2 text-xs font-black text-dfc-text">
+            <button type="button" onClick={() => void loadCompanions(page + 1)} disabled={isLoading || isLoadingMore} className="maycat-button-secondary mt-3 px-3 py-2 text-xs font-black text-dfc-text">
               重新加载
             </button>
           </div>
         ) : null}
-        {!isLoading && !error && !filteredCompanions.length ? (
+        {!isLoading && !error && !companions.length ? (
           <div className="maycat-card p-5 text-sm text-dfc-subtext md:col-span-2 xl:col-span-3">
             <div className="text-base font-black text-white">当前筛选下暂无陪玩</div>
             <p className="mt-2 leading-6">可以切回“全部”，或联系人工客服帮你匹配合适的陪玩。</p>
@@ -197,10 +232,18 @@ export default function CompanionsPage() {
             </div>
           </div>
         ) : null}
-        {!isLoading && !error && filteredCompanions.map((companion) => (
+        {!isLoading && companions.map((companion) => (
           <CompanionCard key={companion.id} companion={toCardCompanion(companion, publicConfig)} />
         ))}
       </section>
+      {!isLoading && companions.length < total ? (
+        <div className="mt-6 text-center">
+          <button type="button" onClick={() => void loadCompanions(page + 1)} disabled={isLoadingMore} className="maycat-button px-5 py-3 text-sm font-black">
+            {isLoadingMore ? "正在加载…" : "加载更多"}
+          </button>
+          <p className="mt-2 text-xs text-dfc-muted" aria-live="polite">已展示 {companions.length} / {total} 位</p>
+        </div>
+      ) : null}
     </CustomerShell>
   );
 }
@@ -266,15 +309,6 @@ function toVoice(value: string) {
   return "可语音";
 }
 
-function isNewbieFriendly(companion: ApiCompanion) {
-  const content = `${companion.bio ?? ""} ${companion.skillModes.join(" ")} ${companion.deltaForceRank}`;
-  return /新手|教学|耐心|入门|陪练/.test(content);
-}
-
-function isHighRank(rank: string) {
-  return /高|钻石|大师|宗师|王者|传奇|顶尖/.test(rank);
-}
-
 function LobbyMetric({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
     <div className="rounded-dfc border border-cyan-300/20 bg-[#07111f]/70 p-4 backdrop-blur">
@@ -309,13 +343,8 @@ function CompanionSkeleton() {
   );
 }
 
-// Top companions by finished orders, then rating; shown only once there is a real record to rank.
-function Leaderboard({ companions }: { companions: ApiCompanion[] }) {
-  const ranked = [...companions]
-    .filter(c => (c.completedOrders ?? 0) > 0 || (c.reviewCount ?? 0) > 0)
-    .sort((a, b) => (b.completedOrders ?? 0) - (a.completedOrders ?? 0) || (b.averageRating ?? 0) - (a.averageRating ?? 0))
-    .slice(0, 5);
-  if (!ranked.length) return null;
+function Leaderboard({ companions }: { companions: RankedCompanion[] }) {
+  if (!companions.length) return null;
   return (
     <section className="maycat-card mt-7 p-4 md:p-5" aria-label="打手排行榜">
       <div className="flex items-end justify-between gap-3">
@@ -323,7 +352,7 @@ function Leaderboard({ companions }: { companions: ApiCompanion[] }) {
         <span className="text-xs text-dfc-muted">按完成单数和评分</span>
       </div>
       <ol className="mt-3 grid gap-2 md:grid-cols-5">
-        {ranked.map((c, i) => (
+        {companions.map((c, i) => (
           <li key={c.id}>
             <Link href={`/companions/${c.id}`} className="flex items-center gap-3 rounded-dfc-control border border-cyan-300/20 p-3 transition hover:border-cyan-300/60">
               <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-black ${i === 0 ? "bg-dfc-gold text-white" : i < 3 ? "bg-cyan-300/15 text-cyan-300" : "bg-[#07111f] text-dfc-subtext"}`}>{i + 1}</span>

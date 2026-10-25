@@ -1,3 +1,4 @@
+import { CompanionLeaderboardEntry, CompanionListQuery, CompanionOption, CompanionPage, PaginatedCompanionListQuery, PublicCompanion, companionDirectorySql, companionListOptions, companionOptionsSql } from "./companion-directory";
 import { requireKookActor } from "../kook/kook-flow-identity";
 import { orderEnvironment } from "./order-environment";
 import { dispatchReminder } from "./dispatch-reminder";
@@ -87,65 +88,32 @@ export class OrdersService {
     return orderEnvironment(this.prisma);
   }
 
-  async listOrderableCompanions(game?: GameCode) {
-    const companions = await this.prisma.companionProfile.findMany({
-      where: {
-        ...(game ? { OR: [{ game }, { games: { has: game } }] } : {}),
-        status: CompanionProfileStatus.LISTED,
-        user: { is: { status: UserStatus.ACTIVE } }
-      },
-      orderBy: [{ onlineStatus: "asc" }, { updatedAt: "desc" }],
-      include: {
-        user: {
-          select: {
-            id: true,
-            displayName: true,
-            _count: { select: { companionOrders: { where: { status: { in: [OrderStatus.ACCEPTED, OrderStatus.IN_PROGRESS] } } } } },
-            externalAccounts: { select: { platform: true, displayName: true } }
-          }
-        }
+  async listOrderableCompanions(game?: GameCode): Promise<PublicCompanion[]>;
+  async listOrderableCompanions(game: GameCode | undefined, query: PaginatedCompanionListQuery): Promise<CompanionPage>;
+  async listOrderableCompanions(game: GameCode | undefined, query: CompanionListQuery): Promise<PublicCompanion[] | CompanionPage>;
+  async listOrderableCompanions(game?: GameCode, query: CompanionListQuery = {}): Promise<PublicCompanion[] | CompanionPage> {
+    const options = companionListOptions(query);
+    const [result] = await this.prisma.$queryRaw<Array<{ total: number; companions: PublicCompanion[] }>>(companionDirectorySql(game, options));
+    const companions = result.companions.map(companion => {
+      for (const key of ["pricePerHour", "kookPricePerHour", "discordPricePerHour", "entertainmentPricePerHour", "rankedPricePerHour", "highRankedPricePerHour"] as const) {
+        const value = companion[key];
+        if (value !== null) companion[key] = new Prisma.Decimal(value).toString();
       }
+      return companion;
     });
+    // Omitted pagination keeps existing selectors complete for one compatibility version; new clients opt in explicitly.
+    return options.paginated ? { companions, total: result.total, page: options.page, limit: options.limit } : companions;
+  }
 
-    const reviews = await this.prisma.orderReview.findMany({
-      where: { hidden: false, order: { companionId: { in: companions.map(profile => profile.userId) } } },
-      select: { stars: true, comment: true, createdAt: true, order: { select: { companionId: true } } },
-      orderBy: { createdAt: "desc" }
-    });
-    // Completed real orders per companion, for the leaderboard; test orders never count.
-    const completed = await this.prisma.order.groupBy({ by: ["companionId"], _count: { _all: true },
-      where: { status: OrderStatus.COMPLETED, isTest: false, companionId: { in: companions.map(profile => profile.userId) } } });
-    return companions.map((profile) => ({
-      ...this.companionReviewSummary(reviews.filter(review => review.order.companionId === profile.userId)),
-      id: profile.userId,
-      displayName: profile.user.displayName,
-      verified: profile.verified,
-      badges: profile.badges,
-      completedOrders: completed.find(row => row.companionId === profile.userId)?._count._all ?? 0,
-      // This list is public: never the companion's email or platform user IDs, or anyone could scrape them to poach companions.
-      externalAccounts: profile.user.externalAccounts.map((account) => ({ platform: account.platform, displayName: account.displayName })),
-      nickname: profile.nickname,
-      avatarUrl: profile.avatarUrl,
-      photoUrls: profile.photoUrls,
-      voiceIntroUrl: profile.voiceIntroUrl,
-      game: profile.game,
-      games: profile.games.length ? profile.games : [profile.game],
-      status: profile.status,
-      onlineStatus: profile.onlineStatus,
-      activeServiceCount: profile.user._count.companionOrders,
-      availability: profile.onlineStatus === "BUSY" ? "PAUSED" : profile.user._count.companionOrders > 0
-        ? "IN_SERVICE" : profile.onlineStatus === "ONLINE" ? "AVAILABLE" : "CONTACT_FIRST",
-      deltaForceRank: profile.deltaForceRank,
-      skillModes: profile.skillModes,
-      pricePerHour: profile.pricePerHour.toString(),
-      kookPricePerHour: profile.kookPricePerHour?.toString() ?? null,
-      discordPricePerHour: profile.discordPricePerHour?.toString() ?? null,
-      entertainmentPricePerHour: profile.entertainmentPricePerHour?.toString() ?? null,
-      rankedPricePerHour: profile.rankedPricePerHour?.toString() ?? null,
-      highRankedPricePerHour: profile.highRankedPricePerHour?.toString() ?? null,
-      voicePreference: profile.voicePreference,
-      bio: profile.bio
-    }));
+  async listCompanionLeaderboard(game?: GameCode): Promise<CompanionLeaderboardEntry[]> {
+    const [result] = await this.prisma.$queryRaw<Array<{ companions: CompanionLeaderboardEntry[] }>>(
+      companionDirectorySql(game, companionListOptions({ sort: "orders" }), true));
+    return result.companions;
+  }
+
+  async listOrderableCompanionOptions(game?: GameCode): Promise<CompanionOption[]> {
+    const options = await this.prisma.$queryRaw<CompanionOption[]>(companionOptionsSql(game));
+    return options.map(option => ({ ...option, pricePerHour: new Prisma.Decimal(option.pricePerHour).toString() }));
   }
 
   async listCustomerOrders(customerId: string) {
@@ -237,12 +205,6 @@ export class OrdersService {
       evidenceScope: admin ? "管理员可见订单日志与投诉记录" : "订单状态日志及本人提交的投诉记录；内部处置备注不展示",
       financialNotice: "创建时确认金额来自已保存订单；refundAmount 为站内钱包退款记录金额，不代表外部支付渠道到账；投诉、备注和通知不是到账凭证。"
     };
-  }
-
-  private companionReviewSummary(reviews: Array<{ stars: number; comment: string; createdAt: Date }>) {
-    return { reviewCount: reviews.length,
-      averageRating: reviews.length ? reviews.reduce((sum, review) => sum + review.stars, 0) / reviews.length : null,
-      reviews: reviews.slice(0, 20).map(({ stars, comment, createdAt }) => ({ stars, comment, createdAt })) };
   }
 
   async autoAcceptanceHours(db: Prisma.TransactionClient = this.prisma) {

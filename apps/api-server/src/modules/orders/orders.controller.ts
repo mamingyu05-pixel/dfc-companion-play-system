@@ -1,3 +1,4 @@
+import { CompanionListQuery } from "./companion-directory";
 import { customerOrderAction, validateCustomerOrderInput, validateGuaranteeInput } from "./customer-order-input";
 import { parseEvidenceInput } from "./guarantee";
 import { requireOrderRequestId } from "./order-request";
@@ -19,15 +20,27 @@ export class OrdersController {
   ) {}
 
   @Get("public/companions")
-  listPublicCompanions(@Query("game") game?: GameCode) {
-    return this.orders.listOrderableCompanions(game);
+  listPublicCompanions(@Query("game") game?: GameCode, @Query() query: CompanionListQuery = {}) {
+    return this.orders.listOrderableCompanions(game, query);
   }
 
   @Get("companions")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER)
-  listOrderableCompanions(@Query("game") game?: GameCode) {
-    return this.orders.listOrderableCompanions(game);
+  listOrderableCompanions(@Query("game") game?: GameCode, @Query() query: CompanionListQuery = {}) {
+    return this.orders.listOrderableCompanions(game, query);
+  }
+
+  @Get("public/companions/leaderboard")
+  companionLeaderboard(@Query("game") game?: GameCode) {
+    return this.orders.listCompanionLeaderboard(game);
+  }
+
+  @Get("companions/options")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  companionOptions(@Query("game") game?: GameCode) {
+    return this.orders.listOrderableCompanionOptions(game);
   }
 
   @Get("requests/:requestId")

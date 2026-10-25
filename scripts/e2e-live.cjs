@@ -15,6 +15,7 @@ const prisma = new PrismaClient();
 const run = crypto.randomBytes(3).toString("hex");
 const results = [];
 const createdOrders = [];
+const directoryCompanionIds = [];
 // 1x1 PNG, enough to exercise the evidence upload path.
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
@@ -357,6 +358,119 @@ async function main() {
     try { await call("GET", "/admin/orders", customerToken); } catch { return "已拒绝"; }
     throw new Error("客户读到了管理数据");
   });
+
+  // Zero-value test orders isolate directory checks from the financial workflow above.
+  const directoryTag = `e2e-directory-${run}`;
+  const directoryQuery = `game=DELTA_FORCE&q=${encodeURIComponent(directoryTag)}`;
+  const directory = [];
+  await step("陪玩目录：创建独立合成数据", async () => {
+    for (let i = 0; i < 31; i++) {
+      const id = crypto.randomUUID(), name = `${directoryTag}-${String(i).padStart(2, "0")}`;
+      directory.push({ id, name });
+      directoryCompanionIds.push(id);
+    }
+    await prisma.$transaction(async tx => {
+      await tx.user.createMany({ data: directory.map(({ id, name }, i) => ({
+        id, email: `${name}@synthetic.invalid`, displayName: name, displayNameKey: name,
+        passwordHash: "synthetic-unusable-hash", role: "COMPANION", status: i === 29 ? "BANNED" : "ACTIVE"
+      })) });
+      await tx.companionProfile.createMany({ data: directory.map(({ id, name }, i) => ({
+        userId: id, nickname: name, game: "DELTA_FORCE", games: ["DELTA_FORCE"], skillModes: [],
+        pricePerHour: String(10 + i), verified: i % 2 === 0, badges: ["合成验证"],
+        status: i === 28 ? "UNLISTED" : "LISTED", onlineStatus: i === 26 ? "OFFLINE" : i === 27 ? "BUSY" : "ONLINE"
+      })) });
+      for (const [i, stars, hidden] of [[0, 1, false], [0, 3, false], [0, 5, true], [1, 5, false]]) {
+        const o = await tx.order.create({ data: {
+          orderNo: `${directoryTag}-${crypto.randomUUID()}`, customerId: customer.id, companionId: directory[i].id,
+          game: "DELTA_FORCE", mode: "e2e-directory", hours: "1", unitPrice: "0", totalAmount: "0",
+          isTest: true, status: "COMPLETED", completedAt: new Date(), verifiedAt: new Date(),
+          review: { create: { stars, hidden, comment: `${directoryTag}-${hidden ? "hidden" : "visible"}` } }
+        } });
+        createdOrders.push(o.id);
+      }
+      const active = await tx.order.create({ data: {
+        orderNo: `${directoryTag}-active`, customerId: customer.id, companionId: directory[30].id,
+        game: "DELTA_FORCE", mode: "e2e-directory", hours: "1", unitPrice: "0", totalAmount: "0",
+        isTest: true, status: "ACCEPTED", acceptedAt: new Date()
+      } });
+      createdOrders.push(active.id);
+    });
+    return "31 个合成陪玩，全部订单 isTest，未创建资金流水";
+  });
+
+  const ratingOf = row => row.averageRating ?? -1;
+  const byId = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  const directorySort = sort => (a, b) => {
+    if (sort === "price") return Number(a.pricePerHour) - Number(b.pricePerHour) || byId(a, b);
+    if (sort === "orders") return b.completedOrders - a.completedOrders || ratingOf(b) - ratingOf(a) || byId(a, b);
+    if (sort === "rating") return ratingOf(b) - ratingOf(a) || b.completedOrders - a.completedOrders || byId(a, b);
+    return Number(b.onlineStatus === "ONLINE") - Number(a.onlineStatus === "ONLINE")
+      || Number(b.verified) - Number(a.verified) || ratingOf(b) - ratingOf(a)
+      || b.completedOrders - a.completedOrders || byId(a, b);
+  };
+  let directoryLegacy;
+  await step("陪玩目录：旧版完整数组与新版默认 24 条", async () => {
+    directoryLegacy = await call("GET", `/orders/public/companions?${directoryQuery}`);
+    expect(Array.isArray(directoryLegacy) && directoryLegacy.length === 29, "旧版列表被截断或上下架过滤错误");
+    const first = await call("GET", `/orders/public/companions?${directoryQuery}&sort=recommended`);
+    expect(first.page === 1 && first.limit === 24 && first.total === 29 && first.companions.length === 24, "新版分页默认值或总数错误");
+    const largest = await call("GET", `/orders/public/companions?${directoryQuery}&page=1&limit=61`);
+    expect(largest.limit === 60 && largest.companions.length === 29 && largest.total === 29, "60 条分页或总数错误");
+    const empty = await call("GET", `/orders/public/companions?${directoryQuery}&page=99&limit=60`);
+    expect(empty.total === 29 && empty.companions.length === 0, "越界空页丢失总数");
+    return "旧版 29 条；新版 24/29 条；limit=61 限制为 60；空页保留总数";
+  });
+  for (const sort of ["recommended", "rating", "orders", "price"]) {
+    await step(`陪玩目录：${sort} 分页排序不重不漏`, async () => {
+      expect(Array.isArray(directoryLegacy), "缺少旧版目录基线");
+      const rows = [];
+      for (let page = 1; page <= 5; page++) {
+        const result = await call("GET", `/orders/public/companions?${directoryQuery}&sort=${sort}&page=${page}&limit=7`);
+        expect(result.total === 29 && result.page === page && result.limit === 7, "翻页参数或总数错误");
+        rows.push(...result.companions);
+      }
+      const expected = [...directoryLegacy].sort(directorySort(sort)).map(row => row.id);
+      expect(rows.length === 29 && new Set(rows.map(row => row.id)).size === 29, "翻页出现重复或遗漏");
+      expect(rows.map(row => row.id).join() === expected.join(), "数据库排序或唯一键顺序错误");
+      return "5 页覆盖 29 条，无重漏且排序一致";
+    });
+  }
+  await step("陪玩目录：评分聚合、隐藏评价与测试单排除", async () => {
+    expect(Array.isArray(directoryLegacy), "缺少旧版目录基线");
+    const row = directoryLegacy.find(item => item.id === directory[0].id);
+    expect(row?.averageRating === 2 && row.rating === 2 && row.reviewCount === 2, "评分或评价数未排除隐藏评价");
+    expect(row.completedOrders === 0, "测试订单被计入完成单数");
+    expect(row.verified === true && row.badges.includes("合成验证"), "实名或标签字段丢失");
+    expect(directoryLegacy.every(item => item.completedOrders === 0), "合成测试订单污染完成数");
+    return "平均 2 分、2 条可见评价、0 笔真实完成单";
+  });
+  await step("陪玩目录：独立轻量排行榜前 5", async () => {
+    expect(Array.isArray(directoryLegacy), "缺少旧版目录基线");
+    const rows = await call("GET", `/orders/public/companions/leaderboard?${directoryQuery}`);
+    const expected = [...directoryLegacy].sort(directorySort("orders")).slice(0, 5).map(row => row.id);
+    expect(Array.isArray(rows) && rows.length === 5 && rows.map(row => row.id).join() === expected.join(), "排行榜前五或排序错误");
+    expect(rows.every(row => !("reviews" in row) && !("externalAccounts" in row)), "排行榜包含完整评价或社群账号");
+    return "独立接口返回正确前 5，未返回评价明细";
+  });
+  await step("陪玩目录：三类下单完整可接单选项", async () => {
+    const rows = await call("GET", "/orders/companions/options?game=DELTA_FORCE", customerToken);
+    expect(Array.isArray(rows), "下拉框选项未返回数组");
+    const ids = new Set(rows.map(row => row.id));
+    expect(directory.slice(0, 26).every(row => ids.has(row.id)), "完整在线列表被分页截断");
+    expect(directory.slice(26).every(row => !ids.has(row.id)), "离线、忙碌、下架、封禁或服务中陪玩仍可下单");
+    expect(rows.every(row => row.onlineStatus === "ONLINE" && typeof row.nickname === "string"), "下拉框字段或在线过滤错误");
+    return "26 个在线可接单陪玩全部返回；5 个不可接单账号均排除";
+  });
+  await step("陪玩目录：下单选项保留客户权限", async () => {
+    for (const token of [undefined, companionToken]) {
+      const response = await fetch(`${API}/orders/companions/options?game=DELTA_FORCE`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      expect(response.status === (token ? 403 : 401), `选项权限错误：${response.status}`);
+    }
+    return "未登录 401，陪玩身份 403";
+  });
+
 }
 
 main()
@@ -365,7 +479,7 @@ main()
     // Keep e2e orders out of business dashboards.
     if (createdOrders.length) await prisma.order.updateMany({ where: { id: { in: createdOrders } }, data: { isTest: true } }).catch(() => undefined);
     // The synthetic companion must not stay on the public list real customers pick from.
-    await prisma.companionProfile.updateMany({ where: { user: { email: { in: [`e2e-companion-${run}@synthetic.invalid`, `e2e-companion2-${run}@synthetic.invalid`] } } }, data: { status: "UNLISTED", onlineStatus: "OFFLINE" } }).catch(() => undefined);
+    await prisma.companionProfile.updateMany({ where: { OR: [{ userId: { in: directoryCompanionIds } }, { user: { email: { in: [`e2e-companion-${run}@synthetic.invalid`, `e2e-companion2-${run}@synthetic.invalid`] } } }] }, data: { status: "UNLISTED", onlineStatus: "OFFLINE" } }).catch(() => undefined);
     await prisma.$disconnect();
     const failed = results.filter(r => !r.ok);
     for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}${r.detail ? `  —  ${r.detail}` : ""}`);
