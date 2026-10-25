@@ -23,7 +23,8 @@ async function bootstrap() {
     app.setGlobalPrefix("api");
     app.useGlobalFilters(new ChineseErrorFilter(app.getHttpAdapter()));
     app.enableCors({
-      origin: [process.env.CUSTOMER_WEB_URL, process.env.ADMIN_WEB_URL, process.env.COMPANION_WEB_URL].filter((origin): origin is string => Boolean(origin)),
+      origin: [...new Set([process.env.CUSTOMER_WEB_URL, process.env.ADMIN_WEB_URL, process.env.COMPANION_WEB_URL]
+        .filter((origin): origin is string => Boolean(origin)).map(origin => new URL(origin).origin))],
       credentials: true,
       methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
     });
@@ -31,7 +32,7 @@ async function bootstrap() {
       await orderEnvironment(app.get(PrismaService));
       await app.listen(isolated.port, isolated.host);
     } else {
-      await app.listen(Number(process.env.API_PORT ?? 4000));
+      await app.listen(Number(process.env.API_PORT ?? 4000), process.env.API_HOST ?? "0.0.0.0");
     }
   } catch (error) {
     try { await app?.close(); } finally { restoreNetwork?.(); }

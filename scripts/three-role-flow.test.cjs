@@ -30,6 +30,8 @@ function page(relative, fetch = async () => ok({}), extras = {}) {
       : name === "OrderCard" ? props => React.createElement("article", null, props.order.id,
         React.createElement("button", { onClick: props.onAction }, props.action)) : Wrapper });
   const modules = new Map();
+  const saved = new Map();
+  const sessionStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) };
   function load(file) {
     if (modules.has(file)) return modules.get(file);
     const exports = {};
@@ -37,13 +39,14 @@ function page(relative, fetch = async () => ok({}), extras = {}) {
     const source = fs.readFileSync(path.join(root, file), "utf8");
     const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } });
-    vm.runInNewContext(compiled.outputText, { exports, fetch, URLSearchParams, ...extras,
-      localStorage: { getItem: () => "synthetic-session" }, window: { location: { search: "" } },
+    vm.runInNewContext(compiled.outputText, { exports, fetch, URLSearchParams, crypto: require("node:crypto"), sessionStorage, ...extras,
+      localStorage: { getItem: () => "synthetic-session" }, window: { location: { search: "", origin: "http://synthetic.invalid" }, sessionStorage },
       require(id) {
         if (id === "react") return hooks;
         if (id === "react/jsx-runtime") return jsx;
         if (id === "next/link") return Wrapper;
         if (id === "../components") return components;
+        if (id === "@dfc/ui") return load("packages/ui/src/index.ts");
         if (id.startsWith(".")) {
           const target = path.join(path.dirname(file), id);
           const found = [target, target + ".ts", target + ".tsx"].find(name => fs.existsSync(path.join(root, name)));
@@ -131,10 +134,18 @@ test("admin sees waiting orders immediately for reassignment and can hide them",
   p.mount(); await tick();
   assert.match(p.html(), /ORDER-PAID/); assert.match(p.html(), /ORDER-EXPIRED/); assert.match(p.html(), /ORDER-BAD-DATE/);
   assert.match(p.html(), /ORDER-WAITING/);
-  p.all().find(e => e.type === "input" && e.props.type === "checkbox").props.onChange({ target: { checked: false } });
+  const attentionTab = p.all().find(e => Array.isArray(e.props?.children) && e.props.children.join("") === "需要处理（3）");
+  assert.ok(attentionTab); attentionTab.props.onClick();
   assert.doesNotMatch(p.html(), /ORDER-WAITING/); assert.equal(writes, 0);
+  assert.match(p.html(), /ORDER-PAID/); assert.match(p.html(), /ORDER-EXPIRED/); assert.match(p.html(), /ORDER-BAD-DATE/);
+  const allTab = p.all().find(e => Array.isArray(e.props?.children) && e.props.children.join("") === "全部等待（4）");
+  assert.ok(allTab); allTab.props.onClick();
+  assert.match(p.html(), /ORDER-WAITING/);
+  p.all().find(e => e.props?.["data-order-id"] === "paid").props.onClick();
   const dispatch = p.all().find(e => e.type === "button" && e.props.children === "确认派单");
+  assert.ok(dispatch);
   assert.equal(dispatch.props.disabled, true);
+  assert.equal(writes, 0);
 });
 test("formal companion orders appear before draft applications without removing service acceptance", () => {
   const p = page("apps/companion-web/app/available-orders/page.tsx");

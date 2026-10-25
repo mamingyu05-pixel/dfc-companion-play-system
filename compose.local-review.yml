@@ -1,0 +1,17 @@
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:15432:5432"
+    mem_limit: 256m
+  api-server:
+    mem_limit: 768m
+  customer-web:
+    mem_limit: 384m
+  companion-web:
+    mem_limit: 384m
+  admin-web:
+    mem_limit: 384m
+  nginx:
+    ports: !override
+      - "127.0.0.1:18080:80"
+    mem_limit: 64m

@@ -19,11 +19,28 @@ function page(name, fetch, confirm = () => true) {
   const Wrapper = ({ children }) => React.createElement('div', null, children);
   const components = new Proxy({}, { get: (_, name) => name === 'DataTable' ? ({ rows }) => React.createElement('div', null, ...rows.flat())
     : name === 'SectionHeader' ? ({ title }) => React.createElement('header', null, title) : Wrapper });
-  const exports = {};
-  vm.runInNewContext(compile(fs.readFileSync(path.join(root, `apps/admin-web/app/${name}/page.tsx`), 'utf8')), {
-    exports, fetch, localStorage: { getItem: () => 'synthetic-session' }, window: { confirm },
-    require: id => id === 'react' ? hooks : id === 'react/jsx-runtime' ? jsx : components
-  });
+  const modules = new Map();
+  function load(relative) {
+    if (modules.has(relative)) return modules.get(relative);
+    const exports = {}; modules.set(relative, exports);
+    vm.runInNewContext(compile(fs.readFileSync(path.join(root, relative), 'utf8')), {
+      exports, fetch, localStorage: { getItem: () => 'synthetic-session' }, window: { confirm },
+      require(id) {
+        if (id === 'react') return hooks;
+        if (id === 'react/jsx-runtime') return jsx;
+        if (id === 'next/link') return Wrapper;
+        if (id === '../components') return components;
+        if (id.startsWith('.')) {
+          const target = path.join(path.dirname(relative), id);
+          const found = [target, target + '.ts', target + '.tsx'].find(file => fs.existsSync(path.join(root, file)));
+          if (found) return load(found);
+        }
+        throw new Error(`Unexpected finance fixture import: ${id}`);
+      }
+    });
+    return exports;
+  }
+  const exports = load(`apps/admin-web/app/${name}/page.tsx`);
   return { tree() { cursor = refCursor = 0; return exports.default(); }, all() { return elements(this.tree()); },
     html() { return renderToStaticMarkup(this.tree()); }, mount() { this.tree(); effects.splice(0).forEach(fn => fn()); } };
 }
@@ -58,7 +75,7 @@ test('unknown recharge response retains note and blocks that row until a success
   p.mount(); await tick(); input(p, '审核备注 a', 'keep'); button(p, '通过').props.onClick(); await tick();
   assert.equal(button(p, '通过').props.disabled, true); button(p, '通过').props.onClick(); await tick(); assert.equal(writes, 1);
   assert.equal(p.all().find(e => e.props?.['aria-label'] === '审核备注 a').props.value, 'keep');
-  button(p, '刷新并核对状态').props.onClick(); await tick(); assert.equal(button(p, '通过').props.disabled, false);
+  button(p, '刷新').props.onClick(); await tick(); assert.equal(button(p, '通过').props.disabled, false);
 });
 test('withdrawal requires this row transfer reference, then confirms this recipient and amount', async () => {
   let writes = 0, confirmation = '', sent;

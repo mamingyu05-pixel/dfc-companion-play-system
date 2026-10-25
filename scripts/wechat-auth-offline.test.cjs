@@ -37,7 +37,7 @@ function backend(options = {}) {
       throw Error('Unapproved dependency: ' + name);
     }
   });
-  const users = [], identities = [], tokens = [], queries = []; let creates = 0, rollbacks = 0;
+  const users = [], identities = [], tokens = [], queries = [], sessionQueries = []; let creates = 0, rollbacks = 0;
   const db = {
     async $queryRaw(parts, ...values) {
       queries.push({ sql: parts.join('?'), values });
@@ -51,7 +51,13 @@ function backend(options = {}) {
     user: { async create({ data }) {
       creates++; assert.equal(data.role, 'CUSTOMER'); assert.deepEqual(JSON.parse(JSON.stringify(data.wallet)), { create: {} });
       assert.equal(data.passwordHash, '!wechat-only');
-      const user = { id: data.id, email: data.email, role: data.role, status: 'ACTIVE', displayName: data.displayName }; users.push(user); return user;
+      const user = { id: data.id, email: data.email, role: data.role, status: 'ACTIVE', displayName: data.displayName,
+        sessionVersion: options.sessionVersion ?? 0 }; users.push(user); return user;
+    }, async findUnique({ where, select }) {
+      sessionQueries.push({ where, select });
+      assert.deepEqual(JSON.parse(JSON.stringify(select)), { sessionVersion: true });
+      const user = users.find(value => value.id === where.id);
+      return user ? { sessionVersion: user.sessionVersion ?? 0 } : null;
     } },
     async $transaction(fn) {
       const u = users.length, i = identities.length;
@@ -59,7 +65,7 @@ function backend(options = {}) {
     }
   };
   const jwt = { async signAsync(payload, config) { tokens.push({ payload, config }); return 'SYNTHETIC-MEMORY-JWT'; } };
-  return { ...exported.exports, env, calls, db, users, identities, tokens, queries,
+  return { ...exported.exports, env, calls, db, users, identities, tokens, queries, sessionQueries,
     get creates() { return creates; }, get rollbacks() { return rollbacks; },
     service: new exported.exports.WechatAuthService(db, jwt) };
 }
@@ -100,6 +106,7 @@ test('new verified identity creates one customer plus wallet and later login use
   assert.equal(first.expiresIn, 3600); assert.equal(first.payment, 'NOT_CONNECTED');
   assert.equal(first.nativeOrdering, 'NOT_CONNECTED');
   assert.equal(b.tokens[0].payload.role, 'CUSTOMER'); assert.equal(b.tokens[0].config.algorithm, 'HS256');
+  assert.equal(b.tokens[0].payload.sv, 0); assert.equal(b.sessionQueries[0].where.id, first.user.id);
   assert.equal(b.tokens[0].config.expiresIn, 3600);
   assert(!/session_key|unionid|synthetic-open-id|SYNTHETIC-SESSION-KEY|SECRET/.test(JSON.stringify(first)));
   assert(!/SECRET|jwtSecret|appSecret/.test(JSON.stringify(b.service.publicConfig())));
@@ -110,6 +117,15 @@ test('same openId under another appId is an independent customer, never an email
   b.env.WECHAT_MINIAPP_APP_ID = 'wxfedcba9876543210';
   const second = await b.service.login({ code: 'synthetic-two' });
   assert.notEqual(first.user.id, second.user.id); assert.equal(b.creates, 2);
+});
+test('wechat JWT uses the current stored session version after account sessions are revoked', async () => {
+  const b = backend({ sessionVersion: 3 });
+  const first = await b.service.login({ code: 'synthetic-first' });
+  assert.equal(b.tokens[0].payload.sv, 3);
+  b.users[0].sessionVersion = 4;
+  const second = await b.service.login({ code: 'synthetic-second' });
+  assert.equal(second.user.id, first.user.id); assert.equal(b.creates, 1);
+  assert.equal(b.tokens[1].payload.sv, 4); assert.equal(b.sessionQueries.length, 2);
 });
 test('banned and non-customer linked users receive no JWT', async () => {
   for (const change of [{ status: 'BANNED' }, { role: 'ADMIN' }, { role: 'COMPANION' }]) {

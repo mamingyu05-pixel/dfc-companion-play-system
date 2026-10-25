@@ -219,5 +219,13 @@ test('admin display includes due reminder by default, excludes outdated dispatch
   assert.equal(exports.attention({...order,dispatchReminder:{dispatchVersion:3,due:true}}),true);
   assert.equal(exports.attention({...order,dispatchReminder:{dispatchVersion:2,due:true}}),false);
   assert.equal(exports.attention({...order,status:'ACCEPTED',dispatchReminder:{dispatchVersion:3,due:true}}),false);
-  assert.match(source,/刷新待办/); assert.doesNotMatch(source,/setInterval/);
+  let refresh;
+  function visit(node) {
+    if (ts.isJsxElement(node) && node.openingElement.tagName.getText(ast) === 'button'
+      && node.children.some(child => ts.isJsxText(child) && child.text.trim() === '刷新')) refresh = node;
+    ts.forEachChild(node, visit);
+  }
+  visit(ast); assert.ok(refresh, 'manual refresh button remains available');
+  assert.match(refresh.getText(ast),/loadData\(\)/); assert.doesNotMatch(refresh.getText(ast),/expireDue|method:\s*["']POST["']/);
+  assert.doesNotMatch(source,/setInterval/);
 });

@@ -17,19 +17,29 @@ vm.runInNewContext(compile(fs.readFileSync(path.join(root, 'apps/api-server/src/
   { exports: environment, process: { env: {} }, require: id => {
     assert.equal(id, '@nestjs/common'); return { BadRequestException };
   } });
+const membership = {}, financial = {};
+for (const [file, exports] of [['customer-membership.ts', membership], ['financial-values.ts', financial]]) {
+  vm.runInNewContext(compile(fs.readFileSync(path.join(root, 'apps/api-server/src/modules', file), 'utf8')), {
+    exports, process: { env: {} }, require: id => {
+      if (id === '@prisma/client') return prisma;
+      assert.equal(id, '@nestjs/common'); return { BadRequestException };
+    }
+  });
+}
 function methods(source) {
   const ast = ts.createSourceFile('s.ts', source, ts.ScriptTarget.Latest, true), found = [];
   const names = ['createOrder', 'createOrderInTransaction', 'lockUnconvertedDraft', 'createOrderGroup', 'resolvePricing', 'resolveGameRankPrice', 'normalizeRankTierKey',
     'resolvePlatformMatchUnitPrice', 'platformMatchPriceKeys', 'readPositivePlatformPrice', 'readPlatformSettingValue',
     'resolveMultiCompanionDiscountConfig', 'applyUnitDiscount', 'defaultPlatformMatchUnitPrice', 'pickCompanionPriceForTier',
-    'pickCompanionPriceForPlatform', 'normalizePriceTier', 'defaultPlatformCommissionRate'];
+    'pickCompanionPriceForPlatform', 'normalizePriceTier', 'defaultPlatformCommissionRate', 'memberDiscount', 'memberUnitPrice'];
   function visit(node) { if (ts.isMethodDeclaration(node) && names.includes(node.name?.getText(ast))) found.push(node.getText(ast)); ts.forEachChild(node, visit); }
   visit(ast); return found.join('\n');
 }
-function fixture({ realPricing = false } = {}) {
+function fixture({ realPricing = false, rechargeTotal = '0', settings = {} } = {}) {
   const exported = {}, source = fs.readFileSync(path.join(root, 'apps/api-server/src/modules/orders/orders.service.ts'), 'utf8');
   vm.runInNewContext(compile(`class S { ${methods(source)} } exports.S=S;`), {
-    exports: exported, ...prisma, ...helper, ...environment, BadRequestException, process: { env: {} }, money: n => n.toDecimalPlaces(2)
+    exports: exported, ...prisma, ...helper, ...environment, ...membership, ...financial,
+    MEMBER_DISCOUNT_LEVELS: [10, 8, 5, 3], BadRequestException, process: { env: {} }
   });
   let state = { balance: 1000, frozen: 0, debits: 0, logs: 0, orders: [], groups: [], receipts: {} }, queue = Promise.resolve(), notifications = 0;
   const s = new exported.S(); let fail = false, pricingCalls = 0, globalReads = 0; const scopedReads = [];
@@ -45,7 +55,11 @@ function fixture({ realPricing = false } = {}) {
         gameRankPrice: { findUnique: async ({ where }) => { scopedReads.push('gameRankPrice'); return where.game_tierKey.tierKey === 'synthetic-rank'
           ? { tierKey: 'synthetic-rank', tierName: 'Synthetic rank', unitPrice: new prisma.Prisma.Decimal(175), isActive: true } : null; } },
         platformSetting: { findUnique: async ({ where }) => { scopedReads.push(`setting:${where.key}`);
-          return where.key === 'KOOK_PLATFORM_MATCH_ENTERTAINMENT_UNIT_PRICE' ? { value: '123' } : null; } },
+          return Object.hasOwn(settings, where.key) ? { value: settings[where.key] }
+            : where.key === 'KOOK_PLATFORM_MATCH_ENTERTAINMENT_UNIT_PRICE' ? { value: '123' } : null; } },
+        rechargeRequest: { aggregate: async ({ where }) => { scopedReads.push('rechargeRequest');
+          assert.equal(where.status, 'APPROVED'); assert.ok(where.customerId);
+          return { _sum: { amount: new prisma.Prisma.Decimal(rechargeTotal) } }; } },
         $queryRaw: async (sql, key, payloadHash) => {
           if (/SELECT "id" FROM "order_drafts"/.test(sql.join('?'))) {
             assert.match(sql.join('?'), /FOR UPDATE/); return [{ id: key }];
@@ -80,7 +94,7 @@ function fixture({ realPricing = false } = {}) {
   s.positiveDecimal = x => new prisma.Prisma.Decimal(x);
   s.nonNegativeDecimal = x => new prisma.Prisma.Decimal(x);
   if (realPricing) {
-    for (const model of ['companionProfile', 'gameRankPrice', 'platformSetting']) Object.defineProperty(s.prisma, model, {
+    for (const model of ['companionProfile', 'gameRankPrice', 'platformSetting', 'rechargeRequest']) Object.defineProperty(s.prisma, model, {
       get() { globalReads++; throw new Error(`Global Prisma read while transaction owns the only connection: ${model}`); }
     });
   } else {
@@ -172,4 +186,24 @@ test('custom, platform and high-ranked price precedence stays unchanged', async 
     const f = fixture({ realPricing: true }); const order = await f.s.createOrder('customer-a', { ...body, ...extra });
     assert.equal(order.totalAmount.toString(), expected); assert.equal(f.globalReads(), 0);
   }
+});
+test('membership pricing is read in the transaction and a replay keeps the first committed amount', async () => {
+  const settings = { MEMBER_LV3_DISCOUNT_RATE: '0.9' };
+  const f = fixture({ realPricing: true, rechargeTotal: '500', settings });
+  const first = await f.s.createOrder('customer-a', body);
+  assert.equal(first.totalAmount.toString(), '90'); assert.equal(first.originalAmount.toString(), '100');
+  assert.equal(first.memberDiscountRate.toString(), '0.9'); assert.equal(f.state().balance, 910);
+  assert.equal(f.globalReads(), 0); assert.ok(f.scopedReads.includes('rechargeRequest'));
+  assert.ok(f.scopedReads.includes('setting:MEMBER_LV3_DISCOUNT_RATE'));
+  settings.MEMBER_LV3_DISCOUNT_RATE = '0.5';
+  const replay = await f.s.createOrder('customer-a', body);
+  assert.equal(replay.id, first.id); assert.equal(replay.totalAmount.toString(), '90');
+  assert.equal(f.state().debits, 1); assert.equal(f.state().logs, 1);
+  assert.equal(f.scopedReads.filter(value => value === 'rechargeRequest').length, 1);
+});
+test('a staff custom price bypasses membership discounts without reading another connection', async () => {
+  const f = fixture({ realPricing: true, rechargeTotal: '500', settings: { MEMBER_LV3_DISCOUNT_RATE: '0.5' } });
+  const order = await f.s.createOrder('customer-a', { ...body, priceTier: 'CUSTOM', customUnitPrice: '67.50' });
+  assert.equal(order.totalAmount.toString(), '67.5'); assert.equal(f.state().balance, 932.5);
+  assert.equal(f.scopedReads.includes('rechargeRequest'), false); assert.equal(f.globalReads(), 0);
 });
