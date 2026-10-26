@@ -34,6 +34,7 @@ type PayoutProfile = {
 
 export default function WithdrawalsPage() {
   const [summary, setSummary] = useState<CompanionWalletSummary | null>(null);
+  const [summaryState, setSummaryState] = useState<"loading" | "ready" | "error">("loading");
   const [payoutProfile, setPayoutProfile] = useState<PayoutProfile | null>(null);
   const [amount, setAmount] = useState("");
   const [payoutAccount, setPayoutAccount] = useState("");
@@ -43,21 +44,24 @@ export default function WithdrawalsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function loadData() {
+    setSummaryState("loading"); setSummary(null); setPayoutProfile(null);
+    try {
     const token = localStorage.getItem("dfc_companion_token");
-    if (!token) return;
+    if (!token) throw new Error("请先登录后核对提现数据");
     const [summaryResponse, payoutResponse] = await Promise.all([
       fetch("/api/wallet/companion-summary", { headers: { Authorization: `Bearer ${token}` } }),
       fetch("/api/wallet/companion-payout-profile", { headers: { Authorization: `Bearer ${token}` } })
     ]);
     if (!summaryResponse.ok) throw new Error("无法加载提现数据");
     const nextSummary = (await summaryResponse.json()) as CompanionWalletSummary;
-    setSummary(nextSummary);
-
-    if (payoutResponse.ok) {
+    if (!Array.isArray(nextSummary?.withdrawalRequests) || typeof nextSummary.withdrawingAmount !== "string") throw new Error("提现数据返回不完整");
+    if (!payoutResponse.ok) throw new Error("收款资料待核对，请刷新重试");
       const nextPayout = (await payoutResponse.json()) as PayoutProfile;
+    if (localStorage.getItem("dfc_companion_token") !== token) throw new Error("账号已变化，请重新核对提现数据");
+      setSummary(nextSummary); setSummaryState("ready");
       setPayoutProfile(nextPayout);
       setPayoutAccount(buildPayoutAccount(nextPayout));
-    }
+    } catch (error) { setSummary(null); setPayoutProfile(null); setSummaryState("error"); throw error; }
   }
 
   useEffect(() => {
@@ -97,7 +101,8 @@ export default function WithdrawalsPage() {
       setAmount("");
       setNote("");
       setStatus("提现申请已提交，请等待管理员审核。");
-      await loadData();
+      try { await loadData(); }
+      catch { setStatus("提现申请已提交。余额与记录待核对，请刷新，不要重复提交。"); }
     } catch (err) {
       setError(err instanceof Error ? err.message : "提交失败，请稍后重试");
     } finally {
@@ -106,22 +111,25 @@ export default function WithdrawalsPage() {
   }
 
   const wallet = summary?.wallet;
+  const knownMoney = (value: string | undefined) => summaryState === "ready" ? `¥${formatMoney(value ?? "0")}` : "待核对";
 
   return (
     <CompanionShell>
       <SectionHeader eyebrow="Payout Desk" title="我的提现申请" desc="这里只显示当前陪玩账号的提现余额和记录。第一阶段由管理员审核后人工打款。" />
+      <button type="button" className="maycat-button-secondary mt-4 px-3 py-2" disabled={summaryState === "loading"}
+        onClick={() => { setError(""); void loadData().catch(() => setError("提现数据待核对，请刷新重试")); }}>刷新提现数据</button>
       <section className="mt-6 grid gap-4 md:grid-cols-4">
-        <MetricCard label="可提现收益" value={`¥${formatMoney(wallet?.availableIncome ?? "0")}`} hint="当前账号可提交提现" tone="gold" />
-        <MetricCard label="提现中" value={`¥${formatMoney(summary?.withdrawingAmount ?? "0")}`} hint="等待审核或打款" />
-        <MetricCard label="冻结收益" value={`¥${formatMoney(wallet?.frozenIncome ?? "0")}`} hint="提现申请会先冻结" tone="green" />
-        <MetricCard label="投诉待复核预留" value={`¥${formatMoney(wallet?.disputeReserve ?? "0")}`} hint="相关订单待人工裁决；已从可提现额扣除" />
+        <MetricCard label="可提现收益" value={knownMoney(wallet?.availableIncome)} hint="当前账号可提交提现" tone="gold" />
+        <MetricCard label="提现中" value={knownMoney(summary?.withdrawingAmount)} hint="等待审核或打款" />
+        <MetricCard label="冻结收益" value={knownMoney(wallet?.frozenIncome)} hint="提现申请会先冻结" tone="green" />
+        <MetricCard label="投诉待复核预留" value={knownMoney(wallet?.disputeReserve)} hint="相关订单待人工裁决；已从可提现额扣除" />
       </section>
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <div className="companion-card p-4">
           <h2 className="text-base font-black text-white">我的提现记录</h2>
           <div className="mt-4 space-y-3">
-            {summary?.withdrawalRequests.length ? (
+            {summaryState !== "ready" ? <p role="status">{summaryState === "loading" ? "正在加载提现记录…" : "提现记录待核对，请刷新重试。"}</p> : summary?.withdrawalRequests.length ? (
               summary.withdrawalRequests.map((request) => (
                 <div key={request.id} className="companion-queue-item">
                   <div className="flex items-center justify-between gap-3">
@@ -143,13 +151,13 @@ export default function WithdrawalsPage() {
           <h2 className="text-base font-black text-white">提交提现申请</h2>
           <label className="mt-4 block">
             <span className="mb-2 block text-xs font-black text-dfc-muted">提现金额</span>
-            <input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} className="input" placeholder={`最多 ¥${formatMoney(wallet?.availableIncome ?? "0")}`} />
+            <input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} className="input" placeholder={summaryState === "ready" ? `最多 ¥${formatMoney(wallet?.availableIncome ?? "0")}` : "可提现金额待核对"} />
           </label>
           <label className="mt-4 block">
             <span className="mb-2 block text-xs font-black text-dfc-muted">收款账户</span>
             <input required value={payoutAccount} onChange={(event) => setPayoutAccount(event.target.value)} className="input" placeholder="先到资料页设置支付宝收款资料" />
           </label>
-          {!buildPayoutAccount(payoutProfile) ? (
+          {summaryState === "ready" && !buildPayoutAccount(payoutProfile) ? (
             <div className="mt-3 rounded-dfc-control border border-dfc-warning/40 bg-dfc-warning/10 px-3 py-2 text-xs text-dfc-warning">
               你还没有保存支付宝资料，建议先到资料页填写，提现时会自动带出。
             </div>
@@ -160,7 +168,7 @@ export default function WithdrawalsPage() {
           </label>
           {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
           {status ? <div className="mt-4 rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
-          <button disabled={isSubmitting} className="mt-5 w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
+          <button disabled={isSubmitting || summaryState !== "ready"} className="mt-5 w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
             {isSubmitting ? "提交中..." : "提交提现申请"}
           </button>
         </form>

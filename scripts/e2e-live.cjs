@@ -6,11 +6,14 @@
 // flow, marks the orders it made as test orders, and prints a PASS/FAIL table. No real account is used.
 const { createRequire } = require("node:module");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 const appRequire = createRequire(`${process.cwd()}/`);
 const { PrismaClient } = appRequire("@prisma/client");
 const bcrypt = appRequire("bcryptjs");
 
 const API = process.env.E2E_API_BASE ?? "http://localhost:4000/api";
+const localOnly = process.env.E2E_LOCAL_ONLY === "1";
+let databaseVerified = !localOnly;
 const prisma = new PrismaClient();
 const run = crypto.randomBytes(3).toString("hex");
 const results = [];
@@ -37,11 +40,15 @@ async function call(method, path, token, body) {
   let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!response.ok) {
     const message = data && typeof data === "object" ? (Array.isArray(data.message) ? data.message.join("; ") : data.message) : text;
-    throw new Error(`${method} ${path} -> ${response.status} ${String(message).slice(0, 200)}`);
+    const error = new Error(`${method} ${path} -> ${response.status} ${String(message).slice(0, 200)}`);
+    error.httpStatus = response.status;
+    throw error;
   }
   return data;
 }
 const expect = (cond, message) => { if (!cond) throw new Error(message); };
+const expectRejected = (error, status) => expect(error?.httpStatus === status,
+  `应由业务接口返回 ${status}，实际为 ${error?.httpStatus ?? "网络/脚本异常"}`);
 
 async function makeUser(role, password, extra = {}, tag = role.toLowerCase()) {
   const name = `e2e-${tag}-${run}`;
@@ -53,6 +60,20 @@ async function makeUser(role, password, extra = {}, tag = role.toLowerCase()) {
 }
 
 async function main() {
+  if (localOnly) {
+    const connection = new URL(process.env.DATABASE_URL);
+    const endpoint = new URL(API);
+    expect(connection.hostname === "127.0.0.1" && /^\/dfc_e2e_[a-z0-9_]+$/.test(connection.pathname), "本机闭环仅允许专用 dfc_e2e_* 数据库");
+    expect(endpoint.hostname === "127.0.0.1" && endpoint.protocol === "http:", "本机闭环仅允许回环 HTTP API");
+    const rows = await prisma.$queryRawUnsafe("SELECT current_database() AS database, host(inet_server_addr()) AS host");
+    expect(rows.length === 1 && rows[0].database === connection.pathname.slice(1) && rows[0].host === "127.0.0.1", "实际数据库身份与本机闭环配置不符");
+    databaseVerified = true;
+    const fetchLocal = global.fetch;
+    global.fetch = (url, options) => {
+      expect(new URL(url).origin === endpoint.origin, "本机闭环拒绝外部请求");
+      return fetchLocal(url, { ...options, redirect: "error" });
+    };
+  }
   const password = crypto.randomBytes(12).toString("base64url");
   const admin = await makeUser("ADMIN", password);
   const customer = await makeUser("CUSTOMER", password);
@@ -72,14 +93,19 @@ async function main() {
   await step("客户登录", async () => { customerToken = (await call("POST", "/auth/login", null, { email: customer.email, password, portal: "customer" })).accessToken; expect(customerToken, "无 token"); });
   await step("陪玩登录", async () => { companionToken = (await call("POST", "/auth/login", null, { email: companion.email, password, portal: "companion" })).accessToken; expect(companionToken, "无 token"); });
   await step("错误密码被拒绝", async () => {
-    try { await call("POST", "/auth/login", null, { email: customer.email, password: "wrong-password", portal: "customer" }); } catch { return "已拒绝"; }
+    try { await call("POST", "/auth/login", null, { email: customer.email, password: "wrong-password", portal: "customer" }); } catch (e) { expectRejected(e, 401); return "已拒绝（401）"; }
     throw new Error("错误密码竟然登录成功");
   });
   await step("客户不能登录管理端", async () => {
-    try { await call("POST", "/auth/login", null, { email: customer.email, password, portal: "admin" }); } catch { return "已拒绝"; }
+    try { await call("POST", "/auth/login", null, { email: customer.email, password, portal: "admin" }); } catch (e) { expectRejected(e, 401); return "已拒绝（401）"; }
     throw new Error("客户登录了管理端");
   });
   await step("客户资料 /auth/me", async () => { const me = await call("GET", "/auth/me", customerToken); expect(me.user?.id === customer.id, "身份不对"); });
+  if (localOnly) await step("专用本机库：管理员配置测试会员价和上架套餐", async () => {
+    await call("PATCH", "/admin/promotion-settings", adminToken, { MEMBER_LV5_DISCOUNT_RATE: "0.9" });
+    await call("POST", "/admin/service-packages", adminToken, { category: "本机闭环测试", name: `E2E套餐${run}`, price: "80", isActive: true, game: "DELTA_FORCE" });
+    return "通过真实管理接口建立独立测试配置，未改生产库";
+  });
 
   // --- recharge ---
   let rechargeId;
@@ -107,7 +133,7 @@ async function main() {
   await step("陪玩接单", async () => { const r = await call("PATCH", `/orders/${order.id}/accept`, companionToken, { dispatchVersion: order.dispatchVersion }); expect((r.order ?? r).status === "ACCEPTED", (r.order ?? r).status); });
   await step("陪玩开始服务", async () => { const r = await call("PATCH", `/orders/${order.id}/start`, companionToken); expect((r.order ?? r).status === "IN_PROGRESS", (r.order ?? r).status); });
   await step("时长未到不能提前完成", async () => {
-    try { await call("PATCH", `/orders/${order.id}/complete`, companionToken); } catch { return "已拦截"; }
+    try { await call("PATCH", `/orders/${order.id}/complete`, companionToken); } catch (e) { expectRejected(e, 400); return "已拦截（400）"; }
     throw new Error("没到时长也能完成");
   });
   // Simulate the hour passing rather than waiting for it.
@@ -146,7 +172,7 @@ async function main() {
   await step("未达标不能报完成", async () => {
     await call("POST", `/orders/${g.order.id}/evidence`, companionToken, { kind: "VAULT_START", vaultValueWan: 100, image: PNG });
     await call("POST", `/orders/${g.order.id}/evidence`, companionToken, { kind: "VAULT_END", vaultValueWan: 100 + g.pkg.targetWan - 1, image: PNG });
-    try { await call("PATCH", `/orders/${g.order.id}/complete`, companionToken); } catch { return "已拦截"; }
+    try { await call("PATCH", `/orders/${g.order.id}/complete`, companionToken); } catch (e) { expectRejected(e, 400); return "已拦截（400）"; }
     throw new Error("没达标也能完成");
   });
   await step("达标后报完成，客户看得到凭证", async () => {
@@ -211,7 +237,7 @@ async function main() {
     return `客户 -¥5，陪玩 +¥${money(after - before)}`;
   });
   await step("小费：超过 ¥500 被拒绝", async () => {
-    try { await call("POST", `/orders/${order.id}/tip`, customerToken, { amount: "501", requestId: crypto.randomUUID() }); } catch { return "已拒绝"; }
+    try { await call("POST", `/orders/${order.id}/tip`, customerToken, { amount: "501", requestId: crypto.randomUUID() }); } catch (e) { expectRejected(e, 400); return "已拒绝（400）"; }
     throw new Error("¥501 小费竟然成功");
   });
 
@@ -252,13 +278,13 @@ async function main() {
     await call("PATCH", `/orders/${o.id}/start`, companionToken);
     await call("POST", `/orders/${o.id}/evidence`, companionToken, { kind: "VAULT_START", vaultValueWan: 100, image: PNG });
     let customerBlocked = false;
-    try { await call("POST", `/orders/${o.id}/evidence`, customerToken, { kind: "BLOWN_RUN", image: PNG }); } catch { customerBlocked = true; }
+    try { await call("POST", `/orders/${o.id}/evidence`, customerToken, { kind: "BLOWN_RUN", image: PNG }); } catch (e) { expectRejected(e, 400); customerBlocked = true; }
     expect(customerBlocked, "客户竟能记炸单");
     await call("POST", `/orders/${o.id}/evidence`, companionToken, { kind: "BLOWN_RUN", image: PNG });
     const ev = await call("GET", `/orders/${o.id}/evidence`, customerToken);
     expect(ev.blownBonusWan > 0 && ev.targetWan === pkg.targetWan + ev.blownBonusWan, `目标 ${ev.targetWan}，基础 ${pkg.targetWan}，补 ${ev.blownBonusWan}`);
     await call("POST", `/orders/${o.id}/evidence`, companionToken, { kind: "VAULT_END", vaultValueWan: 100 + pkg.targetWan, image: PNG });
-    let blocked = false; try { await call("PATCH", `/orders/${o.id}/complete`, companionToken); } catch { blocked = true; }
+    let blocked = false; try { await call("PATCH", `/orders/${o.id}/complete`, companionToken); } catch (e) { expectRejected(e, 400); blocked = true; }
     expect(blocked, "只达基础目标就能完成（炸单补没生效）");
     await call("POST", `/orders/${o.id}/evidence`, companionToken, { kind: "VAULT_END", vaultValueWan: 100 + ev.targetWan, image: PNG });
     const c = await call("PATCH", `/orders/${o.id}/complete`, companionToken);
@@ -312,7 +338,7 @@ async function main() {
   await step("中途换人：过期版本号被拒绝（防两人同时操作）", async () => {
     const o = await placeAccepted("1");
     let rejected = false;
-    try { await call("POST", `/admin/orders/${o.id}/swap-companion`, adminToken, { newCompanionId: companion2.id, servedHours: "0", reason: "e2e", dispatchVersion: o.dispatchVersion }); } catch { rejected = true; }
+    try { await call("POST", `/admin/orders/${o.id}/swap-companion`, adminToken, { newCompanionId: companion2.id, servedHours: "0", reason: "e2e", dispatchVersion: o.dispatchVersion }); } catch (e) { expectRejected(e, 400); rejected = true; }
     await call("PATCH", `/admin/orders/${o.id}/cancel`, adminToken, { note: "e2e" }).catch(() => undefined);
     expect(rejected, "过期的版本号也能换人");
     return "已拒绝";
@@ -329,7 +355,7 @@ async function main() {
     return `完成 ${me.completedOrders} 单`;
   });
   await step("实名/标签：超过 8 个字的标签被拒绝", async () => {
-    try { await call("PATCH", `/admin/companions/${companion.id}/credentials`, adminToken, { badges: ["一二三四五六七八九"] }); } catch { return "已拒绝"; }
+    try { await call("PATCH", `/admin/companions/${companion.id}/credentials`, adminToken, { badges: ["一二三四五六七八九"] }); } catch (e) { expectRejected(e, 400); return "已拒绝（400）"; }
     throw new Error("9 个字的标签被接受");
   });
   await step("经营看板：陪玩质量指标", async () => {
@@ -337,7 +363,7 @@ async function main() {
     expect(text.includes("complaintRate") && text.includes("blownRuns") && text.includes("qualityFlags"), "缺少质量字段");
   });
   await step("客户不能新建套餐", async () => {
-    try { await call("POST", "/admin/service-packages", customerToken, { category: "x", name: "x", price: "1" }); } catch { return "已拒绝"; }
+    try { await call("POST", "/admin/service-packages", customerToken, { category: "x", name: "x", price: "1" }); } catch (e) { expectRejected(e, 403); return "已拒绝（403）"; }
     throw new Error("客户新建了套餐");
   });
 
@@ -353,9 +379,10 @@ async function main() {
   }
   await step("管理端：导出订单 CSV", async () => { const r = await fetch(`${API}/admin/export/orders`, { headers: { Authorization: `Bearer ${adminToken}` } }); expect(r.ok, String(r.status)); const bytes = new Uint8Array(await r.arrayBuffer()); expect(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf, "缺 BOM"); });
   await step("管理端：快速开单报价", async () => { const p = await call("POST", "/admin/quick-order/preview", adminToken, { customerId: customer.id, kind: "HOURLY", mode: "烽火地带", hours: "1" }); return `¥${p.totalAmount}`; });
-  await step("管理端：读取 KOOK 服务器成员", async () => { const p = await call("POST", "/admin/kook-members/preview", adminToken, { refresh: true }); return `${p.total} 人`; });
+  if (localOnly) results.push({ name: "管理端：读取 KOOK 服务器成员", ok: true, skipped: true, detail: "本机模式未接真实 KOOK，不调用外部成员接口" });
+  else await step("管理端：读取 KOOK 服务器成员", async () => { const p = await call("POST", "/admin/kook-members/preview", adminToken, { refresh: true }); return `${p.total} 人`; });
   await step("客户不能调用管理接口", async () => {
-    try { await call("GET", "/admin/orders", customerToken); } catch { return "已拒绝"; }
+    try { await call("GET", "/admin/orders", customerToken); } catch (e) { expectRejected(e, 403); return "已拒绝（403）"; }
     throw new Error("客户读到了管理数据");
   });
 
@@ -478,12 +505,18 @@ main()
   .catch(error => results.push({ name: "脚本异常", ok: false, detail: error instanceof Error ? error.stack : String(error) }))
   .finally(async () => {
     // Keep e2e orders out of business dashboards.
-    if (createdOrders.length) await prisma.order.updateMany({ where: { id: { in: createdOrders } }, data: { isTest: true } }).catch(() => undefined);
+    if (databaseVerified && createdOrders.length) await prisma.order.updateMany({ where: { id: { in: createdOrders } }, data: { isTest: true } }).catch(() => undefined);
     // The synthetic companion must not stay on the public list real customers pick from.
-    await prisma.companionProfile.updateMany({ where: { OR: [{ userId: { in: directoryCompanionIds } }, { user: { email: { in: [`e2e-companion-${run}@synthetic.invalid`, `e2e-companion2-${run}@synthetic.invalid`] } } }] }, data: { status: "UNLISTED", onlineStatus: "OFFLINE" } }).catch(() => undefined);
+    if (databaseVerified) await prisma.companionProfile.updateMany({ where: { OR: [{ userId: { in: directoryCompanionIds } }, { user: { email: { in: [`e2e-companion-${run}@synthetic.invalid`, `e2e-companion2-${run}@synthetic.invalid`] } } }] }, data: { status: "UNLISTED", onlineStatus: "OFFLINE" } }).catch(() => undefined);
     await prisma.$disconnect();
     const failed = results.filter(r => !r.ok);
-    for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}${r.detail ? `  —  ${r.detail}` : ""}`);
-    console.log(`\n${results.length - failed.length}/${results.length} passed (run ${run})`);
+    const skipped = results.filter(r => r.skipped);
+    for (const r of results) console.log(`${r.skipped ? "SKIP" : r.ok ? "PASS" : "FAIL"}  ${r.name}${r.detail ? `  —  ${r.detail}` : ""}`);
+    console.log(`\n${results.length - failed.length - skipped.length}/${results.length - skipped.length} passed, ${skipped.length} skipped (run ${run})`);
+    if (process.env.E2E_REPORT_FILE) fs.writeFileSync(process.env.E2E_REPORT_FILE, JSON.stringify({
+      run, checkedAt: new Date().toISOString(), sourceHead: process.env.DEPLOYMENT_GIT_SHA || null,
+      localOnly, api: API, passed: results.length - failed.length - skipped.length, failed: failed.length,
+      skipped: skipped.length, results, createdOrderIds: createdOrders, realPayment: false, realKook: false
+    }, null, 2) + "\n");
     process.exitCode = failed.length ? 1 : 0;
   });

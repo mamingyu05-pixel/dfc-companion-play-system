@@ -10,6 +10,9 @@ const pageData = (companions, total, page = 1) => ({ companions, total, page, li
 
 function harness(fetch, entry = '../app/companions/page.tsx') {
   const states = [], refs = [], effects = [], pending = [];
+  const modules = new Map(), saved = new Map();
+  const storage = { getItem: key => key === 'dfc_customer_token' ? 'synthetic-only' : saved.get(key) ?? null,
+    setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) };
   let stateIndex = 0, refIndex = 0, effectIndex = 0;
   const hooks = {
     useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = initial; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value; }]; },
@@ -25,10 +28,14 @@ function harness(fetch, entry = '../app/companions/page.tsx') {
   const card = ({ companion }) => React.createElement('article', { 'data-companion-id': companion.id }, companion.nickname);
   const headers = props => React.createElement('h2', null, props.title, props.desc);
   function load(relative) {
-    const filename = path.resolve(__dirname, relative), exports = {};
+    const filename = path.resolve(__dirname, relative);
+    if (modules.has(filename)) return modules.get(filename);
+    const exports = {}; modules.set(filename, exports);
     const compiled = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } });
     vm.runInNewContext(compiled.outputText, { exports, fetch, URLSearchParams, AbortController, setTimeout, clearTimeout,
-      localStorage: { getItem: () => 'synthetic-only' }, window: { location: { search: '', origin: 'http://localhost' } },
+      localStorage: storage, crypto: { randomUUID: () => 'synthetic-request-only' },
+      window: { localStorage: storage, location: { search: '', origin: 'http://localhost' }, addEventListener() {}, removeEventListener() {} },
+      document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} },
       require(id) {
         if (id === 'react') return hooks;
         if (id === 'react/jsx-runtime') return jsx;
@@ -37,6 +44,11 @@ function harness(fetch, entry = '../app/companions/page.tsx') {
         if (id.endsWith('/data')) return { games: [] };
         if (id.endsWith('/escrow')) return { EscrowProgress: () => null, EscrowPromise: () => null };
         if (id === '@dfc/ui') return { GUARANTEE_RULES: [], platformLabel: value => value };
+        if (id.startsWith('.')) {
+          const target = path.resolve(path.dirname(filename), id);
+          const found = [target, target + '.ts', target + '.tsx'].find(file => fs.existsSync(file));
+          if (found) return load(found);
+        }
         throw Error('Unexpected import ' + id);
       }
     });
@@ -137,11 +149,12 @@ for (const entry of ['guarantee', 'packages']) test(entry + ' dropdown loads all
   const people = rows(1, 75), calls = [];
   const p = harness(async (url, init) => {
     calls.push(url);
+    if (url === '/api/auth/me') return ok({ user: { id: 'synthetic-customer', role: 'CUSTOMER' } });
     if (url === '/api/orders/companions/options?game=DELTA_FORCE') { assert.ok(init.headers.Authorization); return ok(people); }
     if (url === '/api/wallet/customer-summary') return ok({ wallet: { availableBalance: '0' } });
     assert.ok(['/api/orders/guarantee-packages', '/api/orders/service-packages'].includes(url)); return ok([]);
   }, '../app/' + entry + '/page.tsx');
-  p.mount(); await tick();
+  p.mount(); await tick(); p.all(); await tick();
   const options = p.all().filter(node => node.type === 'option');
   assert.ok(options.some(node => node.props.value === 'c75')); assert.equal(options.filter(node => /^c\d+$/.test(node.props.value)).length, 75);
   assert.equal(calls.filter(url => url.includes('/companions/')).length, 1);

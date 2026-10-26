@@ -118,20 +118,25 @@ export class OrdersService {
 
   async listCustomerOrders(customerId: string) {
     const hours = await this.autoAcceptanceHours();
-    // Latest 200 keeps long-time customers' pages fast; open orders are always recent in practice.
-    const orders = await this.prisma.order.findMany({
-      where: { customerId },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      include: {
+    const activeStatuses: OrderStatus[] = [OrderStatus.PENDING_PAYMENT, OrderStatus.PAID, OrderStatus.ASSIGNED, OrderStatus.ACCEPTED,
+      OrderStatus.IN_PROGRESS, OrderStatus.AWAITING_ACCEPTANCE, OrderStatus.REFUND_REQUESTED, OrderStatus.DISPUTED];
+    const include = {
         review: { select: { id: true } },
         complaints: { where: { status: { notIn: ["RESOLVED", "REJECTED"] } }, select: { id: true } },
         // Customers see the companion's name, never their email: private contact invites off-platform deals.
         companion: { select: { id: true, displayName: true } },
         orderGroup: { select: { id: true, groupNo: true, companionCount: true, originalAmount: true, discountAmount: true, totalAmount: true } },
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
-      }
-    });
+    } satisfies Prisma.OrderInclude;
+    // All of this customer's open obligations remain reachable; only terminal history has a 200-row window.
+    const [active, history] = await this.prisma.$transaction([
+      this.prisma.order.findMany({ where: { customerId, status: { in: activeStatuses } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }], include }),
+      this.prisma.order.findMany({ where: { customerId, status: { notIn: activeStatuses } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 200, include })
+    ], { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    const orders = [...new Map([...history, ...active].map(order => [order.id, order])).values()]
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id));
     return orders.map((order) => ({ ...withoutCustomerContact(this.serializeOrder(order, false)),
       refundAmount: order.refundAmount.toString(),
       hasReview: Boolean(order.review),
@@ -231,17 +236,23 @@ export class OrdersService {
   }
 
   async listCompanionOrders(companionId: string) {
-    const orders = await this.prisma.order.findMany({
-      where: { companionId },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      include: {
+    const activeStatuses: OrderStatus[] = [OrderStatus.PENDING_PAYMENT, OrderStatus.PAID, OrderStatus.ASSIGNED, OrderStatus.ACCEPTED,
+      OrderStatus.IN_PROGRESS, OrderStatus.AWAITING_ACCEPTANCE, OrderStatus.REFUND_REQUESTED, OrderStatus.DISPUTED];
+    const include = {
         customer: { select: { id: true, email: true, displayName: true } },
         companion: { select: { id: true, email: true, displayName: true } },
         orderGroup: { select: { id: true, groupNo: true, companionCount: true, originalAmount: true, discountAmount: true, totalAmount: true } },
         statusLogs: { orderBy: { createdAt: "desc" }, take: 5 }
-      }
-    });
+    } satisfies Prisma.OrderInclude;
+    // Keep this companion's ongoing work visible independently of their bounded terminal history.
+    const [active, history] = await this.prisma.$transaction([
+      this.prisma.order.findMany({ where: { companionId, status: { in: activeStatuses } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }], include }),
+      this.prisma.order.findMany({ where: { companionId, status: { notIn: activeStatuses } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 200, include })
+    ], { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    const orders = [...new Map([...history, ...active].map(order => [order.id, order])).values()]
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id));
     return orders.map((order) => withoutCustomerContact(this.serializeOrder(order, false)));
   }
 
@@ -1084,6 +1095,10 @@ export class OrdersService {
       await tx.walletTransaction.create({ data: { walletId: companionWallet.id, userId: fromCompanionId, operatorId: adminId, businessKey: `order-swap-settle-companion:${orderId}`,
         type: WalletTransactionType.ORDER_SETTLEMENT, direction: TransactionDirection.CREDIT, amount: companionIncome, balanceAfter: companionWallet.availableIncome,
         referenceType: "ORDER", referenceId: orderId, note: `中途换人：已服务 ${served.toString()} 小时` } });
+      await this.settleCompanionRecurringReferralCommission(tx, {
+        customerId: order.customerId, orderId, operatorId: adminId, orderTotalAmount: servedAmount, platformFee
+      });
+      await this.settleReferralReward(tx, order.customerId, orderId, adminId);
       await tx.orderStatusLog.create({ data: { orderId, fromStatus: OrderStatus.IN_PROGRESS, toStatus: OrderStatus.COMPLETED, actorId: adminId, reason: `COMPANION_SWAP_SETTLED: ${JSON.stringify(detail)}` } });
 
       const newProfile = await tx.companionProfile.findUniqueOrThrow({ where: { userId: newCompanionId }, select: { commissionRate: true } });

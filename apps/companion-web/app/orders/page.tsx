@@ -34,11 +34,19 @@ function tokenNow(): string | null {
   try { return localStorage.getItem("dfc_companion_token"); } catch { return null; }
 }
 
+function newOrderControls() {
+  return { orders: [] as Order[], loading: true, uncertain: new Set<string>(),
+    active: null as { orderId: string; token: string } | null };
+}
+
 export default function CompanionOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [ordersLoading, setOrdersLoading] = useState(true);
+  const [actioningId, setActioningId] = useState("");
+  const [uncertainIds, setUncertainIds] = useState<string[]>([]);
+  const controlsRef = useRef(newOrderControls());
   const [recordState, setRecordState] = useState<OrderRecordState>({
     record: null,
     error: "",
@@ -54,14 +62,20 @@ export default function CompanionOrdersPage() {
   async function loadOrders() {
     const token = tokenNow();
     const requestId = ++ordersRequestRef.current;
-    if (ordersTokenRef.current !== token) setOrders([]);
+    if (ordersTokenRef.current !== token) {
+      controlsRef.current = newOrderControls();
+      setOrders([]); setActioningId(""); setUncertainIds([]); setStatus("");
+    }
     ordersTokenRef.current = token;
+    const controls = controlsRef.current;
+    controls.loading = true;
     setOrdersLoading(true);
     if (!token) {
       setOrders([]);
       setError("请登录后查看本人关联的订单。");
       setOrdersLoading(false);
-      return;
+      controls.loading = false;
+      return false;
     }
     try {
       const response = await fetch("/api/orders/companion/my", {
@@ -71,14 +85,21 @@ export default function CompanionOrdersPage() {
       if (!response.ok) throw new Error("无法加载订单");
       const data: unknown = await response.json();
       if (!isOrderList(data)) throw new Error("订单列表返回不完整");
-      if (mountedRef.current && requestId === ordersRequestRef.current && tokenNow() === token) {
+      if (mountedRef.current && requestId === ordersRequestRef.current && tokenNow() === token && controlsRef.current === controls) {
+        controls.orders = data;
+        controls.uncertain.clear();
         setOrders(data);
+        setUncertainIds([]);
         setError("");
+        return true;
       }
+      return false;
     } catch {
       if (mountedRef.current && requestId === ordersRequestRef.current && tokenNow() === token) setError("无法加载我的订单");
+      return false;
     } finally {
       if (mountedRef.current && requestId === ordersRequestRef.current && tokenNow() === token) {
+        controls.loading = false;
         setOrdersLoading(false);
       }
     }
@@ -89,7 +110,9 @@ export default function CompanionOrdersPage() {
     if (!client) return;
     setRecordState(client.state());
     if (tokenNow() !== ordersTokenRef.current) {
+      controlsRef.current = newOrderControls();
       setOrders([]);
+      setActioningId(""); setUncertainIds([]);
       setError("");
       setStatus("");
       void loadOrders();
@@ -113,6 +136,7 @@ export default function CompanionOrdersPage() {
     void loadOrders();
     return () => {
       mountedRef.current = false;
+      controlsRef.current = newOrderControls();
       ++ordersRequestRef.current;
       window.removeEventListener("storage", syncIdentity);
       window.removeEventListener("focus", syncIdentity);
@@ -149,30 +173,57 @@ export default function CompanionOrdersPage() {
   }
 
   async function updateOrder(orderId: string, action: "start" | "complete") {
+    const controls = controlsRef.current;
+    if (controls.active || controls.loading || controls.uncertain.has(orderId)) return;
     const token = tokenNow();
     if (!token || token !== ordersTokenRef.current) {
       syncIdentity();
       return;
     }
+    const previous = controls.orders.find(order => order.id === orderId);
+    if (!previous || previous.status !== (action === "start" ? "ACCEPTED" : "IN_PROGRESS")) return;
+    const operation = { orderId, token };
+    controls.active = operation;
+    ++ordersRequestRef.current;
+    setActioningId(orderId);
     setError("");
     setStatus("");
-    const response = await fetch(`/api/orders/${orderId}/${action}`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    if (!mountedRef.current) return;
-    if (tokenNow() !== token) {
-      syncIdentity();
-      return;
+    let committed = false;
+    const current = () => mountedRef.current && controlsRef.current === controls && tokenNow() === token && ordersTokenRef.current === token;
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/${action}`, {
+        method: "PATCH", headers: { Authorization: `Bearer ${token}` }
+      });
+      const data: unknown = await response.json();
+      if (!current()) { if (mountedRef.current) syncIdentity(); return; }
+      const receipt = data && typeof data === "object" && !Array.isArray(data) ? data as Record<string, unknown> : {};
+      if (!response.ok) {
+        const message = Array.isArray(receipt.message) ? receipt.message.join("，") : receipt.message;
+        throw new Error(typeof message === "string" ? message : "订单操作未获确认");
+      }
+      const expected = action === "start" ? "IN_PROGRESS" : "AWAITING_ACCEPTANCE";
+      if (receipt.id !== orderId || receipt.status !== expected) throw new Error("未收到本笔订单的有效回执");
+      committed = true;
+      controls.orders = controls.orders.map(row => row.id === orderId ? { ...row, status: expected } : row);
+      setOrders(controls.orders);
+      setStatus(action === "start" ? "订单已开始" : "已报完成，收益待客户或管理员验收后结算");
+      if (recordClientRef.current?.state().orderId === orderId) closeRecord();
+      if (!await loadOrders() && current()) setError("本笔操作已成功，但列表刷新失败；请刷新核对，不要重复点击原操作。");
+    } catch (error) {
+      if (!current()) { if (mountedRef.current) syncIdentity(); return; }
+      if (!committed) { controls.uncertain.add(orderId); setUncertainIds([...controls.uncertain]); }
+      setError(committed ? "本笔操作已成功，但列表刷新失败；请刷新核对，不要重复点击原操作。"
+        : `本笔结果待核对，请先点“刷新核对订单”，不要重复原操作。${error instanceof Error ? error.message : "连接或回执异常"}`);
+    } finally {
+      if (controlsRef.current === controls && controls.active === operation) {
+        controls.active = null;
+        if (mountedRef.current && tokenNow() === token) setActioningId("");
+      }
     }
-    if (!response.ok) {
-      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(message ?? "订单操作失败");
-      return;
-    }
-    setStatus(action === "start" ? "订单已开始" : "已报完成，收益待客户或管理员验收后结算");
-    if (recordClientRef.current?.state().orderId === orderId) closeRecord();
+  }
+
+  async function refreshOrders() {
+    if (controlsRef.current.active) return;
     await loadOrders();
   }
 
@@ -187,6 +238,7 @@ export default function CompanionOrdersPage() {
     <CompanionShell>
       <SectionHeader eyebrow="My Service" title="我的订单" desc="进入服务后开始计时，约定时长结束再报完成。收益先待结算，客户或管理员验收且无未决投诉后才可提现。" />
       <Link href="/available-orders" className="mt-4 inline-block rounded-dfc-control bg-cyan-300 px-4 py-3 font-bold text-slate-950">查看待接订单</Link>
+      <button type="button" disabled={ordersLoading || Boolean(actioningId)} onClick={() => void refreshOrders()} className="ml-3 mt-4 rounded-dfc-control border border-cyan-300/30 px-4 py-3 font-bold disabled:opacity-50">刷新核对订单</button>
 
       <section className="mt-5 grid gap-4 md:grid-cols-3">
         <MetricCard label="待开始" value={String(stats.accepted)} hint="已接单，待开始服务" tone="cyan" />
@@ -220,8 +272,9 @@ export default function CompanionOrdersPage() {
                     <div className="text-xs text-dfc-muted">订单金额</div>
                     <div className="mt-1 break-words text-2xl font-black tabular-nums text-dfc-gold">¥{order.totalAmount}</div>
                   </div>
-                  {nextAction ? <ActionButton onClick={nextAction === "开始" ? () => void updateOrder(order.id, "start") : () => void updateOrder(order.id, "complete")}>{nextAction}</ActionButton> : null}
+                  {nextAction ? <ActionButton disabled={ordersLoading || Boolean(actioningId) || uncertainIds.includes(order.id)} onClick={nextAction === "开始" ? () => void updateOrder(order.id, "start") : () => void updateOrder(order.id, "complete")}>{nextAction}</ActionButton> : null}
                 </div>
+                {uncertainIds.includes(order.id) ? <p role="status" className="mt-3 text-sm text-dfc-warning">本单操作结果待核对，请先刷新核对订单；核对前不能重复开始或报完成。</p> : null}
                 {order.serviceKind === "GUARANTEE" && ["ACCEPTED", "IN_PROGRESS"].includes(order.status) ? (
                   <p className="mt-2 text-xs leading-5 text-dfc-warning">保底单：老板先传开局仓库截图；打完你传结束仓库截图，净增达标后才能点「完成」。</p>
                 ) : null}
@@ -317,5 +370,5 @@ function orderStatusTone(status: string): "default" | "warning" | "danger" | "su
 
 function Alert({ children, tone }: { children: string; tone: "danger" | "success" }) {
   const cls = tone === "danger" ? "border-dfc-danger/40 bg-dfc-danger/10 text-dfc-danger" : "border-dfc-success/40 bg-dfc-success/10 text-dfc-success";
-  return <div className={`mt-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
+  return <div role={tone === "danger" ? "alert" : "status"} className={`mt-4 rounded-dfc-control border px-3 py-2 text-sm ${cls}`}>{children}</div>;
 }

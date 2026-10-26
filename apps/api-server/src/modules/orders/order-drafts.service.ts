@@ -572,19 +572,22 @@ export class OrderDraftsService {
 
   async companionApplyFromWeb(companionId: string, draftId: string, body: { note?: string }) {
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "order_drafts" WHERE "id" = ${draftId} FOR UPDATE`;
       const draft = await this.assertEditableDraft(tx, draftId);
       await this.assertListedCompanion(tx, companionId, draft.game);
+      const previous = await tx.orderDraftCandidate.findUnique({ where: { draftId_companionId: { draftId, companionId } } });
+      if (previous?.status === OrderDraftCandidateStatus.REJECTED) throw new BadRequestException("该报名已被拒绝，请联系管理员核对");
+      // A retried application returns its receipt without changing a later selection or customer confirmation.
+      if (previous) return previous;
+      if (![OrderDraftStatus.OPEN, OrderDraftStatus.TRIALING].includes(draft.status as "OPEN" | "TRIALING")) {
+        throw new BadRequestException("该需求已停止报名，客户选择不会因此改变");
+      }
       const note = body.note?.trim() || "陪玩端报名，等待客服或老板确认。";
 
-      const candidate = await tx.orderDraftCandidate.upsert({
-        where: { draftId_companionId: { draftId, companionId } },
-        create: {
+      const candidate = await tx.orderDraftCandidate.create({
+        data: {
           draftId,
           companionId,
-          status: OrderDraftCandidateStatus.TRIALING,
-          note
-        },
-        update: {
           status: OrderDraftCandidateStatus.TRIALING,
           note
         }

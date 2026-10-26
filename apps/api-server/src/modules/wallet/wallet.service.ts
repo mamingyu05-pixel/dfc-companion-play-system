@@ -39,7 +39,7 @@ export class WalletService {
   }
 
   async getCustomerWalletSummary(userId: string) {
-    const [wallet, rechargeRequests] = await Promise.all([
+    const [wallet, rechargeRequests, pendingRecharges] = await Promise.all([
       this.prisma.wallet.findUnique({
         where: { userId },
         include: {
@@ -53,12 +53,14 @@ export class WalletService {
         where: { customerId: userId, NOT: { screenshotUrl: { startsWith: PROVIDER_RECHARGE_EVIDENCE_PREFIX } } },
         orderBy: { createdAt: "desc" },
         take: 20
+      }),
+      this.prisma.rechargeRequest.aggregate({
+        where: { customerId: userId, status: ReviewStatus.PENDING, NOT: { screenshotUrl: { startsWith: PROVIDER_RECHARGE_EVIDENCE_PREFIX } } },
+        _sum: { amount: true }
       })
     ]);
 
-    const pendingRechargeAmount = rechargeRequests
-      .filter((request) => request.status === ReviewStatus.PENDING)
-      .reduce((total, request) => total.add(request.amount), new Prisma.Decimal(0));
+    const pendingRechargeAmount = pendingRecharges._sum.amount ?? new Prisma.Decimal(0);
 
     return {
       wallet: wallet

@@ -22,24 +22,29 @@ type CompanionWalletSummary = {
 
 export default function EarningsPage() {
   const [summary, setSummary] = useState<CompanionWalletSummary | null>(null);
+  const [summaryState, setSummaryState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  async function loadSummary() {
+    setSummaryState("loading"); setSummary(null); setError("");
+    try {
     const token = localStorage.getItem("dfc_companion_token");
-    if (!token) return;
+    if (!token) throw new Error("请先登录后核对收益");
 
-    void fetch("/api/wallet/companion-summary", {
+    const response = await fetch("/api/wallet/companion-summary", {
       headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(async (response) => {
+    });
         if (!response.ok) throw new Error("无法加载收益数据");
-        return (await response.json()) as CompanionWalletSummary;
-      })
-      .then(setSummary)
-      .catch(() => setError("无法加载收益数据，请刷新页面"));
-  }, []);
+    const next = (await response.json()) as CompanionWalletSummary;
+    if (typeof next?.withdrawingAmount !== "string" || (next.wallet && !Array.isArray(next.wallet.transactions))) throw new Error("收益数据返回不完整");
+    if (localStorage.getItem("dfc_companion_token") !== token) throw new Error("账号已变化，请重新核对收益");
+    setSummary(next); setSummaryState("ready");
+    } catch { setSummary(null); setSummaryState("error"); setError("收益数据待核对，请刷新重试"); }
+  }
+  useEffect(() => { void loadSummary(); }, []);
 
   const wallet = summary?.wallet;
+  const knownMoney = (value: string | undefined) => summaryState === "ready" ? `¥${formatMoney(value ?? "0")}` : "待核对";
   const settledServiceIncome = useMemo(
     () => wallet?.transactions.filter((item) => item.type === "ORDER_SETTLEMENT" && item.direction === "CREDIT").reduce((sum, item) => sum + Number(item.amount || 0), 0) ?? 0,
     [wallet]
@@ -49,18 +54,19 @@ export default function EarningsPage() {
     <CompanionShell>
       <SectionHeader eyebrow="Income Ledger" title="我的收益明细" desc="这里只显示当前陪玩账号的可提现收益、待结算收益、提现中金额和钱包流水。" />
       {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
+      <button type="button" className="maycat-button-secondary mt-4 px-3 py-2" disabled={summaryState === "loading"} onClick={() => void loadSummary()}>刷新收益数据</button>
 
       <section className="mt-6 grid gap-4 md:grid-cols-4">
-        <MetricCard label="可提现收益" value={`¥${formatMoney(wallet?.availableIncome ?? "0")}`} hint="当前账号可提交提现" tone="gold" />
-        <MetricCard label="待结算收益" value={`¥${formatMoney(wallet?.pendingIncome ?? "0")}`} hint="订单完成后释放" />
-        <MetricCard label="提现中" value={`¥${formatMoney(summary?.withdrawingAmount ?? "0")}`} hint="等待人工打款" tone="green" />
-        <MetricCard label="已确认服务收益" value={`¥${formatMoney(String(settledServiceIncome))}`} hint="最近20条流水中的订单结算；提现与退回不重复计入" />
+        <MetricCard label="可提现收益" value={knownMoney(wallet?.availableIncome)} hint="当前账号可提交提现" tone="gold" />
+        <MetricCard label="待结算收益" value={knownMoney(wallet?.pendingIncome)} hint="订单完成后释放" />
+        <MetricCard label="提现中" value={knownMoney(summary?.withdrawingAmount)} hint="等待人工打款" tone="green" />
+        <MetricCard label="已确认服务收益" value={knownMoney(String(settledServiceIncome))} hint="最近20条流水中的订单结算；提现与退回不重复计入" />
       </section>
 
       <section className="companion-card mt-6 p-4">
         <h2 className="text-base font-black text-white">我的收益流水</h2>
         <div className="mt-4 space-y-3">
-          {wallet?.transactions.length ? (
+          {summaryState !== "ready" ? <p role="status">{summaryState === "loading" ? "正在加载收益流水…" : "收益流水待核对，请刷新重试。"}</p> : wallet?.transactions.length ? (
             wallet.transactions.map((item) => (
               <div key={item.id} className="companion-queue-item flex items-center justify-between gap-3">
                 <div>

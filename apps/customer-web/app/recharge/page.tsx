@@ -44,6 +44,7 @@ type PublicConfig = {
 
 export default function RechargePage() {
   const [summary, setSummary] = useState<RechargeSummary | null>(null);
+  const [summaryState, setSummaryState] = useState<"loading" | "ready" | "error">("loading");
   const [publicConfig, setPublicConfig] = useState<PublicConfig>({});
   const [amount, setAmount] = useState("");
   const [screenshotUrl, setScreenshotUrl] = useState("");
@@ -60,14 +61,20 @@ export default function RechargePage() {
   useEffect(() => () => { screenshotVersion.current++; }, []);
 
   async function loadSummary() {
+    setSummaryState("loading"); setSummary(null);
+    try {
     const token = localStorage.getItem("dfc_customer_token");
-    if (!token) return;
+    if (!token) throw new Error("请先登录后核对钱包");
 
     const response = await fetch("/api/wallet/customer-summary", {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!response.ok) throw new Error("无法加载钱包数据");
-    setSummary((await response.json()) as RechargeSummary);
+    const next = (await response.json()) as RechargeSummary;
+    if (!Array.isArray(next?.rechargeRequests) || typeof next.pendingRechargeAmount !== "string") throw new Error("钱包数据返回不完整");
+    if (localStorage.getItem("dfc_customer_token") !== token) throw new Error("账号已变化，请重新核对钱包");
+    setSummary(next); setSummaryState("ready");
+    } catch (error) { setSummary(null); setSummaryState("error"); throw error; }
   }
 
   useEffect(() => {
@@ -170,8 +177,8 @@ export default function RechargePage() {
     }
   }
 
-  const availableBalance = summary?.wallet?.availableBalance ?? "0";
-  const pendingRechargeAmount = summary?.pendingRechargeAmount ?? "0";
+  const availableBalance = summaryState === "ready" ? `¥${formatMoney(summary?.wallet?.availableBalance ?? "0")}` : "待核对";
+  const pendingRechargeAmount = summaryState === "ready" ? `¥${formatMoney(summary?.pendingRechargeAmount ?? "0")}` : "待核对";
   const canSubmit = !isSubmitting && !isReadingScreenshot && Number(amount) > 0;
 
   return (
@@ -188,12 +195,15 @@ export default function RechargePage() {
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
-            <WalletMetric label="可用余额" value={`¥${formatMoney(availableBalance)}`} hint="当前账号钱包" />
-            <WalletMetric label="审核中" value={`¥${formatMoney(pendingRechargeAmount)}`} hint="待管理员确认" />
+            <WalletMetric label="可用余额" value={availableBalance} hint="当前账号钱包" />
+            <WalletMetric label="审核中" value={pendingRechargeAmount} hint="待管理员确认" />
             <WalletMetric label="到账方式" value="人工审核" hint="客服确认或截图审核" />
           </div>
         </div>
       </section>
+
+      <button type="button" className="maycat-button-secondary mt-4 px-3 py-2" disabled={summaryState === "loading"}
+        onClick={() => { setError(""); void loadSummary().catch(() => setError("钱包数据待核对，请重试")); }}>刷新钱包数据</button>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-6">
@@ -204,11 +214,11 @@ export default function RechargePage() {
                 <p className="mt-1 text-xs text-dfc-muted">审核状态、赠送金额和备注都会显示在这里。</p>
               </div>
               <span className="rounded-dfc-control border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100">
-                {summary?.rechargeRequests.length ?? 0} 条
+                {summaryState === "ready" ? `${summary?.rechargeRequests.length ?? 0} 条` : "待核对"}
               </span>
             </div>
             <div className="mt-4 space-y-3">
-              {summary?.rechargeRequests.length ? (
+              {summaryState !== "ready" ? <p role="status">{summaryState === "loading" ? "正在加载充值记录…" : "充值记录待核对，请刷新重试。"}</p> : summary?.rechargeRequests.length ? (
                 summary.rechargeRequests.map((request) => (
                   <article key={request.id} className="maycat-recharge-record">
                     <div className="flex items-start justify-between gap-3">
