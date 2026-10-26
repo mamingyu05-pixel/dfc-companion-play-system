@@ -1,3 +1,5 @@
+> 2026-10-27更新：当前新增本地施工分支 codex/workspace-cleanup-20261027，目录 E:/codex专用工作区/maintenance-20261027/dfc；本轮未推送、未部署。旧 C 盘 WIP 已保存在 6ccd6b5，具体入口/归档原因见 [本轮维护说明](MAINTENANCE_20261027.md)。下文为此前版本的验收范围，不能据此认定新修改已经发布。
+
 # 当前工程与验收索引
 
 核对日期：2026-10-27，Asia/Hong_Kong。最新修复见 [审查问题修复](BUSINESS_OPTIMIZATION_20261027.md)，对应最终测试、提交与部署状态记录在 `E:/codex专用工作区/release-optimize-20261027/dfc/final-receipt.json`。此前发布回执继续保留作历史。公网服务器、真实渠道和资金流程仍分别列为未验证。

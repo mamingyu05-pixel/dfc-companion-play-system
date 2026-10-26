@@ -1,6 +1,6 @@
 # Delta Force Club (DFC) 电竞陪玩俱乐部
 
-当前维护副本与验收版本的区别、现有页面及运行入口见 [当前工程与验收索引](docs/CURRENT_CHECKOUT_AND_ACCEPTANCE.md)（2026-10-26核对）。旧验收回执只证明它绑定的提交；不据此宣称当前副本已经上线。
+当前维护副本与验收版本的区别、现有页面及运行入口见 [当前工程与验收索引](docs/CURRENT_CHECKOUT_AND_ACCEPTANCE.md)；本轮本地施工与保存/归档记录见 [2026-10-27维护说明](docs/MAINTENANCE_20261027.md)。旧验收回执只证明它绑定的提交；不据此宣称当前副本已经上线。
 
 DFC 是面向《三角洲行动》的电竞陪玩俱乐部 SaaS 系统。第一阶段只实现最小商业闭环：
 
@@ -8,7 +8,7 @@ DFC 是面向《三角洲行动》的电竞陪玩俱乐部 SaaS 系统。第一�
 
 当前源码包含客户网页的选服务、服务端报价、确认冻结钱包余额及回执恢复流程；试音和预约可先生成需求。网页还支持人工充值申请、投诉和服务验收。本次已验证 Windows 本机 API 与三端生产构建、独立 PostgreSQL 回归及同源访问，见 [Windows 本机部署](docs/LOCAL_WINDOWS_DEPLOYMENT.md)。公网发布、真实支付和 KOOK/微信连接均未验证。
 
-原生小程序源码已同步至 `apps/miniapp-native`，默认仅在内存模拟；原本机工程仍保留。隔离 API 的验证入口见 `scripts/isolated-test-api/README.md`，新增运行校验尚待资源时段，不代表已上线。
+已有原生小程序源码保留在 `apps/miniapp-native`，默认使用内存模拟。微信登录的服务端身份处理、客户端会话与迁移已有源码和离线测试；真实微信登录/真机验收仍未验证。隔离 TEST API 入口见 [隔离测试说明](scripts/isolated-test-api/README.md)，其合成 HTTP/数据库结果与真实微信环境分别验收。第一阶段仍以三端网页闭环为准，不新增小程序能力。
 
 ## 当前范围
 
@@ -17,10 +17,10 @@ DFC 是面向《三角洲行动》的电竞陪玩俱乐部 SaaS 系统。第一�
 - Customer Portal: `/customer`
 - Companion Portal: `/companion`
 - Admin Portal: `/admin`
-- NestJS API 服务骨架
+- NestJS API：注册、人工充值审核、钱包冻结、派单、验收、结算和提现审核
 - Prisma 数据模型
-- Discord Bot 通知与接单回写骨架
-- KOOK Bot 通知与接单回写骨架
+- Discord Bot 通知与接单回写（真实平台本轮未验证）
+- KOOK Bot 通知与接单回写（真实平台本轮未验证）
 - Docker Compose 本地部署基线
 - 业务流、API、数据库、测试清单文档
 
@@ -57,7 +57,7 @@ scripts/
 
 已验证的低内存 Windows 入口见 [Windows 本机部署](docs/LOCAL_WINDOWS_DEPLOYMENT.md)，无需启动 Docker/WSL。以下为原有 Docker 开发基线。
 
-当前仓库已提供工程基线。安装依赖后可运行：
+以下为开发配置流程；模板中的示例值只用于本机测试，外部通知和付款应保持关闭。本轮检查使用已运行的隔离 PostgreSQL，没有启动 Docker：
 
 ```bash
 pnpm install
@@ -69,6 +69,12 @@ pnpm seed:admin
 pnpm dev
 ```
 
+## 检查与测试
+
+`pnpm lint` 执行各工作包的 TypeScript 类型检查；`pnpm test` 执行 API 测试一次和动态发现的业务回归一次。API 测试要求显式的本机合成测试库，不能指向业务数据库。命令、结果和未验证范围见 [测试报告](docs/TEST_REPORT.md)。
+
+竞品分析文档已保存，仍待你验收：[DFC竞品分析](docs/workbench/competitor-miniapp-analysis-2026-10-13.md)。
+
 ## 测试账号
 
 初始化脚本读取 `.env`：
@@ -78,7 +84,7 @@ ADMIN_EMAIL=admin@dfc.local
 ADMIN_PASSWORD=ChangeMe123!
 ```
 
-首次部署后必须修改管理员密码。
+**上线前必须修改示例管理员密码，不能把模板密码用于公开环境。** 本机发布运行使用私有运行配置，不从这段示例读取凭据。
 
 ## 文档
 

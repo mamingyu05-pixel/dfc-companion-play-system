@@ -278,3 +278,14 @@ KOOK 官方 Webhook 回调。
 ```text
 https://你的域名/api/kook/webhook?compress=0
 ```
+
+
+## 人工钱包调账（2026-10-27本地维护候选）
+
+### POST /api/admin/users/:id/balance-adjustments
+
+ADMIN / SUPER_ADMIN；URL中的id是客户。请求必填requestId和正数amount，direction为CREDIT（增加）或DEBIT（扣减），默认CREDIT，note为文本原因。requestId采用8到64位字母、数字或连字符，例如UUID。同一笔业务首次生成一次，保存原始请求；丢响应/刷新后的核对必须带原编号。
+
+同一requestId绑定认证操作者、URL客户、规范金额、方向和去掉首尾空白的原因；完全相同的重试返回原transaction及replayed=true，不新增流水或管理日志。改用同编号调整其他客户/金额/方向/原因/操作者返回400。真正另一笔业务应在核对前一笔后显式生成新编号。缺编号会拒绝，不兼容旧版无编号调账客户端。
+
+返回包含requestId、customerId、direction、replayed、wallet（id/availableBalance/frozenBalance）和transaction（id/amount/balanceAfter）。transaction是原交易回执；wallet为读取时余额，不能把旧回执当作实时余额。余额、流水及管理日志在同一事务内写入，余额不足则全部回滚。
