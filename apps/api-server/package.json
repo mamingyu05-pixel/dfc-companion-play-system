@@ -6,8 +6,8 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "jest --runInBand"
+    "lint": "node ../../scripts/workspace-cli.cjs lint api-server",
+    "test": "node ../../scripts/workspace-cli.cjs test:api"
   },
   "dependencies": {
     "@dfc/auth": "workspace:*",

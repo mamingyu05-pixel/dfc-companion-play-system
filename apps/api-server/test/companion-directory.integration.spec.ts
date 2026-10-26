@@ -24,7 +24,12 @@ let app: INestApplication;
 let customerId: string, adminId: string;
 const previousJwtSecret = process.env.JWT_SECRET;
 
-prisma.$on("query", () => { if (counting) sqlCount++; });
+function recordDirectoryQuery(event: { query: string }) {
+  // Idle pooled connections can emit this exact probe before the requested business query.
+  // Do not filter WITH/EXISTS containing SELECT 1 or any other business SQL: those still count.
+  if (counting && !/^\s*SELECT\s+1\s*;?\s*$/i.test(event.query)) sqlCount++;
+}
+prisma.$on("query", recordDirectoryQuery);
 async function countSql<T>(action: () => Promise<T>) {
   sqlCount = 0;
   counting = true;
@@ -35,6 +40,24 @@ async function countSql<T>(action: () => Promise<T>) {
     counting = false;
   }
 }
+
+test("directory SQL counter excludes only a standalone connection probe and still exposes extra business SQL", () => {
+  const previousCounting = counting, previousCount = sqlCount;
+  try {
+    counting = true; sqlCount = 0;
+    recordDirectoryQuery({ query: "SELECT 1" });
+    recordDirectoryQuery({ query: "  select 1;  " });
+    expect(sqlCount).toBe(0);
+    recordDirectoryQuery({ query: "WITH cohort AS (SELECT 1) SELECT * FROM cohort" });
+    expect(sqlCount).toBe(1);
+    recordDirectoryQuery({ query: 'SELECT "id" FROM "users" WHERE "status" = $1' });
+    expect(sqlCount).toBe(2);
+    recordDirectoryQuery({ query: 'SELECT 1 FROM "users" LIMIT 1' });
+    expect(sqlCount).toBe(3);
+  } finally {
+    counting = previousCounting; sqlCount = previousCount;
+  }
+});
 
 const onlineStatus = (index: number) => [OnlineStatus.ONLINE, OnlineStatus.BUSY, OnlineStatus.OFFLINE][index % 3];
 const stars = (index: number, review: number) => 1 + (index + review) % (1 + index % 5);

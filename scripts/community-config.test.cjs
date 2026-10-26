@@ -147,5 +147,15 @@ test('reviewed changed entry files have no embedded community invitation URL', (
   ]) {
     assert.doesNotMatch(read(file), /https?:\/\/(?:discord\.gg\/|(?:www\.)?kook\.(?:top|vip)\/|(?:www\.)?(?:kookapp|kaiheila)\.cn\/(?:app\/)?(?:invite|go)\/)/i, file);
   }
-  assert.equal(read('.gitleaksignore').split(/\r?\n/).filter(line => line.trim() && !line.trim().startsWith('#')).length, 0);
+});
+
+test('secret scan exceptions remain limited to the reviewed legacy storage-key fingerprint', () => {
+  // This exact historical finding was reviewed as a localStorage key, not an API credential.
+  // Any other exception still requires an explicit review instead of silently widening the scan scope.
+  const reviewed = new Set([
+    'be952f027c77dd99dadb5bb5290cef5e270d3876:apps/admin-web/app/order-drafts/pending-direct-order.ts:generic-api-key:1',
+  ]);
+  const entries = read('.gitleaksignore').split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith('#'));
+  assert.equal(entries.every(entry => reviewed.has(entry)), true, 'Unreviewed secret-scan exception');
+  assert.equal(new Set(entries).size, entries.length, 'Duplicate secret-scan exception');
 });

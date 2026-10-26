@@ -6,13 +6,13 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
-    "test": "pnpm -r test",
+    "lint": "node scripts/workspace-cli.cjs lint",
+    "test": "node scripts/workspace-cli.cjs test",
     "db:generate": "pnpm --filter @dfc/database prisma:generate",
     "db:migrate": "pnpm --filter @dfc/database prisma:migrate",
     "db:deploy": "pnpm --filter @dfc/database prisma:deploy",
     "seed:admin": "pnpm --filter @dfc/database seed:admin",
-    "test:business": "node scripts/test-business.cjs"
+    "test:business": "node scripts/workspace-cli.cjs test:business"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.20",

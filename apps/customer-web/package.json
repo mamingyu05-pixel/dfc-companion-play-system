@@ -6,8 +6,8 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test --experimental-test-isolation=none test/*.test.cjs"
+    "lint": "node ../../scripts/workspace-cli.cjs lint customer-web",
+    "test": "node ../../scripts/workspace-cli.cjs test:customer"
   },
   "dependencies": {
     "next": "15.5.28",
