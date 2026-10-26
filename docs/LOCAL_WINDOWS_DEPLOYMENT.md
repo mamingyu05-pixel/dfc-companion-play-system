@@ -8,9 +8,9 @@
 
 ```powershell
 $env:DFC_LOCAL_RUNTIME='E:/dfc-runtime-20261026'
-$env:DFC_DEPENDENCY_SOURCE='C:/Users/mamin/Documents/Codex/2026-10-01/task-11/dfc-companion-play-system'
+$env:DFC_DEPENDENCY_SOURCE='E:/dfc-runtime-20261027/dependencies'
 $env:DFC_PG_BIN='E:/ipcrm-runtime-20261026/deps/node_modules/@embedded-postgres/windows-x64/native/bin'
-$env:DFC_WEB_DEPENDENCY_SOURCE='E:/dfc-runtime-20261026/web-deps'
+$env:DFC_WEB_DEPENDENCY_SOURCE='E:/dfc-runtime-20261027/dependencies/apps/customer-web'
 
 node scripts/local-windows/runtime.cjs prepare
 node scripts/local-windows/runtime.cjs postgres
@@ -24,13 +24,13 @@ node scripts/local-windows/runtime.cjs start
 node scripts/local-windows/runtime.cjs status
 ```
 
-依赖只通过 junction 复用。已有依赖跨 C/E 盘时，Next 15 的 webpack 可能把 Windows 绝对路径错误地作为相对入口；可将以下必要的锁定前端依赖独立安装到同盘运行目录，然后设置 `DFC_WEB_DEPENDENCY_SOURCE`。不需要复制原来的数 GB 依赖目录。
+依赖只通过 junction 复用。本轮补丁安装位于独立的 `E:/dfc-runtime-20261027/dependencies`，包含当前根目录和各工作区的 package.json、pnpm-workspace.yaml 与 pnpm-lock.yaml 镜像；没有覆盖原工程的共享安装。重建镜像时应从当前提交同步这些清单，再在独立目录冻结安装。Next 为 15.5.28、sharp 为 0.35.5，其他补丁版本以锁文件为准；`prepare` 会拒绝与精确版本不符的旧依赖源。
 
 ```powershell
-npm install --prefix "$env:DFC_LOCAL_RUNTIME/web-deps" --no-audit --no-fund --ignore-scripts next@15.5.19 react@19.2.7 react-dom@19.2.7 @types/react@19.2.17 @types/react-dom@19.2.3 tailwindcss@3.4.19 postcss@8.5.15 autoprefixer@10.5.0 typescript@5.7.2 @types/node@22.19.21
+pnpm --dir "$env:DFC_DEPENDENCY_SOURCE" install --frozen-lockfile --ignore-scripts
 ```
 
-每次只运行一个 build。本入口设置单个静态生成 worker 与 640 MiB Node 堆上限，Prisma 每个实例连接池上限为 4。不要在共享依赖 junction 上直接运行 `pnpm install` 或默认 `db:generate`；使用本入口的 `prepare` 生成独立客户端。
+每次只运行一个 build。本入口设置单个静态生成 worker 与 640 MiB Node 堆上限，Prisma 每个实例连接池上限为 4。已有依赖跨 C/E 盘时，Next 的 Windows 路径处理可能出错，因此补丁依赖与发布工作区均使用 E 盘。不要在共享依赖 junction 上直接运行 `pnpm install` 或默认 `db:generate`；使用本入口的 `prepare` 生成独立客户端。
 
 ## 访问与数据
 

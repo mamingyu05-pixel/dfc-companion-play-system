@@ -20,3 +20,6 @@ export type { EvidenceKind, GuaranteePackage, OrderEvidenceView } from "./guaran
 export { currentPortalUser, redeemLoginReceipt } from "./login-receipt";
 export type { LoginReceiptResult, LoginReceiptUser } from "./login-receipt";
 export { clearSubmitIntent, submitIntentId } from "./submit-intent";
+
+export { createMoneyIntentClient, emptyMoneyIntentState } from "./money-intent-client";
+export type { MoneyIntentPurpose, MoneyIntentState } from "./money-intent-client";

@@ -49,6 +49,12 @@ function packageRoot(resolver, name) {
   throw new Error(`Dependency not installed: ${name}`);
 }
 
+function assertPinnedDependency(name, required, target) {
+  if (!/^\d+\.\d+\.\d+$/.test(required)) return;
+  const installed = JSON.parse(fs.readFileSync(path.join(target, 'package.json'), 'utf8')).version;
+  if (installed !== required) throw new Error(`Dependency ${name} requires ${required}, found ${installed}. Use the frozen patched dependency workspace.`);
+}
+
 function link(target, destination) {
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   let existing;
@@ -86,6 +92,7 @@ function prepare() {
       if (!direct) throw new Error(`Missing dependency: ${name}`);
       target = fs.realpathSync(direct);
     }
+    assertPinnedDependency(name, api.dependencies[name] || api.devDependencies[name] || '', target);
     link(target, path.join(modules, name));
   }
   for (const dir of ['apps/api-server', 'packages/database', 'packages/auth', 'packages/config', 'packages/shared']) link(modules, path.join(root, dir, 'node_modules'));
@@ -106,6 +113,7 @@ function prepare() {
       : path.join(source, 'apps', name, 'package.json'));
     for (const dependency of [...Object.keys(manifest.dependencies), ...Object.keys(manifest.devDependencies)]) {
       const target = dependency === '@dfc/ui' ? path.join(root, 'packages/ui') : packageRoot(frontendResolver, dependency);
+      assertPinnedDependency(dependency, manifest.dependencies[dependency] || manifest.devDependencies[dependency] || '', target);
       link(target, path.join(frontendModules, dependency));
     }
     link(frontendModules, path.join(root, 'apps', name, 'node_modules'));
@@ -260,4 +268,4 @@ async function main() {
   } else throw new Error('Usage: node scripts/local-windows/runtime.cjs prepare|postgres|migrate|build [app]|test|seed|start|status|stop');
 }
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
-module.exports = { root, runtime, config, env };
+module.exports = { root, runtime, config, env, assertPinnedDependency };

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { clearSubmitIntent, submitIntentId } from "@dfc/ui";
+import { createMoneyIntentClient, emptyMoneyIntentState, type MoneyIntentState } from "@dfc/ui";
 import { CompanionShell, MetricCard, SectionHeader, StatusBadge } from "../components";
 
 type CompanionWalletSummary = {
@@ -41,7 +41,28 @@ export default function WithdrawalsPage() {
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const money = useRef<ReturnType<typeof createMoneyIntentClient> | null>(null);
+  const [intent, setIntent] = useState<MoneyIntentState>(emptyMoneyIntentState);
+  const isSubmitting = intent.busy;
+  const locked = intent.busy || !intent.connected || intent.phase !== "empty";
+
+  async function runIntent(action: () => Promise<MoneyIntentState>) {
+    if (!money.current || money.current.state().busy) return null;
+    setIntent({ ...money.current.state(), busy: true });
+    const next = await action(); setIntent(next); setError(next.error);
+    if (intent.subject && next.subject !== intent.subject) {
+      setSummary(null); setPayoutProfile(null); setSummaryState("error");
+      if (next.connected) void loadData().catch(() => setError("账号已变化，请重新核对提现数据"));
+    }
+    if (next.body) { setAmount(String(next.body.amount)); setPayoutAccount(String(next.body.payoutAccount)); setNote(String(next.body.note ?? "")); }
+    else if (intent.subject && next.subject !== intent.subject) { setAmount(""); setPayoutAccount(""); setNote(""); }
+    return next;
+  }
+  useEffect(() => {
+    money.current = createMoneyIntentClient({ purpose: "withdrawal", storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key) }, fetcher: fetch,
+      getToken: () => localStorage.getItem("dfc_companion_token"), makeRequestId: () => crypto.randomUUID(), scope: window.location.origin });
+    void runIntent(() => money.current!.refresh());
+  }, []);
 
   async function loadData() {
     setSummaryState("loading"); setSummary(null); setPayoutProfile(null);
@@ -60,7 +81,7 @@ export default function WithdrawalsPage() {
     if (localStorage.getItem("dfc_companion_token") !== token) throw new Error("账号已变化，请重新核对提现数据");
       setSummary(nextSummary); setSummaryState("ready");
       setPayoutProfile(nextPayout);
-      setPayoutAccount(buildPayoutAccount(nextPayout));
+      if (!money.current || money.current.state().phase === "empty") setPayoutAccount(buildPayoutAccount(nextPayout));
     } catch (error) { setSummary(null); setPayoutProfile(null); setSummaryState("error"); throw error; }
   }
 
@@ -70,44 +91,22 @@ export default function WithdrawalsPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
+    if (locked || !money.current) return;
     setStatus("");
-
-    const token = localStorage.getItem("dfc_companion_token");
-    if (!token) {
-      window.location.href = "/companion/";
-      return;
-    }
-
-    setIsSubmitting(true);
-    // Same amount and account, same intent: a retry returns the first request instead of freezing income twice.
-    const requestId = submitIntentId("dfc_withdrawal_intent", `${amount.trim()}|${payoutAccount.trim()}`);
-    try {
-      const response = await fetch("/api/wallet/withdrawal-requests", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ amount, payoutAccount, note, requestId })
-      });
-      const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-      if (!response.ok) {
-        const message = Array.isArray(data.message) ? data.message.join("，") : data.message;
-        throw new Error(toChineseError(message));
-      }
-
-      clearSubmitIntent("dfc_withdrawal_intent");
-      setAmount("");
-      setNote("");
-      setStatus("提现申请已提交，请等待管理员审核。");
-      try { await loadData(); }
-      catch { setStatus("提现申请已提交。余额与记录待核对，请刷新，不要重复提交。"); }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "提交失败，请稍后重试");
-    } finally {
-      setIsSubmitting(false);
-    }
+    const next = await runIntent(() => money.current!.submit({ amount: amount.trim(), payoutAccount: payoutAccount.trim(), note }));
+    if (next?.phase === "confirmed") await refreshAfterConfirmation();
+  }
+  async function refreshAfterConfirmation() {
+    setStatus("原提现申请已确认，余额与状态以刷新后的记录为准。");
+    try { await loadData(); } catch { setStatus("原提现申请已确认。余额与记录待核对，请刷新，不要重复提交。"); }
+  }
+  async function retryOriginal() {
+    const next = await runIntent(() => money.current!.retry());
+    if (next?.phase === "confirmed") await refreshAfterConfirmation();
+  }
+  async function beginNew() {
+    const next = await runIntent(() => money.current!.beginNew());
+    if (next?.phase === "empty" && !next.error) { setAmount(""); setNote(""); setPayoutAccount(buildPayoutAccount(payoutProfile)); setStatus(""); }
   }
 
   const wallet = summary?.wallet;
@@ -118,6 +117,14 @@ export default function WithdrawalsPage() {
       <SectionHeader eyebrow="Payout Desk" title="我的提现申请" desc="这里只显示当前陪玩账号的提现余额和记录。第一阶段由管理员审核后人工打款。" />
       <button type="button" className="maycat-button-secondary mt-4 px-3 py-2" disabled={summaryState === "loading"}
         onClick={() => { setError(""); void loadData().catch(() => setError("提现数据待核对，请刷新重试")); }}>刷新提现数据</button>
+      <button type="button" className="maycat-button-secondary ml-3 px-3 py-2" disabled={intent.busy} onClick={() => void runIntent(() => money.current!.refresh())}>核对登录与原申请</button>
+      {intent.phase !== "empty" ? <section role="status" className="companion-card mt-4 p-4">
+        <p>原提现申请：{String(intent.body?.requestId)} · ¥{String(intent.body?.amount)}</p>
+        <p>{intent.phase === "confirmed" ? "原申请已确认。最新审核、打款状态请核对下方记录；明确另提一笔后才会生成新编号。" : "原申请结果待核对，金额和账户已保留。请使用原编号核对，不要另建一笔。"}</p>
+        {intent.receipt?.id ? <p>原回执：{String(intent.receipt.id)}</p> : null}
+        {intent.phase === "confirmed" ? <button type="button" disabled={intent.busy} onClick={() => void beginNew()}>另提一笔</button>
+          : <button type="button" disabled={intent.busy} onClick={() => void retryOriginal()}>核对原申请</button>}
+      </section> : null}
       <section className="mt-6 grid gap-4 md:grid-cols-4">
         <MetricCard label="可提现收益" value={knownMoney(wallet?.availableIncome)} hint="当前账号可提交提现" tone="gold" />
         <MetricCard label="提现中" value={knownMoney(summary?.withdrawingAmount)} hint="等待审核或打款" />
@@ -151,11 +158,11 @@ export default function WithdrawalsPage() {
           <h2 className="text-base font-black text-white">提交提现申请</h2>
           <label className="mt-4 block">
             <span className="mb-2 block text-xs font-black text-dfc-muted">提现金额</span>
-            <input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} className="input" placeholder={summaryState === "ready" ? `最多 ¥${formatMoney(wallet?.availableIncome ?? "0")}` : "可提现金额待核对"} />
+            <input required disabled={locked} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} className="input" placeholder={summaryState === "ready" ? `最多 ¥${formatMoney(wallet?.availableIncome ?? "0")}` : "可提现金额待核对"} />
           </label>
           <label className="mt-4 block">
             <span className="mb-2 block text-xs font-black text-dfc-muted">收款账户</span>
-            <input required value={payoutAccount} onChange={(event) => setPayoutAccount(event.target.value)} className="input" placeholder="先到资料页设置支付宝收款资料" />
+            <input required disabled={locked} value={payoutAccount} onChange={(event) => setPayoutAccount(event.target.value)} className="input" placeholder="先到资料页设置支付宝收款资料" />
           </label>
           {summaryState === "ready" && !buildPayoutAccount(payoutProfile) ? (
             <div className="mt-3 rounded-dfc-control border border-dfc-warning/40 bg-dfc-warning/10 px-3 py-2 text-xs text-dfc-warning">
@@ -164,11 +171,11 @@ export default function WithdrawalsPage() {
           ) : null}
           <label className="mt-4 block">
             <span className="mb-2 block text-xs font-black text-dfc-muted">备注</span>
-            <textarea value={note} onChange={(event) => setNote(event.target.value)} className="input min-h-24" placeholder="例如：本次提现全部收益" />
+            <textarea disabled={locked} value={note} onChange={(event) => setNote(event.target.value)} className="input min-h-24" placeholder="例如：本次提现全部收益" />
           </label>
           {error ? <div className="mt-4 rounded-dfc-control border border-dfc-danger/40 bg-dfc-danger/10 px-3 py-2 text-sm text-dfc-danger">{error}</div> : null}
           {status ? <div className="mt-4 rounded-dfc-control border border-dfc-success/40 bg-dfc-success/10 px-3 py-2 text-sm text-dfc-success">{status}</div> : null}
-          <button disabled={isSubmitting || summaryState !== "ready"} className="mt-5 w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
+          <button disabled={locked || summaryState !== "ready"} className="mt-5 w-full rounded-dfc-control border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60">
             {isSubmitting ? "提交中..." : "提交提现申请"}
           </button>
         </form>

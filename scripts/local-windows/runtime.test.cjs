@@ -33,6 +33,21 @@ test("local runtime environment remains isolated from inherited integrations", a
   const localConfig = { pgPort: 15433, pgPassword: "synthetic:p@ss/word#?", jwtSecret: "synthetic-local-jwt",
     botToken: "synthetic-local-bot", adminPassword: "synthetic-local-admin" };
 
+  await t.test("preparing a pinned security dependency rejects an older shared installation", () => {
+    const dependency = path.join(temporaryRuntime, "dependency-fixture");
+    fs.mkdirSync(dependency);
+    try {
+      fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({ name: "next", version: "15.5.28" }));
+      assert.doesNotThrow(() => launcher.assertPinnedDependency("next", "15.5.28", dependency));
+      fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({ name: "next", version: "15.5.19" }));
+      assert.throws(() => launcher.assertPinnedDependency("next", "15.5.28", dependency), /next.*15\.5\.28.*15\.5\.19/);
+      assert.doesNotThrow(() => launcher.assertPinnedDependency("next", "^15.1.3", dependency));
+    } finally {
+      fs.unlinkSync(path.join(dependency, "package.json"));
+      fs.rmdirSync(dependency);
+    }
+  });
+
   await t.test("AI, bot, mail, payment and isolated-test configuration is removed or explicitly disabled", () => {
     const removed = ["AI_SUPPORT_API_KEY", "AI_SUPPORT_BASE_URL", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY",
       "DISCORD_TOKEN", "DISCORD_ORDER_CHANNEL_ID", "KOOK_TOKEN", "KOOK_GUILD_ID", "SMTP_HOST", "SMTP_USER", "SMTP_PASS",

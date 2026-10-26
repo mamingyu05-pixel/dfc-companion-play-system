@@ -143,10 +143,15 @@ export class UploadsController {
 
   private async isPublicCompanionMedia(userSegment: string, filename: string) {
     const urls = [`/api/uploads/companions/${userSegment}/${filename}`, `/uploads/companions/${userSegment}/${filename}`];
+    const uploader = await this.prisma.user.findUnique({ where: { id: userSegment }, select: { role: true } });
+    if (!uploader) return false;
+    // Staff upload before creating the target profile; ordinary users may only publish their own files.
+    const staffUpload = uploader.role === UserRole.ADMIN || uploader.role === UserRole.SUPER_ADMIN;
     const profile = await this.prisma.companionProfile.findFirst({
       where: {
-        userId: userSegment,
+        ...(!staffUpload ? { userId: userSegment } : {}),
         status: CompanionProfileStatus.LISTED,
+        user: { is: { status: UserStatus.ACTIVE } },
         OR: [
           { avatarUrl: { in: urls } },
           { voiceIntroUrl: { in: urls } },

@@ -20,10 +20,10 @@
     "@nestjs/platform-express": "^10.4.15",
     "@prisma/client": "6.0.1",
     "bcryptjs": "^2.4.3",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "10.2.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "sharp": "0.34.5"
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.8",

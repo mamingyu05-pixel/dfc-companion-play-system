@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminAuthGate } from "../auth-gate";
 import { adminApi } from "../batch-tools";
+import { createMoneyIntentClient, emptyMoneyIntentState, type MoneyIntentState } from "@dfc/ui";
 import s from "./quick-order.module.css";
 
-type Customer = { id: string; displayName: string; balance: string; platforms: string[] };
+type Customer = { id: string; displayName: string; balance: string; platforms: string[]; balanceKnown?: boolean };
 type Companion = { userId: string; nickname: string; status: string; onlineStatus: string; game: string; games?: string[]; pricePerHour: string; kookPricePerHour?: string | null };
 type Package = { id: string; label: string; price: string; isActive: boolean };
 type ServicePackage = { id: string; name: string; category: string; price: string; isActive: boolean };
@@ -16,7 +17,6 @@ const GAMES: Array<[string, string]> = [["DELTA_FORCE", "三角洲"], ["VALORANT
 const MODES = ["烽火地带", "全面战场", "娱乐陪玩", "排位上分"];
 const HOURS = ["1", "2", "3", "4"];
 const METHODS: Array<[string, string]> = [["WECHAT", "微信"], ["ALIPAY", "支付宝"], ["BANK", "银行卡"], ["OTHER", "其他"]];
-const newId = () => crypto.randomUUID();
 const yuan = (v: string | number) => `¥${Number(v || 0).toFixed(2)}`;
 
 export default function QuickOrderPage() {
@@ -48,11 +48,37 @@ function QuickOrder() {
   const [notes, setNotes] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [topUp, setTopUp] = useState({ on: false, amount: "", method: "WECHAT", screenshot: "" });
-  // Kept across a failed submit so retrying cannot create a second order or credit twice.
-  const [requestId, setRequestId] = useState(newId);
-  const [busy, setBusy] = useState(false);
+  const money = useRef<ReturnType<typeof createMoneyIntentClient> | null>(null);
+  const [intent, setIntent] = useState<MoneyIntentState>(emptyMoneyIntentState);
+  const busy = intent.busy;
+  const locked = busy || !intent.connected || intent.phase !== "empty";
+  const orderLocked = busy || !intent.connected || intent.phase === "unknown" || intent.phase === "confirmed";
   const [error, setError] = useState("");
   const [result, setResult] = useState<Result | null>(null);
+
+  async function runIntent(action: () => Promise<MoneyIntentState>) {
+    if (!money.current || money.current.state().busy) return null;
+    setIntent({ ...money.current.state(), busy: true });
+    const next = await action(); setIntent(next); setError(next.error);
+    if (next.body) {
+      const body = next.body;
+      setCustomer({ id: next.targetId!, displayName: next.targetLabel || "原申请客户", balance: "0", platforms: [], balanceKnown: false });
+      setKind(body.kind as "HOURLY" | "GUARANTEE" | "PACKAGE"); setGame(String(body.game ?? "DELTA_FORCE")); setMode(String(body.mode ?? MODES[0])); setHours(String(body.hours ?? "1"));
+      setCompanionId(String(body.companionId ?? "")); setCustomPrice(String(body.customUnitPrice ?? "")); setNotes(String(body.notes ?? ""));
+      if (body.kind === "GUARANTEE") setPackageId(String(body.packageId ?? ""));
+      if (body.kind === "PACKAGE") setServicePackageId(String(body.packageId ?? ""));
+      const top = body.topUp as { amount?: string; method?: string; screenshotUrl?: string } | null;
+      setTopUp({ on: Boolean(top), amount: String(top?.amount ?? ""), method: String(top?.method ?? "WECHAT"), screenshot: String(top?.screenshotUrl ?? "") });
+      setQuery(""); setFound([]);
+    } else if (intent.subject && next.subject !== intent.subject) { setCustomer(null); setQuery(""); setNotes(""); setTopUp({ on: false, amount: "", method: "WECHAT", screenshot: "" }); }
+    setResult(next.phase === "confirmed" ? next.receipt as unknown as Result : null);
+    return next;
+  }
+  useEffect(() => {
+    money.current = createMoneyIntentClient({ purpose: "quick-order", storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key) }, fetcher: fetch,
+      getToken: () => localStorage.getItem("dfc_admin_token"), makeRequestId: () => crypto.randomUUID(), scope: window.location.origin });
+    void runIntent(() => money.current!.refresh());
+  }, []);
 
   useEffect(() => {
     adminApi<Companion[]>("/api/admin/companions").then(setCompanions).catch(e => setError(e.message));
@@ -92,7 +118,7 @@ function QuickOrder() {
           if (!live) return;
           setPreview(p); setError("");
           const short = Number(p.shortfall);
-          setTopUp(t => ({ ...t, on: short > 0 ? true : t.on, amount: short > 0 ? String(Math.ceil(short)) : t.amount }));
+          if (money.current?.state().phase === "empty") setTopUp(t => ({ ...t, on: short > 0 ? true : t.on, amount: short > 0 ? String(Math.ceil(short)) : t.amount }));
         })
         .catch(e => live && setError(e.message));
     }, 300);
@@ -111,41 +137,38 @@ function QuickOrder() {
 
   const short = Number(preview?.shortfall ?? 0);
   const topUpAmount = Number(topUp.amount || 0);
-  const coversShortfall = short <= 0 || (topUp.on && topUpAmount >= short);
-  const canSubmit = Boolean(customer && preview && coversShortfall && !busy);
+  const coversShortfall = short <= 0 || (intent.phase === "empty" && topUp.on && topUpAmount >= short);
+  const canSubmit = Boolean(customer && preview && coversShortfall && !orderLocked);
 
   function readImage(file?: File | null) {
-    if (!file?.type.startsWith("image/")) return;
+    if (locked || !file?.type.startsWith("image/")) return;
     if (file.size > 2 * 1024 * 1024) { setError("截图不能超过 2MB"); return; }
     const reader = new FileReader();
-    reader.onload = () => setTopUp(t => ({ ...t, screenshot: String(reader.result) }));
+    reader.onload = () => { if (money.current?.state().phase === "empty" && !money.current.state().busy) setTopUp(t => ({ ...t, screenshot: String(reader.result) })); };
     reader.readAsDataURL(file);
   }
 
   async function submit() {
-    if (!customer || !preview) return;
-    const who = chosen ? `直接派给「${chosen.nickname}」` : "发到派单频道，陪玩抢单";
-    const pay = topUp.on && short > 0 ? `\n先代充 ${yuan(topUp.amount)}（${METHODS.find(([value]) => value === topUp.method)?.[1] ?? ""}）` : "";
-    if (!window.confirm(`给「${customer.displayName}」下单 ${preview.mode}${kind === "HOURLY" ? ` ${preview.hours} 小时` : ""}，${yuan(preview.totalAmount)}${pay}\n${who}？`)) return;
-    setBusy(true); setError("");
-    try {
-      const res = await adminApi<Result>("/api/admin/quick-order", { method: "POST", body: JSON.stringify({
-        customerId: customer.id, ...order, notes, requestId, expectedTotalAmount: preview.totalAmount,
-        topUp: topUp.on && short > 0 ? { amount: topUp.amount, method: topUp.method, screenshotUrl: topUp.screenshot || undefined } : null
-      }) });
-      setResult(res);
-      setRequestId(newId());
-    } catch (e) {
-      setError(`${e instanceof Error ? e.message : "下单失败"}。不确定是否成功时可以直接再点一次，不会重复扣款或重复下单。`);
-    } finally { setBusy(false); }
+    if (!customer || !preview || !canSubmit || !money.current) return;
+    const who = chosen ? '直接派给「' + chosen.nickname + '」' : "发到派单频道，陪玩抢单";
+    const pay = intent.phase === "partial" ? "\n原充值已经入账，本次只继续原订单，不重新代充。" : topUp.on && short > 0 ? '\n先代充 ' + yuan(topUp.amount) : "";
+    if (!window.confirm('给「' + customer.displayName + '」下单 ' + preview.mode + '，' + yuan(preview.totalAmount) + pay + '\n' + who + '？')) return;
+    const body = { customerId: customer.id, ...order, notes, expectedTotalAmount: preview.totalAmount,
+      topUp: topUp.on && short > 0 ? { amount: topUp.amount, method: topUp.method, screenshotUrl: topUp.screenshot || undefined } : null };
+    if (intent.phase === "partial") await runIntent(() => money.current!.continueOrder(body));
+    else await runIntent(() => money.current!.submit(body, customer.displayName));
   }
-
-  function nextOrder(sameCustomer: boolean) {
+  async function nextOrder(sameCustomer: boolean) {
+    const next = await runIntent(() => money.current!.beginNew());
+    if (!next || next.error || next.phase !== "empty") return;
     setResult(null); setNotes(""); setCompanionId(""); setCustomPrice("");
     setTopUp({ on: false, amount: "", method: "WECHAT", screenshot: "" });
     if (!sameCustomer) { setCustomer(null); setQuery(""); }
-    else if (customer) adminApi<Customer[]>(`/api/admin/customers/search?q=${encodeURIComponent(customer.displayName)}`)
-      .then(list => { const fresh = list.find(c => c.id === customer.id); if (fresh) setCustomer(fresh); }).catch(() => undefined);
+    else if (customer) {
+      setCustomer({ ...customer, balanceKnown: false }); setPreview(null);
+      void adminApi<Customer[]>('/api/admin/customers/search?q=' + encodeURIComponent(customer.displayName))
+        .then(list => { const fresh = list.find(c => c.id === customer.id); if (fresh) setCustomer(fresh); }).catch(() => undefined);
+    }
   }
 
   return (
@@ -155,24 +178,34 @@ function QuickOrder() {
         <a href="/admin/dispatch">派单台</a><a href="/admin/orders">全部订单</a><a href="/admin/dashboard">返回后台</a>
       </header>
 
+      <section className={s.card}>
+        <button disabled={busy} onClick={() => void runIntent(() => money.current!.refresh())}>核对登录与原申请</button>
+        {intent.phase !== "empty" ? <div role="status">
+          <p>原快捷单：{String(intent.body?.requestId)} · {intent.targetLabel}</p>
+          {intent.receipt?.recharge ? <p>已代充本金 ¥{String((intent.receipt.recharge as { amount: string }).amount)}；充值记录 {String((intent.receipt.recharge as { id: string }).id)}。这笔已入账，不要再次代充。</p> : null}
+          <p>{intent.phase === "partial" ? "订单尚未创建。客户和原代充金额已锁定；请核对服务与最新报价，再继续原订单。" : intent.phase === "confirmed" ? "原订单回执已保留，明确另开一单后才会生成新编号。" : "原申请结果待核对，客户、服务与原代充内容已保留；请原编号核对，不要另开一单。"}</p>
+          {intent.phase === "partial" && intent.receipt?.error ? <p>{String((intent.receipt.error as { message?: string }).message ?? "请核对订单条件")}</p> : null}
+          {intent.phase !== "confirmed" ? <button disabled={busy} onClick={() => void runIntent(() => money.current!.retry())}>核对原申请</button> : null}
+        </div> : null}
+      </section>
       <main className={s.layout}>
-        <div className={s.stack}>
+        <fieldset disabled={orderLocked} className={s.stack} style={{ minWidth: 0, margin: 0, padding: 0, border: 0 }}>
           {error ? <div className={s.error} role="alert">{error}</div> : null}
 
           <section className={s.card}>
             <h2 className={s.step}><span>1</span>客户</h2>
             {customer ? (
               <div className={s.picked}>
-                <div><b>{customer.displayName}</b><div className={s.muted}>余额 {yuan(customer.balance)}{customer.platforms.length ? ` · ${customer.platforms.join(" / ")}` : ""}</div></div>
-                <button className={s.link} onClick={() => { setCustomer(null); setQuery(""); }}>换客户</button>
+                <div><b>{customer.displayName}</b><div className={s.muted}>{intent.phase === "empty" ? customer.balanceKnown === false ? "余额待核对" : "余额 " + yuan(customer.balance) : "原申请客户，最新余额请核对报价"}{customer.platforms.length ? ` · ${customer.platforms.join(" / ")}` : ""}</div></div>
+                <button className={s.link} disabled={locked} onClick={() => { setCustomer(null); setQuery(""); }}>换客户</button>
               </div>
             ) : (
               <>
-                <input className={s.input} autoFocus placeholder="输入客户的 KOOK 昵称、网站昵称或 KOOK ID" value={query} onChange={e => setQuery(e.target.value)} />
+                <input disabled={locked} className={s.input} autoFocus placeholder="输入客户的 KOOK 昵称、网站昵称或 KOOK ID" value={query} onChange={e => setQuery(e.target.value)} />
                 {found.length ? (
                   <div className={s.list}>
                     {found.map(c => (
-                      <button key={c.id} className={s.row} onClick={() => setCustomer(c)}>
+                      <button disabled={locked} key={c.id} className={s.row} onClick={() => setCustomer(c)}>
                         <span className={s.rowMain}><b>{c.displayName}</b><small>{c.platforms.join(" / ") || "未绑定平台"}</small></span>
                         <span className={s.money}>{yuan(c.balance)}</span>
                       </button>
@@ -238,7 +271,7 @@ function QuickOrder() {
             <h2 className={s.step}><span>4</span>备注（选填）</h2>
             <input className={s.input} maxLength={500} placeholder="例如：客户要求女生、晚上 9 点开、需要试音" value={notes} onChange={e => setNotes(e.target.value)} />
           </section>
-        </div>
+        </fieldset>
 
         <aside className={`${s.card} ${s.summary}`}>
           {result ? (
@@ -254,17 +287,18 @@ function QuickOrder() {
               <div className={s.line}><span className={s.muted}>订单金额</span></div>
               <div className={s.total}>{preview ? yuan(preview.totalAmount) : "—"}</div>
               {preview ? <div className={s.muted}>{preview.mode}{kind === "HOURLY" ? ` · ${preview.hours} 小时 × ${yuan(preview.unitPrice)}` : ""}</div> : <div className={s.muted}>选好客户和服务后自动算价</div>}
-              <div className={s.line}><span>客户余额</span><span className={s.money}>{customer ? yuan(preview?.balance ?? customer.balance) : "—"}</span></div>
+              <div className={s.line}><span>客户余额</span><span className={s.money}>{customer ? preview ? yuan(preview.balance) : intent.phase === "empty" && customer.balanceKnown !== false ? yuan(customer.balance) : "待核对" : "—"}</span></div>
               <div className={s.line}><span>派给</span><span>{chosen ? chosen.nickname : "派单频道抢单"}</span></div>
 
               {short > 0 ? (
                 <div className={s.warnBox}>
                   <b>余额还差 {yuan(short)}</b>
-                  <label><input type="checkbox" checked={topUp.on} onChange={e => setTopUp(t => ({ ...t, on: e.target.checked }))} /> 客户已转账给我，先代充</label>
+                  {intent.phase === "partial" ? <p>原代充已经入账，当前余额仍不足；请另行核对或补足余额后刷新报价，这里不会重复代充。</p> : null}
+                  <label><input disabled={locked} type="checkbox" checked={topUp.on} onChange={e => setTopUp(t => ({ ...t, on: e.target.checked }))} /> 客户已转账给我，先代充</label>
                   {topUp.on ? (
                     <>
-                      <label>实收 ¥<input className={`${s.input} ${s.small}`} inputMode="decimal" value={topUp.amount} onChange={e => setTopUp(t => ({ ...t, amount: e.target.value }))} /></label>
-                      <div className={s.chips}>{METHODS.map(([v, l]) => <button key={v} className={`${s.chip} ${topUp.method === v ? s.chipOn : ""}`} onClick={() => setTopUp(t => ({ ...t, method: v }))}>{l}</button>)}</div>
+                      <label>实收 ¥<input className={`${s.input} ${s.small}`} disabled={locked} inputMode="decimal" value={topUp.amount} onChange={e => setTopUp(t => ({ ...t, amount: e.target.value }))} /></label>
+                      <div className={s.chips}>{METHODS.map(([v, l]) => <button disabled={locked} key={v} className={`${s.chip} ${topUp.method === v ? s.chipOn : ""}`} onClick={() => setTopUp(t => ({ ...t, method: v }))}>{l}</button>)}</div>
                       <div className={s.drop} tabIndex={0} onPaste={e => readImage(e.clipboardData.files[0])}>
                         {topUp.screenshot ? <img src={topUp.screenshot} alt="转账截图" /> : "点这里 Ctrl+V 粘贴转账截图（建议）"}
                       </div>
@@ -274,7 +308,7 @@ function QuickOrder() {
                 </div>
               ) : null}
 
-              <button className={s.primary} disabled={!canSubmit} onClick={() => void submit()}>{busy ? "处理中…" : chosen ? "下单并派给 TA" : "下单并发到派单频道"}</button>
+              <button className={s.primary} disabled={!canSubmit} onClick={() => void submit()}>{busy ? "处理中…" : intent.phase === "partial" ? "核对后继续原订单" : chosen ? "下单并派给 TA" : "下单并发到派单频道"}</button>
             </>
           )}
         </aside>

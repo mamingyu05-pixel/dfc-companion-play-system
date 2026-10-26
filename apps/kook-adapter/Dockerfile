@@ -2,10 +2,10 @@ FROM node:22-alpine
 WORKDIR /app
 RUN corepack enable
 
-COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY apps/kook-adapter/package.json apps/kook-adapter/package.json
-RUN pnpm install --filter @dfc/kook-adapter... --frozen-lockfile=false
+RUN pnpm install --filter @dfc/kook-adapter... --frozen-lockfile
 
 COPY packages/shared packages/shared
 # main.ts runs the shared KOOK configuration check from packages/config.

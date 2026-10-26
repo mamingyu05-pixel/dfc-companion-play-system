@@ -14,6 +14,9 @@ function page(file, mode) {
     useRef(value) { const i = ref++; return refs[i] ||= { current: value }; }, useEffect: fn => effects.push(fn), useMemo: fn => fn() };
   const Summary = { wallet: { availableBalance: '0', frozenBalance: '0', availableIncome: '0', pendingIncome: '0', frozenIncome: '0', disputeReserve: '0', transactions: [] },
     pendingRechargeAmount: '0', withdrawingAmount: '0', rechargeRequests: [], withdrawalRequests: [] };
+  // The dedicated money-intent suite loads the real recovery module; this fixture isolates wallet loading.
+  const moneyState = () => ({ subject: "synthetic-owner", connected: true, busy: false, phase: "empty", targetId: null, targetLabel: "", body: null, receipt: null, error: "" });
+  const money = { emptyMoneyIntentState: moneyState, createMoneyIntentClient: () => ({ state: moneyState, refresh: async () => moneyState() }) };
   const exports = {};
   const Wrapper = ({ children }) => React.createElement('div', null, children);
   const components = { CustomerShell: Wrapper, CompanionShell: Wrapper, StatusBadge: Wrapper,
@@ -21,14 +24,14 @@ function page(file, mode) {
     MetricCard: ({ label, value }) => React.createElement('div', { 'data-metric': label }, value) };
   const source = fs.readFileSync(path.join(root, file), 'utf8');
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
-    exports, localStorage: { getItem: () => 'synthetic-session' }, window: { location: {} },
+    exports, crypto: { randomUUID: () => "synthetic-intent-00000000" }, localStorage: { getItem: () => 'synthetic-session' }, window: { location: {} },
     fetch: async url => {
       if (url.includes('public-config') || url.includes('payout-profile')) return { ok: true, json: async () => ({}) };
       if (mode === 'pending') return new Promise(() => {});
       if (mode === 'network') throw Error('synthetic network failure');
       return { ok: mode === 'zero', status: mode === 'unauthorized' ? 401 : mode === 'zero' ? 200 : 500, json: async () => Summary };
     },
-    require: id => id === 'react' ? hooks : id === 'react/jsx-runtime' ? jsx : id === '@dfc/ui' ? {} : components
+    require: id => id === 'react' ? hooks : id === 'react/jsx-runtime' ? jsx : id === '@dfc/ui' ? money : components
   });
   function html() { cursor = ref = 0; return renderToStaticMarkup(exports.default()); }
   return { html, async mount() { html(); effects.splice(0).forEach(fn => fn()); await tick(); await tick(); } };

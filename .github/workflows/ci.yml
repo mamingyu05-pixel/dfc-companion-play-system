@@ -44,5 +44,4 @@ jobs:
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm --filter @dfc/api-server test
-      - run: pnpm --filter @dfc/customer-web test
-      - run: node --test --experimental-test-isolation=none scripts/community-config.test.cjs
+      - run: pnpm test:business

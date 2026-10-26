@@ -40,6 +40,7 @@ test("quick order: KOOK price preview, direct dispatch to the chosen companion, 
   await expect(quick.create(staff, { ...order, requestId, expectedTotalAmount: "120.00" })).rejects.toThrow();
   const first = await quick.create(staff, { ...order, requestId: randomUUID(), expectedTotalAmount: "100.00", notes: "KOOK 私聊下单" });
   expect(first).toMatchObject({ dispatched: true, dispatchMode: "DIRECT", toppedUp: false, order: { totalAmount: "100.00" } });
+  if (first.outcome !== "ORDER_CREATED") throw new Error("Expected a created order receipt");
   const saved = await prisma.order.findUniqueOrThrow({ where: { id: first.order.id } });
   expect(saved).toMatchObject({ status: "ASSIGNED", companionId: companion.id, sourcePlatform: "KOOK", notes: "KOOK 私聊下单" });
   expect((await prisma.wallet.findUniqueOrThrow({ where: { userId: customer.id } })).availableBalance.toString()).toBe("400");
@@ -56,6 +57,7 @@ test("quick order: tops up a short balance first and opens the order to the disp
   const body = { ...order, requestId: randomUUID(), expectedTotalAmount: "88.00", topUp: { amount: "100", method: "WECHAT" } };
   const first = await quick.create(staff, body);
   expect(first).toMatchObject({ toppedUp: true, dispatched: true, dispatchMode: "OPEN" });
+  if (first.outcome !== "ORDER_CREATED") throw new Error("Expected a created order receipt");
   const retry = await quick.create(staff, body);
   expect(retry).toMatchObject({ toppedUp: false, dispatched: false, order: { id: first.order.id } });
 
@@ -73,6 +75,7 @@ test("quick order: guarantee package and input validation", async () => {
   expect(preview.totalAmount).toBe(pkg.price.toFixed(2));
   const result = await quick.create(staff, { customerId: customer.id, kind: "GUARANTEE", packageId: pkg.id, requestId: randomUUID(), expectedTotalAmount: preview.totalAmount });
   expect(result.dispatched).toBe(true);
+  if (result.outcome !== "ORDER_CREATED") throw new Error("Expected a created order receipt");
   expect((await prisma.order.findUniqueOrThrow({ where: { id: result.order.id } })).serviceKind).toBe("GUARANTEE");
 
   await expect(quick.preview({ customerId: customer.id, kind: "NOPE" })).rejects.toThrow("小时陪玩、保底护航或套餐");

@@ -10,7 +10,7 @@
     "test": "echo \"admin-web tests pending\""
   },
   "dependencies": {
-    "next": "^15.1.3",
+    "next": "15.5.28",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "@dfc/ui": "workspace:*"

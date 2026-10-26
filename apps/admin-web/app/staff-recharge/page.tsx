@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AdminShell, SectionHeader } from "../components";
 import { adminApi } from "../batch-tools";
+import { createMoneyIntentClient, emptyMoneyIntentState, type MoneyIntentState } from "@dfc/ui";
 
 type Customer = { id: string; displayName: string; balance: string; platforms: string[] };
 const METHODS = [{ value: "WECHAT", label: "微信" }, { value: "ALIPAY", label: "支付宝" }, { value: "BANK", label: "银行卡" }, { value: "OTHER", label: "其他" }];
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
-const newRequestId = () => crypto.randomUUID();
 
 export default function StaffRechargePage() {
   const [query, setQuery] = useState("");
@@ -18,11 +18,33 @@ export default function StaffRechargePage() {
   const [method, setMethod] = useState("WECHAT");
   const [note, setNote] = useState("");
   const [screenshot, setScreenshot] = useState("");
-  // One id per intended payment: a retry after a timeout replays instead of crediting twice.
-  const [requestId, setRequestId] = useState(newRequestId);
-  const [busy, setBusy] = useState(false);
+  const money = useRef<ReturnType<typeof createMoneyIntentClient> | null>(null);
+  const [intent, setIntent] = useState<MoneyIntentState>(emptyMoneyIntentState);
+  const busy = intent.busy;
+  const locked = busy || !intent.connected || intent.phase !== "empty";
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+
+  async function runIntent(action: () => Promise<MoneyIntentState>) {
+    if (!money.current || money.current.state().busy) return null;
+    setIntent({ ...money.current.state(), busy: true });
+    const next = await action(); setIntent(next); setError(next.error);
+    if (next.body) {
+      setCustomer({ id: next.targetId!, displayName: next.targetLabel || "原申请客户", balance: "0", platforms: [] });
+      setAmount(String(next.body.amount)); setMethod(String(next.body.method)); setNote(String(next.body.note ?? "")); setScreenshot(String(next.body.screenshotUrl ?? "")); setQuery(""); setResults([]);
+    } else if (intent.subject && next.subject !== intent.subject) { setCustomer(null); setQuery(""); setAmount(""); setNote(""); setScreenshot(""); }
+    if (next.phase === "confirmed") setDone("原入账已确认。最新余额请到客户或财务记录核对。");
+    return next;
+  }
+  useEffect(() => {
+    money.current = createMoneyIntentClient({ purpose: "staff-recharge", storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key) }, fetcher: fetch,
+      getToken: () => localStorage.getItem("dfc_admin_token"), makeRequestId: () => crypto.randomUUID(), scope: window.location.origin });
+    void runIntent(() => money.current!.refresh());
+  }, []);
+  async function beginNew() {
+    const next = await runIntent(() => money.current!.beginNew());
+    if (next?.phase === "empty" && !next.error) { setCustomer(null); setQuery(""); setAmount(""); setNote(""); setScreenshot(""); setDone(""); }
+  }
 
   useEffect(() => {
     const term = query.trim();
@@ -34,29 +56,21 @@ export default function StaffRechargePage() {
   }, [query, customer]);
 
   function readImage(file: File | undefined | null) {
-    if (!file) return;
+    if (!file || locked) return;
     if (!file.type.startsWith("image/")) { setError("只能上传图片"); return; }
     if (file.size > MAX_IMAGE_BYTES) { setError("截图不能超过 2MB"); return; }
     const reader = new FileReader();
-    reader.onload = () => setScreenshot(String(reader.result));
+    reader.onload = () => { if (money.current?.state().phase === "empty" && !money.current.state().busy) setScreenshot(String(reader.result)); };
     reader.readAsDataURL(file);
   }
 
   async function submit() {
-    if (!customer) return;
+    if (!customer || locked || !money.current) return;
     if (!/^\d{1,7}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) { setError("请填写正确的金额"); return; }
     const label = METHODS.find(m => m.value === method)?.label;
-    if (!window.confirm(`给「${customer.displayName}」入账 ¥${Number(amount).toFixed(2)}（${label}）？\n入账后立即到余额，并计入累计充值和会员等级。`)) return;
-    setBusy(true); setError(""); setDone("");
-    try {
-      const result = await adminApi<{ replayed: boolean }>("/api/admin/recharges/staff-record", {
-        method: "POST", body: JSON.stringify({ customerId: customer.id, amount, method, note, screenshotUrl: screenshot || undefined, requestId })
-      });
-      setDone(`${result.replayed ? "这笔之前已经入账过，没有重复入账" : "已入账"}：${customer.displayName} ¥${Number(amount).toFixed(2)}（${label}）`);
-      setCustomer(null); setQuery(""); setAmount(""); setNote(""); setScreenshot(""); setRequestId(newRequestId());
-    } catch (e) {
-      setError(`${e instanceof Error ? e.message : "入账失败"}。如果不确定是否已入账，直接再点一次「确认入账」，系统不会重复入账。`);
-    } finally { setBusy(false); }
+    if (!window.confirm('给「' + customer.displayName + '」入账 ¥' + Number(amount).toFixed(2) + '（' + label + '）？\n入账后立即到余额，并计入累计充值和会员等级。')) return;
+    setDone("");
+    await runIntent(() => money.current!.submit({ customerId: customer.id, amount, method, note, screenshotUrl: screenshot || undefined }, customer.displayName));
   }
 
   return (
@@ -66,6 +80,14 @@ export default function StaffRechargePage() {
       {error ? <p role="alert" className="mb-4 rounded border border-red-300 p-3 text-red-200">{error}</p> : null}
       {done ? <p role="status" className="mb-4 rounded border border-green-300/50 p-3 text-green-200">{done}</p> : null}
 
+      <button type="button" disabled={busy} onClick={() => void runIntent(() => money.current!.refresh())}>核对登录与原申请</button>
+      {intent.phase !== "empty" ? <section role="status" className="admin-panel my-4 p-4">
+        <p>原代充申请：{String(intent.body?.requestId)} · {intent.targetLabel} · ¥{String(intent.body?.amount)}</p>
+        <p>{intent.phase === "confirmed" ? "原入账回执已保留；明确另录一笔后才会生成新编号。" : "原入账结果待核对。客户、金额和凭证已锁定，请原编号核对，不要另录一笔。"}</p>
+        {intent.receipt ? <p>充值记录：{String((intent.receipt.recharge as { id?: string } | undefined)?.id ?? "待核对")}</p> : null}
+        {intent.phase === "confirmed" ? <button disabled={busy} onClick={() => void beginNew()}>另录一笔</button>
+          : <button disabled={busy} onClick={() => void runIntent(() => money.current!.retry())}>核对原申请</button>}
+      </section> : null}
       <section className="admin-panel max-w-xl space-y-4">
         <div>
           <label className="mb-1 block text-sm font-black text-white" htmlFor="customer-search">1. 找到客户</label>
@@ -73,18 +95,18 @@ export default function StaffRechargePage() {
             <div className="flex items-center justify-between rounded border border-cyan-300/40 p-3">
               <div>
                 <div className="font-black text-white">{customer.displayName}</div>
-                <div className="text-xs text-dfc-muted">当前余额 ¥{Number(customer.balance).toFixed(2)}{customer.platforms.length ? ` · ${customer.platforms.join(" / ")}` : ""}</div>
+                <div className="text-xs text-dfc-muted">{intent.phase === "empty" ? "当前余额 ¥" + Number(customer.balance).toFixed(2) : "原申请客户，最新余额请另行核对"}{customer.platforms.length ? ` · ${customer.platforms.join(" / ")}` : ""}</div>
               </div>
-              <button className="text-xs text-cyan-200" onClick={() => { setCustomer(null); setQuery(""); }}>换一个</button>
+              <button className="text-xs text-cyan-200" disabled={locked} onClick={() => { setCustomer(null); setQuery(""); }}>换一个</button>
             </div>
           ) : (
             <>
-              <input id="customer-search" className="input w-full" placeholder="输入昵称、KOOK 昵称或 KOOK ID" value={query} onChange={e => setQuery(e.target.value)} />
+              <input disabled={locked} id="customer-search" className="input w-full" placeholder="输入昵称、KOOK 昵称或 KOOK ID" value={query} onChange={e => setQuery(e.target.value)} />
               {results.length ? (
                 <ul className="mt-2 divide-y divide-cyan-300/10 rounded border border-cyan-300/20">
                   {results.map(r => (
                     <li key={r.id}>
-                      <button className="w-full px-3 py-2 text-left hover:bg-cyan-300/10" onClick={() => { setCustomer(r); setQuery(r.displayName); setResults([]); }}>
+                      <button disabled={locked} className="w-full px-3 py-2 text-left hover:bg-cyan-300/10" onClick={() => { setCustomer(r); setQuery(r.displayName); setResults([]); }}>
                         <span className="font-semibold text-white">{r.displayName}</span>
                         <span className="ml-2 text-xs text-dfc-muted">余额 ¥{Number(r.balance).toFixed(2)}{r.platforms.length ? ` · ${r.platforms.join(" / ")}` : ""}</span>
                       </button>
@@ -98,10 +120,10 @@ export default function StaffRechargePage() {
 
         <div>
           <label className="mb-1 block text-sm font-black text-white" htmlFor="amount">2. 实收金额（元）</label>
-          <input id="amount" className="input w-40" inputMode="decimal" placeholder="例如 200" value={amount} onChange={e => setAmount(e.target.value.trim())} />
+          <input disabled={locked} id="amount" className="input w-40" inputMode="decimal" placeholder="例如 200" value={amount} onChange={e => setAmount(e.target.value.trim())} />
           <div className="mt-2 flex flex-wrap gap-2">
             {METHODS.map(m => (
-              <button key={m.value} onClick={() => setMethod(m.value)}
+              <button disabled={locked} key={m.value} onClick={() => setMethod(m.value)}
                 className={`rounded border px-3 py-1 text-sm ${method === m.value ? "border-cyan-300 bg-cyan-300/20 text-white" : "border-cyan-300/20 text-dfc-subtext"}`}>{m.label}</button>
             ))}
           </div>
@@ -112,13 +134,13 @@ export default function StaffRechargePage() {
           <div tabIndex={0} onPaste={e => readImage(e.clipboardData.files[0])}
             className="rounded border border-dashed border-cyan-300/40 p-3 text-xs text-dfc-muted focus:border-cyan-300 focus:outline-none">
             {screenshot ? <img src={screenshot} alt="转账截图" className="max-h-48 rounded" /> : "点这里后按 Ctrl+V 粘贴截图，或选择文件："}
-            <input type="file" accept="image/*" className="mt-2 block text-xs" onChange={e => readImage(e.target.files?.[0])} />
+            <input disabled={locked} type="file" accept="image/*" className="mt-2 block text-xs" onChange={e => readImage(e.target.files?.[0])} />
           </div>
-          <input className="input mt-2 w-full" maxLength={200} placeholder="备注（选填），例如：转账单号尾号 1234" value={note} onChange={e => setNote(e.target.value)} />
+          <input disabled={locked} className="input mt-2 w-full" maxLength={200} placeholder="备注（选填），例如：转账单号尾号 1234" value={note} onChange={e => setNote(e.target.value)} />
         </div>
 
         <button className="w-full rounded border border-cyan-300/60 bg-cyan-300 px-4 py-3 text-base font-black text-slate-950 disabled:opacity-50"
-          disabled={busy || !customer || !amount} onClick={() => void submit()}>{busy ? "入账中…" : "确认入账"}</button>
+          disabled={locked || !customer || !amount} onClick={() => void submit()}>{busy ? "入账中…" : "确认入账"}</button>
       </section>
     </AdminShell>
   );

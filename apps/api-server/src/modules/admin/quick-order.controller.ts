@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, HttpCode, Post, UseGuards } from "@nestjs/common";
 import { GameCode, OrderSourcePlatform, Prisma, ServicePriceTier, UserRole, UserStatus } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/current-user.decorator";
@@ -18,6 +18,7 @@ type QuickOrderBody = OrderInput & {
   requestId?: unknown; expectedTotalAmount?: unknown;
   topUp?: { amount?: unknown; method?: unknown; screenshotUrl?: unknown; note?: unknown } | null;
 };
+type RechargeReceipt = { id: string; amount: string; requestId: string; replayed: boolean };
 
 const str = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -40,6 +41,7 @@ export class QuickOrderController {
   }
 
   @Post()
+  @HttpCode(200)
   async create(@CurrentUser() user: AuthenticatedUser, @Body() body: QuickOrderBody) {
     const requestId = str(body.requestId);
     // The top-up reuses this id with a suffix, which must still fit the 64-char staff recharge id.
@@ -47,17 +49,29 @@ export class QuickOrderController {
     const customer = await this.customer(body.customerId);
     const expectedTotalAmount = str(body.expectedTotalAmount);
     try { fixedDecimal(expectedTotalAmount, "expectedTotalAmount"); } catch { throw new BadRequestException("请先核对订单金额"); }
+    const fields = this.orderFields(body);
 
     let toppedUp = false;
+    let recharge: RechargeReceipt | null = null;
     if (body.topUp) {
       const topUp = await this.wallet.recordStaffRecharge(customer.id, user.id, { ...body.topUp, requestId: `${requestId}-topup` });
       toppedUp = !topUp.replayed;
+      recharge = { id: topUp.recharge.id, amount: topUp.recharge.amount.toFixed(2), requestId: `${requestId}-topup`, replayed: topUp.replayed };
     }
-    const fields = this.orderFields(body);
-    const order = await this.orders.createOrder(customer.id, {
-      ...fields, mode: fields.mode ?? "GUARANTEE", hours: fields.hours ?? "1",
-      requestId, expectedTotalAmount, notes: str(body.notes) || undefined, sourcePlatform: OrderSourcePlatform.KOOK
-    });
+    let order: Awaited<ReturnType<OrdersService["createOrder"]>>;
+    try {
+      order = await this.orders.createOrder(customer.id, {
+        ...fields, mode: fields.mode ?? "GUARANTEE", hours: fields.hours ?? "1",
+        requestId, expectedTotalAmount, notes: str(body.notes) || undefined, sourcePlatform: OrderSourcePlatform.KOOK
+      });
+    } catch (error) {
+      const response = error instanceof BadRequestException ? error.getResponse() : null;
+      // Only an explicit rollback proves that no order exists. Unknown commit outcomes keep the original request retryable.
+      if (!recharge || !response || typeof response !== "object" || !("requestOutcome" in response) || response.requestOutcome !== "NOT_COMMITTED") throw error;
+      return { outcome: "RECHARGE_COMMITTED_ORDER_NOT_CREATED" as const, requestId, recharge, order: null,
+        toppedUp, dispatched: false, dispatchMode: fields.companionId ? "DIRECT" as const : "OPEN" as const,
+        error: { message: (error as BadRequestException).message, orderOutcome: "NOT_COMMITTED" as const } };
+    }
 
     // A retried request returns the same order; only send it out while it is still waiting.
     const companionId = fields.companionId;
@@ -74,7 +88,8 @@ export class QuickOrderController {
         dispatchError = error instanceof Error ? error.message : "派单失败";
       }
     }
-    return { order: { id: order.id, orderNo: order.orderNo, totalAmount: order.totalAmount.toFixed(2), status: order.status },
+    return { outcome: "ORDER_CREATED" as const, requestId, recharge,
+      order: { id: order.id, orderNo: order.orderNo, totalAmount: order.totalAmount.toFixed(2), status: order.status },
       toppedUp, dispatched, dispatchMode: companionId ? "DIRECT" : "OPEN", dispatchError };
   }
 

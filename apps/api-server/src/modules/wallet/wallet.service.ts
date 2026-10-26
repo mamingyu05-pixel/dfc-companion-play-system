@@ -464,16 +464,19 @@ export class WalletService {
     const extra = typeof body.note === "string" ? body.note.trim().slice(0, 200) : "";
     const note = `客服代录·${methodLabel}${extra ? `·${extra}` : ""}`;
     const businessKey = `staff-recharge:${requestId}`;
+    const amountInput = typeof body.amount === "string" || typeof body.amount === "number" ? String(body.amount) : "";
 
     const result = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${customerId} FOR UPDATE`;
       const replay = await tx.walletTransaction.findUnique({ where: { businessKey }, select: { referenceId: true, userId: true } });
       if (replay) {
         if (replay.userId !== customerId || !replay.referenceId) throw new BadRequestException("requestId 已用于其他客户");
-        return { replayed: true, recharge: await tx.rechargeRequest.findUniqueOrThrow({ where: { id: replay.referenceId } }) };
+        const recharge = await tx.rechargeRequest.findUniqueOrThrow({ where: { id: replay.referenceId } });
+        assertSameAmount(recharge.amount, this.positiveDecimal(amountInput, "amount"));
+        return { requestId, replayed: true, recharge };
       }
       const created = await this.createRechargeInTransaction(tx, customerId, {
-        amount: typeof body.amount === "string" || typeof body.amount === "number" ? String(body.amount) : "",
+        amount: amountInput,
         screenshotUrl: typeof body.screenshotUrl === "string" ? body.screenshotUrl : undefined,
         note
       });
@@ -485,7 +488,7 @@ export class WalletService {
         actorId: staffId, targetUserId: customerId, action: "STAFF_RECORD_RECHARGE", entityType: "RECHARGE_REQUEST", entityId: created.id,
         detail: { amount: request.amount.toString(), totalCredit: creditAmount.toString(), method: methodLabel, requestId }
       } });
-      return { replayed: false, recharge: await tx.rechargeRequest.findUniqueOrThrow({ where: { id: created.id } }) };
+      return { requestId, replayed: false, recharge: await tx.rechargeRequest.findUniqueOrThrow({ where: { id: created.id } }) };
     });
 
     if (!result.replayed) await this.botNotifications.syncCustomerMembershipLevels(customerId).catch(() => undefined);
@@ -689,6 +692,11 @@ export class WalletService {
   ) {
     if (!["APPROVED", "REJECTED", "PAID"].includes(body.status)) {
       throw new BadRequestException("Invalid withdrawal review status");
+    }
+    if (body.status === "PAID") {
+      const payoutReference = typeof body.payoutReference === "string" ? body.payoutReference.trim() : "";
+      if (!payoutReference) throw new BadRequestException("请填写本笔打款流水号");
+      body = { ...body, payoutReference };
     }
 
     return this.prisma.$transaction(async (tx) => {
