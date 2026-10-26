@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 import { adminApi, BatchBar, BatchButton, ExportButton, SelectBox, useSelection } from "../batch-tools";
+import { createMoneyIntentClient, emptyMoneyIntentState, type MoneyIntentState } from "@dfc/ui";
 
 type AdminUser = {
   id: string;
@@ -52,6 +53,9 @@ export default function UsersPage() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
   const [adjustmentDirection, setAdjustmentDirection] = useState<"CREDIT" | "DEBIT">("CREDIT");
+  const adjustmentMoney = useRef<ReturnType<typeof createMoneyIntentClient> | null>(null);
+  const [adjustmentIntent, setAdjustmentIntent] = useState<MoneyIntentState>(emptyMoneyIntentState);
+  const adjustmentLocked = adjustmentIntent.busy || !adjustmentIntent.connected || adjustmentIntent.phase !== "empty";
   const [passwordResetUserId, setPasswordResetUserId] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [passwordResetNote, setPasswordResetNote] = useState("");
@@ -114,35 +118,53 @@ export default function UsersPage() {
     await loadUsers();
   }
 
+  async function runAdjustment(action: () => Promise<MoneyIntentState>) {
+    if (!adjustmentMoney.current || adjustmentMoney.current.state().busy) return null;
+    setAdjustmentIntent({ ...adjustmentMoney.current.state(), busy: true });
+    const next = await action();
+    setAdjustmentIntent(next); setError(next.error ? toFriendlyError(next.error) : "");
+    if (next.body) {
+      setSelectedCustomerId(next.targetId ?? ""); setCreditAmount(String(next.body.amount));
+      setCreditNote(String(next.body.note ?? "")); setAdjustmentDirection(next.body.direction === "DEBIT" ? "DEBIT" : "CREDIT");
+    } else if (adjustmentIntent.subject && next.subject !== adjustmentIntent.subject) {
+      setSelectedCustomerId(""); setCreditAmount(""); setCreditNote(""); setSearch(""); setStatus("");
+    }
+    return next;
+  }
+
+  useEffect(() => {
+    adjustmentMoney.current = createMoneyIntentClient({ purpose: "manual-adjustment",
+      storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key) },
+      fetcher: fetch, getToken: () => localStorage.getItem("dfc_admin_token"), makeRequestId: () => crypto.randomUUID(), scope: window.location.origin });
+    void runAdjustment(() => adjustmentMoney.current!.refresh());
+  }, []);
+
+  async function refreshAfterAdjustment(next: MoneyIntentState | null) {
+    if (next?.phase !== "confirmed" || next.error) return;
+    setStatus("原人工调账已确认，最新余额请核对刷新后的用户列表。");
+    try { await loadUsers(); }
+    catch { setStatus("原人工调账已确认，用户余额尚未刷新。请刷新用户列表，不要重新调账。"); }
+  }
+
   async function creditCustomerBalance() {
-    const token = localStorage.getItem("dfc_admin_token");
-    if (!token) return;
-    if (!selectedCustomerId) {
-      setError("请先选择客户");
-      return;
-    }
-
-    setError("");
+    if (adjustmentLocked || !adjustmentMoney.current) return;
+    if (!selectedCustomerId) { setError("请先选择客户"); return; }
     setStatus("");
-    const response = await fetch(`/api/admin/users/${selectedCustomerId}/balance-adjustments`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ amount: creditAmount, note: creditNote, direction: adjustmentDirection })
-    });
-    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    if (!response.ok) {
-      const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      setError(toFriendlyError(message));
-      return;
-    }
+    const customer = users.find(user => user.id === selectedCustomerId);
+    const next = await runAdjustment(() => adjustmentMoney.current!.submit({ customerId: selectedCustomerId, amount: creditAmount.trim(), note: creditNote, direction: adjustmentDirection }, customer?.displayName ?? selectedCustomerId));
+    await refreshAfterAdjustment(next);
+  }
 
-    setStatus(adjustmentDirection === "CREDIT" ? "客户余额已增加，并已写入钱包流水" : "客户余额已扣减，并已写入冲正流水");
-    setCreditAmount("");
-    setCreditNote("");
-    await loadUsers();
+  async function retryAdjustment() {
+    const next = await runAdjustment(() => adjustmentMoney.current!.retry());
+    await refreshAfterAdjustment(next);
+  }
+
+  async function newAdjustment() {
+    const next = await runAdjustment(() => adjustmentMoney.current!.beginNew());
+    if (next?.phase === "empty" && !next.error) {
+      setSelectedCustomerId(""); setCreditAmount(""); setCreditNote(""); setAdjustmentDirection("CREDIT"); setSearch(""); setStatus("");
+    }
   }
 
   async function resetUserPassword() {
@@ -304,11 +326,12 @@ export default function UsersPage() {
   const promotableUserOptions = rankedUsers.filter((user) => ["CUSTOMER", "COMPANION", "ADMIN", "SUPER_ADMIN"].includes(user.role) && user.status === "ACTIVE");
 
   useEffect(() => {
+    if (adjustmentMoney.current && adjustmentMoney.current.state().phase !== "empty") return;
     if (!normalizedSearch) return;
     const stillVisible = customerOptions.some((user) => user.id === selectedCustomerId);
     if (stillVisible) return;
     setSelectedCustomerId(customerOptions[0]?.id ?? "");
-  }, [normalizedSearch, customerOptions, selectedCustomerId]);
+  }, [normalizedSearch, customerOptions, selectedCustomerId, adjustmentIntent.phase]);
 
   const stats = useMemo(() => {
     const customers = visibleUsers.filter((user) => user.role === "CUSTOMER").length;
@@ -431,15 +454,25 @@ export default function UsersPage() {
         </AdminPanel>
 
         <AdminPanel title="搜索用户 / 人工调账" hint="客户余额手动增加或扣减都会写入钱包流水。">
+          <button type="button" disabled={adjustmentIntent.busy} onClick={() => void runAdjustment(() => adjustmentMoney.current!.refresh())}>核对登录与原调账</button>
+          {adjustmentIntent.phase !== "empty" ? <section role="status" className="mt-3 rounded border border-cyan-300/30 p-3">
+            <p>原调账申请：{String(adjustmentIntent.body?.requestId)}</p>
+            <p>{adjustmentIntent.targetLabel || adjustmentIntent.targetId} · {adjustmentIntent.body?.direction === "DEBIT" ? "扣减余额" : "增加余额"} ¥{String(adjustmentIntent.body?.amount)}</p>
+            <p>{adjustmentIntent.phase === "confirmed" ? "原调账回执已确认并保留。它不是实时余额；最新余额请核对用户列表。明确另记一笔后才会生成新编号。" : "原调账结果待核对，客户、方向、金额和备注已保留。请使用原编号核对，不要另记一笔。"}</p>
+            {adjustmentIntent.receipt?.transaction ? <p>原流水：{String((adjustmentIntent.receipt.transaction as { id?: string }).id)}</p> : null}
+            {adjustmentIntent.phase === "confirmed" ? <button type="button" disabled={adjustmentIntent.busy} onClick={() => void newAdjustment()}>另记一笔调账</button>
+              : <button type="button" disabled={adjustmentIntent.busy} onClick={() => void retryAdjustment()}>核对原调账</button>}
+          </section> : null}
           <input value={search} onChange={(event) => setSearch(event.target.value)} className="input" placeholder="搜索昵称、邮箱、ID、角色或状态" />
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <select value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)} className="input">
+            <select disabled={adjustmentLocked} value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)} className="input">
               <option value="">选择要调账的客户</option>
+              {adjustmentIntent.targetId && !customerOptions.some(user => user.id === adjustmentIntent.targetId) ? <option value={adjustmentIntent.targetId}>原客户：{adjustmentIntent.targetLabel || adjustmentIntent.targetId}</option> : null}
               {customerOptions.map((user) => (
                 <option key={user.id} value={user.id}>{userOptionLabel(user)}</option>
               ))}
             </select>
-            <select value={adjustmentDirection} onChange={(event) => setAdjustmentDirection(event.target.value === "DEBIT" ? "DEBIT" : "CREDIT")} className="input">
+            <select disabled={adjustmentLocked} value={adjustmentDirection} onChange={(event) => setAdjustmentDirection(event.target.value === "DEBIT" ? "DEBIT" : "CREDIT")} className="input">
               <option value="CREDIT">增加余额</option>
               <option value="DEBIT">扣减余额 / 冲正</option>
             </select>
@@ -451,9 +484,9 @@ export default function UsersPage() {
                 : "没有匹配到可调账账号，请换昵称、邮箱、ID、KOOK/DC 名称再搜。"}
             </div>
           ) : null}
-          <input value={creditAmount} onChange={(event) => setCreditAmount(event.target.value)} className="input mt-3" placeholder="金额，例如 300" inputMode="decimal" />
-          <input value={creditNote} onChange={(event) => setCreditNote(event.target.value)} className="input mt-3" placeholder="备注，例如微信转账已确认" />
-          <button type="button" onClick={() => void creditCustomerBalance()} className={`mt-4 rounded-dfc-control border px-4 py-3 text-sm font-black ${adjustmentDirection === "CREDIT" ? "border-cyan-300/60 bg-cyan-300 text-slate-950" : "border-dfc-gold/60 bg-dfc-gold text-slate-950"}`}>
+          <input disabled={adjustmentLocked} value={creditAmount} onChange={(event) => setCreditAmount(event.target.value)} className="input mt-3" placeholder="金额，例如 300" inputMode="decimal" />
+          <input disabled={adjustmentLocked} value={creditNote} onChange={(event) => setCreditNote(event.target.value)} className="input mt-3" placeholder="备注，例如微信转账已确认" />
+          <button type="button" disabled={adjustmentLocked || !selectedCustomerId} onClick={() => void creditCustomerBalance()} className={`mt-4 rounded-dfc-control border px-4 py-3 text-sm font-black ${adjustmentDirection === "CREDIT" ? "border-cyan-300/60 bg-cyan-300 text-slate-950" : "border-dfc-gold/60 bg-dfc-gold text-slate-950"}`}>
             {adjustmentDirection === "CREDIT" ? "给客户增加余额" : "扣减客户余额"}
           </button>
         </AdminPanel>

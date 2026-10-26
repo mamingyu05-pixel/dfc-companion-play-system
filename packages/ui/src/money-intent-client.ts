@@ -1,4 +1,4 @@
-export type MoneyIntentPurpose = "withdrawal" | "staff-recharge" | "quick-order";
+export type MoneyIntentPurpose = "withdrawal" | "staff-recharge" | "quick-order" | "manual-adjustment";
 export type MoneyIntentState = {
   subject: string | null;
   connected: boolean;
@@ -79,6 +79,7 @@ export function createMoneyIntentClient({
     withdrawal: "/api/wallet/withdrawal-requests",
     "staff-recharge": "/api/admin/recharges/staff-record",
     "quick-order": "/api/admin/quick-order",
+    "manual-adjustment": "/api/admin/users",
   }[purpose];
   const key = (subject: string) =>
     "dfc.money-intent.v1:" + encodeURIComponent(scope) + ":" + encodeURIComponent(subject) + ":" + purpose;
@@ -157,6 +158,11 @@ export function createMoneyIntentClient({
       return subject;
     }
     if (typeof body.customerId !== "string" || !body.customerId) throw Error("请先选择有效客户。");
+    if (purpose === "manual-adjustment") {
+      if (!amount(body.amount)) throw Error("请填写正确的调账金额。");
+      if (body.direction !== undefined && !["CREDIT", "DEBIT"].includes(String(body.direction))) throw Error("请核对调账方向。");
+      if (body.note !== undefined && typeof body.note !== "string") throw Error("请核对调账备注。");
+    }
     if (purpose === "staff-recharge" && !amount(body.amount)) throw Error("请填写正确的入账金额。");
     if (purpose === "quick-order" && !amount(body.expectedTotalAmount)) throw Error("请先重新核对订单金额。");
     return body.customerId;
@@ -175,6 +181,13 @@ export function createMoneyIntentClient({
         !["PENDING", "APPROVED", "REJECTED", "PAID"].includes(String(v.status))
       )
         throw Error("未收到原提现申请的有效回执，请原编号核对。");
+      return "confirmed";
+    }
+    if (purpose === "manual-adjustment") {
+      const transaction = object(v.transaction);
+      if (v.requestId !== b.requestId || v.customerId !== j.targetId || v.direction !== (b.direction ?? "CREDIT")
+        || typeof v.replayed !== "boolean" || typeof transaction.id !== "string" || !transaction.id
+        || !sameAmount(transaction.amount, b.amount)) throw Error("未收到原人工调账的有效回执，请原编号核对。");
       return "confirmed";
     }
     if (purpose === "staff-recharge") {
@@ -275,7 +288,8 @@ export function createMoneyIntentClient({
     const pending = { ...j, phase: "unknown" as const };
     save(s, pending);
     show(pending);
-    const { response, data } = await fetchData(route, {
+    const requestRoute = purpose === "manual-adjustment" ? route + "/" + encodeURIComponent(pending.targetId) + "/balance-adjustments" : route;
+    const { response, data } = await fetchData(requestRoute, {
       method: "POST",
       headers: { Authorization: "Bearer " + s.token, "Content-Type": "application/json" },
       body: JSON.stringify(pending.body),

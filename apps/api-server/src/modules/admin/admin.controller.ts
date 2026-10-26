@@ -338,7 +338,7 @@ export class AdminController {
   adjustCustomerBalance(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
-    @Body() body: { amount: string; note?: string; direction?: "CREDIT" | "DEBIT" }
+    @Body() body: { amount: string; note?: string; direction?: "CREDIT" | "DEBIT"; requestId: string }
   ) {
     return this.wallet.adminCreditCustomerBalance(id, user.id, body);
   }

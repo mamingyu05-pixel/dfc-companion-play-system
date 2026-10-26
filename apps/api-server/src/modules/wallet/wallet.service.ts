@@ -288,13 +288,44 @@ export class WalletService {
   async adminCreditCustomerBalance(
     customerId: string,
     operatorId: string,
-    body: { amount: string; note?: string; direction?: "CREDIT" | "DEBIT" }
+    body: { amount: string; note?: string; direction?: "CREDIT" | "DEBIT"; requestId?: unknown }
   ) {
     try {
+      const requestId = optionalRequestId(body.requestId);
+      if (!requestId) throw new BadRequestException("requestId is required for a manual balance adjustment");
       const amount = this.positiveDecimal(body.amount, "amount");
+      if (body.direction !== undefined && body.direction !== "CREDIT" && body.direction !== "DEBIT") {
+        throw new BadRequestException("direction must be CREDIT or DEBIT");
+      }
+      if (body.note !== undefined && body.note !== null && typeof body.note !== "string") throw new BadRequestException("note must be text");
       const direction = body.direction === "DEBIT" ? TransactionDirection.DEBIT : TransactionDirection.CREDIT;
+      const note = body.note?.trim() || undefined;
+      const businessKey = `admin-adjustment:${requestId}`;
+      const receipt = (
+        wallet: { id: string; availableBalance: Prisma.Decimal; frozenBalance: Prisma.Decimal },
+        transaction: { id: string; amount: Prisma.Decimal; balanceAfter: Prisma.Decimal },
+        replayed: boolean
+      ) => ({
+        requestId, customerId, direction, replayed,
+        wallet: { id: wallet.id, availableBalance: wallet.availableBalance.toString(), frozenBalance: wallet.frozenBalance.toString() },
+        transaction: { id: transaction.id, amount: transaction.amount.toString(), balanceAfter: transaction.balanceAfter.toString() }
+      });
 
       return await this.prisma.$transaction(async (tx) => {
+        // Serialize one request identity across processes, including attempts with a different target or operator.
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${businessKey}, 0))::text`;
+        const prior = await tx.walletTransaction.findUnique({ where: { businessKey } });
+        if (prior) {
+          if (prior.type !== WalletTransactionType.ADMIN_ADJUSTMENT || prior.userId !== customerId || prior.operatorId !== operatorId ||
+              prior.direction !== direction || !prior.amount.equals(amount) || (prior.note ?? "") !== (note ?? "") ||
+              prior.referenceType !== "ADMIN_BALANCE_ADJUSTMENT" || prior.referenceId !== customerId) {
+            throw new BadRequestException("原调账申请已绑定其他操作，请恢复原客户、金额、方向和原因后核对");
+          }
+          const wallet = await tx.wallet.findUniqueOrThrow({ where: { id: prior.walletId } });
+          return receipt(wallet, prior, true);
+        }
+        // Serialize first-wallet creation while allowing orders to acquire their foreign-key KEY SHARE lock.
+        await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${customerId} FOR NO KEY UPDATE`;
         const customer = await tx.user.findFirst({
           where: { id: customerId, role: UserRole.CUSTOMER, status: UserStatus.ACTIVE },
           include: { wallet: true }
@@ -323,12 +354,13 @@ export class WalletService {
             userId: customerId,
             operatorId,
             type: WalletTransactionType.ADMIN_ADJUSTMENT,
+            businessKey,
             direction,
             amount,
             balanceAfter: wallet.availableBalance,
             referenceType: "ADMIN_BALANCE_ADJUSTMENT",
             referenceId: customerId,
-            note: body.note
+            note
           }
         });
 
@@ -339,22 +371,11 @@ export class WalletService {
             action: direction === TransactionDirection.CREDIT ? "ADMIN_CREDIT_BALANCE" : "ADMIN_DEBIT_BALANCE",
             entityType: "WALLET",
             entityId: wallet.id,
-            detail: { direction, amount: amount.toString(), balanceAfter: wallet.availableBalance.toString(), note: body.note }
+            detail: { requestId, direction, amount: amount.toString(), balanceAfter: wallet.availableBalance.toString(), note }
           }
         });
 
-        return {
-          wallet: {
-            id: wallet.id,
-            availableBalance: wallet.availableBalance.toString(),
-            frozenBalance: wallet.frozenBalance.toString()
-          },
-          transaction: {
-            id: transaction.id,
-            amount: transaction.amount.toString(),
-            balanceAfter: transaction.balanceAfter.toString()
-          }
-        };
+        return receipt(wallet, transaction, false);
       });
     } catch (error) {
       throw mapWalletOperationError(error);
