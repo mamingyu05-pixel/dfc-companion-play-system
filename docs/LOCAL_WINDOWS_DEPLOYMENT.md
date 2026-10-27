@@ -2,7 +2,13 @@
 
 本入口使用独立 PostgreSQL 16 数据目录、当前源码的 Prisma 客户端、三个 Next 生产构建和一个 Node 同源网关。无需启动 Docker/WSL。只监听本机回环地址，不自动启动 Discord、KOOK、邮件或收费 AI 服务。
 
-## 准备与启动
+## 当前实例与版本更新
+
+2026-10-27已发布的源码是E:/codex专用工作区/maintenance-20261027/dfc，本地7412eaf、GitHub分支codex/workspace-cleanup-20261027远程0c86eb7，文件树相同；实际入口保持18080。最新状态见E:/dfc-runtime-20261026/active-release.json及[当前索引](CURRENT_CHECKOUT_AND_ACCEPTANCE.md)。用户页新优化在另一施工副本，不能因构建通过就当作已经发布。
+
+更新运行版本前保留旧构建并验证备份；在独立依赖布局构建后受控切换。不要对正在运行的源码执行prepare或构建覆盖；prepare会重定向共享运行别名。旧PID文件可能因电脑重启而失效，启动/停止前须核对实际程序、参数、创建时间和监听归属，不能把系统复用的PID当作旧服务终止。
+
+## 全新实例准备与启动
 
 在仓库根目录执行。运行目录和 PostgreSQL 二进制使用英文路径，避免 Windows PostgreSQL 子进程对中文路径的编码问题。依赖来源指向已有、可解析的安装；生成的客户端不会覆盖它。
 
@@ -54,3 +60,7 @@ pnpm --dir "$env:DFC_DEPENDENCY_SOURCE" install --frozen-lockfile --ignore-scrip
 网关回归：`node --test scripts/local-windows/gateway.test.cjs`。
 
 当前源码的 PostgreSQL 集成回归使用独立的 `dfc_synthetic` 库：先 `node scripts/local-windows/runtime.cjs migrate dfc_synthetic`，再 `node scripts/local-windows/runtime.cjs test`，不会把测试指向本机演示库。HTTP 冒烟：`node scripts/local-windows/smoke.cjs`，只读页面/接口并验证本机管理员登录，不操作充值、订单资金或通知。
+
+## 已执行的恢复演练
+
+当前嵌入PG16.14没有pg_dump/pg_restore，本机发布采用正常停库后的完整集群冷备，2662文件共139035841字节逐SHA一致。本轮已用私有克隆目录、独立15434端口验证恢复启动，并在只读事务核对37项迁移、钱包和流水指纹，演练实例已停止，原15433没有被恢复覆盖。结果位于E:/codex专用工作区/optimization-users-20261027/evidence/restore-drill-receipt.json；这不证明Windows周期备份、异盘副本或Linux目标环境已验证。

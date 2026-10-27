@@ -1,5 +1,7 @@
 # Delta Force Club (DFC) 电竞陪玩俱乐部
 
+2026-10-27继续优化：后台用户页已在独立候选实现分页与有限候选搜索，并完成冷备独立恢复演练；源码发布状态和证据见[本轮优化](docs/OPTIMIZATION_USERS_20261027.md)。当前运行版、入口和旧改动保留情况见[当前索引](docs/CURRENT_CHECKOUT_AND_ACCEPTANCE.md)。
+
 当前维护副本与验收版本的区别、现有页面及运行入口见 [当前工程与验收索引](docs/CURRENT_CHECKOUT_AND_ACCEPTANCE.md)；本轮本地施工与保存/归档记录见 [2026-10-27维护说明](docs/MAINTENANCE_20261027.md)。旧验收回执只证明它绑定的提交；不据此宣称当前副本已经上线。
 
 DFC 是面向《三角洲行动》的电竞陪玩俱乐部 SaaS 系统。第一阶段只实现最小商业闭环：

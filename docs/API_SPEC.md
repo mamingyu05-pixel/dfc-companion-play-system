@@ -280,7 +280,7 @@ https://你的域名/api/kook/webhook?compress=0
 ```
 
 
-## 人工钱包调账（2026-10-27本地维护候选）
+## 人工钱包调账（2026-10-27已发布的资金维护版本）
 
 ### POST /api/admin/users/:id/balance-adjustments
 
@@ -289,3 +289,12 @@ ADMIN / SUPER_ADMIN；URL中的id是客户。请求必填requestId和正数amoun
 同一requestId绑定认证操作者、URL客户、规范金额、方向和去掉首尾空白的原因；完全相同的重试返回原transaction及replayed=true，不新增流水或管理日志。改用同编号调整其他客户/金额/方向/原因/操作者返回400。真正另一笔业务应在核对前一笔后显式生成新编号。缺编号会拒绝，不兼容旧版无编号调账客户端。
 
 返回包含requestId、customerId、direction、replayed、wallet（id/availableBalance/frozenBalance）和transaction（id/amount/balanceAfter）。transaction是原交易回执；wallet为读取时余额，不能把旧回执当作实时余额。余额、流水及管理日志在同一事务内写入，余额不足则全部回滚。
+
+
+## 后台用户目录（本地优化候选）
+
+GET /api/admin/users/directory：管理员权限不变；q最多512字符，page正整数，limit默认50/最多100。返回items、total、page、limit、stats（全局customers/companions/admins/banned）。按创建时间/ID稳定降序，查询/计数/统计同一快照。搜索词按空白分词逐词匹配，LIKE元字符按字面处理。
+
+GET /api/admin/users/options：purpose为balance-adjustment、companion-onboarding、password-reset、admin-promotion之一；q/selectedId最多512字符，limit默认25/最多50。items有界，合法已选用户保留且去重，hasMore表示还有匹配。无效/停用目标不因selectedId绕过资格。
+
+旧GET /api/admin/users保留数组兼容；新查询不改变写权限、钱包幂等或批量保护。

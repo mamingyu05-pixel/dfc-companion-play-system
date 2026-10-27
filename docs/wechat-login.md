@@ -1,6 +1,6 @@
 # 微信客户登录代码与验收边界
 
-本次代码基于 `34eedd357bfc676ec4adf7147ee3714b130704ff` 工作树，新增微信客户登录。默认仍为模拟模式，未配置真实凭据、登录真实账户、应用数据库迁移或发布。源码实现不代表平台联调完成。
+本文件记录最初基于 `34eedd357bfc676ec4adf7147ee3714b130704ff` 保存的微信登录原型。2026-10-27核对：包含该源码的网页/API版本已在Windows本机发布，37项数据库迁移已应用并包含微信身份表；真实微信配置仍未启用，尚无真实账户或真机验收。默认模拟及原生订单/支付未接通的边界保持。
 
 | 模式 | 配置 | 可用行为 |
 | --- | --- | --- |
@@ -20,7 +20,7 @@
 4. 后端只采用微信验证后的 AppID+OpenID。首次登录在同一事务创建独立 CUSTOMER、零余额钱包及身份映射；并发唯一冲突后回查胜出身份。不会按邮箱、昵称、UnionID 或客户端用户 ID 自动合并已有账户。
 5. 拒绝禁用账户及非 CUSTOMER；签发一小时 HS256 JWT。原生端再用该 JWT 调用现有 `/auth/me`，身份匹配才采纳会话。
 
-新增 `20261017090000_wechat_customer_identity` 迁移和 `WechatIdentity` schema。服务采用参数化 SQL 访问新身份表，与现有限流表做法一致；源码编译不依赖立即生成新 Prisma delegate。部署时仍须先应用迁移并按项目流程生成客户端。迁移尚未执行，真实数据库事务和并发行为尚未验收。新微信账户没有可用密码凭据；已有网页账户绑定/合并不在本次实现中。
+新增 `20261017090000_wechat_customer_identity` 迁移和 `WechatIdentity` schema。服务采用参数化 SQL 访问新身份表，与现有限流表做法一致；源码编译不依赖立即生成新 Prisma delegate。部署时仍须先应用迁移并按项目流程生成客户端。当前本机37项迁移已完成并含本迁移；这一状态不等于真实微信事务或并发行为已验收。新微信账户没有可用密码凭据；已有网页账户绑定/合并不在本次实现中。
 
 AppSecret、code、session_key 不写日志、不回传页面、不持久保存；session_key 和 UnionID 在换码后丢弃。公开错误不转发上游原文或带凭据 URL。客户端 token 不进入 setData 或本地存储。退出仅清除本机自有会话，服务端已签发 JWT 在到期前仍按现有 JWT 规则有效。
 
@@ -28,6 +28,6 @@ AppSecret、code、session_key 不写日志、不回传页面、不持久保存�
 
 离线回归：`node --max-old-space-size=192 scripts/wechat-auth-offline.test.cjs`；现有原生回归为 `node apps/miniapp-native/ui-logic.test.cjs` 和 `node apps/miniapp-native/verify.cjs`。测试仅用合成输入和内存替身，不启动数据库、服务器、子进程或真实网络；服务代码在内存中转译并执行，不能替代全量类型检查、Nest/PG 集成或微信 IDE/真机验收。
 
-重型构建、迁移、全量集成与当前版本视频需等待外贸任务释放资源，并获得新的具体运行窗口。迁移库存已增加到 32；任何后续运行需为当前源码重新封存清单，旧窗口已消耗，原 `spawn EPERM` 不重试、不绕过。已有视频及旧 dist 不能证明本版本运行成功。
+2026-10-17隔离运行器的临时资源窗口、32项库存和 `spawn EPERM` 是旧时段记录。本机通用API/网页后来已有独立构建、37项迁移与回归回执，见[当前索引](CURRENT_CHECKOUT_AND_ACCEPTANCE.md)；这些结果不覆盖该原生运行器的限制，也不授权重试或绕过其旧阻断。当前视频、真机与真实微信行为仍须绑定对应源码分别验收。
 
 官方接口依据（2026-10-17 获取，返回内容缓存时间为 2026-10-15/16）：[登录流程](https://developers.weixin.qq.com/miniprogram/dev/framework/open-ability/login.html)、[wx.login](https://developers.weixin.qq.com/miniprogram/dev/api/open-api/login/wx.login.html)、[code2Session](https://developers.weixin.qq.com/miniprogram/dev/server/API/user-login/api_code2session)。
