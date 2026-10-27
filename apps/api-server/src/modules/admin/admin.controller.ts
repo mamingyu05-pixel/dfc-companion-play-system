@@ -1,4 +1,5 @@
 import { requireOrderRequestId } from "../orders/order-request";
+import { listAdminUserDirectory, listAdminUserOptions } from "./admin-user-directory";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import {
   BotPlatform,
@@ -206,6 +207,16 @@ export class AdminController {
         createdAt: log.createdAt
       }))
     );
+  }
+
+  @Get("users/directory")
+  userDirectory(@Query() query: { q?: unknown; page?: unknown; limit?: unknown }) {
+    return listAdminUserDirectory(this.prisma, query);
+  }
+
+  @Get("users/options")
+  userOptions(@Query() query: { q?: unknown; purpose?: unknown; selectedId?: unknown; limit?: unknown }) {
+    return listAdminUserOptions(this.prisma, query);
   }
 
   @Get("users")

@@ -1,37 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActionButton, AdminShell, DataTable, SectionHeader, StatusBadge } from "../components";
 import { adminApi, BatchBar, BatchButton, ExportButton, SelectBox, useSelection } from "../batch-tools";
 import { createMoneyIntentClient, emptyMoneyIntentState, type MoneyIntentState } from "@dfc/ui";
 
-type AdminUser = {
-  id: string;
-  email: string;
-  role: string;
-  status: string;
-  displayName: string;
-  createdAt: string;
-  wallet: {
-    availableBalance: string;
-    frozenBalance: string;
-    availableIncome: string;
-    pendingIncome: string;
-  } | null;
-  companionProfile: {
-    nickname: string;
-    status: string;
-    onlineStatus: string;
-    pricePerHour: string;
-    kookPricePerHour?: string | null;
-    discordPricePerHour?: string | null;
-  } | null;
-  externalAccounts: Array<{
-    platform: string;
-    externalUserId: string;
-    displayName?: string | null;
-  }>;
-};
+import { createLatestUserLoader, emptyUserLoadState, userDirectoryPath, userOptionsPath, decodeUserDirectory, decodeUserOptions, lastUserPage, type AdminUser, type UserStats, type UserDirectory, type UserOptions, type UserOptionPurpose, type UserLoadState } from "./user-directory-client";
 
 const gameOptions = [
   ["DELTA_FORCE", "三角洲行动"],
@@ -45,8 +19,19 @@ const gameOptions = [
 ] as const;
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const query = useDebouncedUserSearch(search);
+  const [directory, setDirectory] = useState<UserLoadState<UserDirectory>>(emptyUserLoadState);
+  const directoryLoader = useRef<ReturnType<typeof createLatestUserLoader<UserDirectory>> | null>(null);
+  const directoryRequest = useRef({ query, page });
+  directoryRequest.current = { query, page };
+  const lastStats = useRef<UserStats | null>(null);
+  const [optionsRevision, setOptionsRevision] = useState(0);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [companionSearch, setCompanionSearch] = useState("");
+  const [passwordSearch, setPasswordSearch] = useState("");
+  const [promotionSearch, setPromotionSearch] = useState("");
   const selection = useSelection();
   const [batchBusy, setBatchBusy] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -78,20 +63,32 @@ export default function UsersPage() {
   const [status, setStatus] = useState("");
   const [isUserTableOpen, setIsUserTableOpen] = useState(true);
 
-  async function loadUsers() {
-    const token = localStorage.getItem("dfc_admin_token");
-    if (!token) return;
-
-    const response = await fetch("/api/admin/users", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) throw new Error("无法加载用户");
-    setUsers((await response.json()) as AdminUser[]);
+  async function loadUsers(refreshOptions = true) {
+    if (refreshOptions) setOptionsRevision(value => value + 1);
+    const request = directoryRequest.current;
+    const result = await directoryLoader.current?.load(userDirectoryPath(request.query, request.page), value => decodeUserDirectory(value, request.page));
+    if (result && request.query === directoryRequest.current.query && request.page === directoryRequest.current.page && request.page > lastUserPage(result.total, result.limit)) {
+      setPage(lastUserPage(result.total, result.limit));
+      selection.clear();
+    }
+    return result;
   }
 
   useEffect(() => {
-    void loadUsers().catch(() => setError("无法加载真实用户数据"));
-  }, []);
+    const loader = createLatestUserLoader<UserDirectory>({ fetcher: fetch, getToken: () => localStorage.getItem("dfc_admin_token"),
+      onChange: state => {
+        if (state.data) lastStats.current = state.data.stats;
+        else if (!state.loading) lastStats.current = null;
+        setDirectory(state);
+      } });
+    directoryLoader.current = loader;
+    selection.clear();
+    void loadUsers(false);
+    return () => { loader.dispose(); if (directoryLoader.current === loader) directoryLoader.current = null; };
+  }, [query, page]);
+
+  function changeSearch(value: string) { selection.clear(); setSearch(value); setPage(1); }
+  function changePage(value: number) { selection.clear(); setPage(value); }
 
   async function updateStatus(userId: string, nextStatus: "ACTIVE" | "BANNED") {
     const token = localStorage.getItem("dfc_admin_token");
@@ -127,7 +124,7 @@ export default function UsersPage() {
       setSelectedCustomerId(next.targetId ?? ""); setCreditAmount(String(next.body.amount));
       setCreditNote(String(next.body.note ?? "")); setAdjustmentDirection(next.body.direction === "DEBIT" ? "DEBIT" : "CREDIT");
     } else if (adjustmentIntent.subject && next.subject !== adjustmentIntent.subject) {
-      setSelectedCustomerId(""); setCreditAmount(""); setCreditNote(""); setSearch(""); setStatus("");
+      setSelectedCustomerId(""); setCreditAmount(""); setCreditNote(""); setCustomerSearch(""); setStatus("");
     }
     return next;
   }
@@ -142,15 +139,15 @@ export default function UsersPage() {
   async function refreshAfterAdjustment(next: MoneyIntentState | null) {
     if (next?.phase !== "confirmed" || next.error) return;
     setStatus("原人工调账已确认，最新余额请核对刷新后的用户列表。");
-    try { await loadUsers(); }
+    try { if (!await loadUsers()) setStatus("原人工调账已确认，用户余额尚未刷新。请刷新用户列表，不要重新调账。"); }
     catch { setStatus("原人工调账已确认，用户余额尚未刷新。请刷新用户列表，不要重新调账。"); }
   }
 
   async function creditCustomerBalance() {
-    if (adjustmentLocked || !adjustmentMoney.current) return;
+    if (adjustmentLocked || !adjustmentMoney.current || !customerLookup.selectedAvailable) return;
     if (!selectedCustomerId) { setError("请先选择客户"); return; }
     setStatus("");
-    const customer = users.find(user => user.id === selectedCustomerId);
+    const customer = customerLookup.selectedUser;
     const next = await runAdjustment(() => adjustmentMoney.current!.submit({ customerId: selectedCustomerId, amount: creditAmount.trim(), note: creditNote, direction: adjustmentDirection }, customer?.displayName ?? selectedCustomerId));
     await refreshAfterAdjustment(next);
   }
@@ -163,14 +160,14 @@ export default function UsersPage() {
   async function newAdjustment() {
     const next = await runAdjustment(() => adjustmentMoney.current!.beginNew());
     if (next?.phase === "empty" && !next.error) {
-      setSelectedCustomerId(""); setCreditAmount(""); setCreditNote(""); setAdjustmentDirection("CREDIT"); setSearch(""); setStatus("");
+      setSelectedCustomerId(""); setCreditAmount(""); setCreditNote(""); setAdjustmentDirection("CREDIT"); setCustomerSearch(""); setStatus("");
     }
   }
 
   async function resetUserPassword() {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
-    if (!passwordResetUserId) {
+    if (!passwordResetUserId || !passwordLookup.selectedAvailable) {
       setError("请先选择要重置密码的用户");
       return;
     }
@@ -239,7 +236,7 @@ export default function UsersPage() {
   async function promoteExistingUserToAdmin() {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
-    if (!promoteUserId) {
+    if (!promoteUserId || !promotionLookup.selectedAvailable) {
       setError("请先选择要设置为管理员的用户");
       return;
     }
@@ -271,7 +268,7 @@ export default function UsersPage() {
   async function convertCustomerToCompanion() {
     const token = localStorage.getItem("dfc_admin_token");
     if (!token) return;
-    if (!companionCustomerId) {
+    if (!companionCustomerId || !companionLookup.selectedAvailable) {
       setError("请先选择要转为陪玩的客户");
       return;
     }
@@ -314,36 +311,26 @@ export default function UsersPage() {
     await loadUsers();
   }
 
-  const normalizedSearch = normalizeSearchValue(search);
-  const visibleUsers = useMemo(() => users.filter((user) => !isMergedPlatformPlaceholderUser(user)), [users]);
-  const rankedUsers = useMemo(() => (normalizedSearch ? rankUsersBySearch(visibleUsers, normalizedSearch) : visibleUsers), [visibleUsers, normalizedSearch]);
-  const filteredUsers = rankedUsers;
-  const customerOptions = useMemo(() => rankedUsers.filter((user) => user.status === "ACTIVE" && Boolean(user.wallet)), [rankedUsers]);
-  const companionCandidateOptions = rankedUsers.filter(
-    (user) => ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "COMPANION"].includes(user.role) && user.status === "ACTIVE" && !user.companionProfile
-  );
-  const passwordResetOptions = rankedUsers.filter((user) => user.status === "ACTIVE");
-  const promotableUserOptions = rankedUsers.filter((user) => ["CUSTOMER", "COMPANION", "ADMIN", "SUPER_ADMIN"].includes(user.role) && user.status === "ACTIVE");
-
-  useEffect(() => {
-    if (adjustmentMoney.current && adjustmentMoney.current.state().phase !== "empty") return;
-    if (!normalizedSearch) return;
-    const stillVisible = customerOptions.some((user) => user.id === selectedCustomerId);
-    if (stillVisible) return;
-    setSelectedCustomerId(customerOptions[0]?.id ?? "");
-  }, [normalizedSearch, customerOptions, selectedCustomerId, adjustmentIntent.phase]);
-
-  const stats = useMemo(() => {
-    const customers = visibleUsers.filter((user) => user.role === "CUSTOMER").length;
-    const companions = visibleUsers.filter((user) => Boolean(user.companionProfile)).length;
-    const admins = visibleUsers.filter((user) => user.role === "ADMIN" || user.role === "SUPER_ADMIN").length;
-    const banned = visibleUsers.filter((user) => user.status === "BANNED").length;
-    return { customers, companions, admins, banned };
-  }, [visibleUsers]);
+  const customerLookup = useUserOptions("balance-adjustment", customerSearch, selectedCustomerId, optionsRevision);
+  const companionLookup = useUserOptions("companion-onboarding", companionSearch, companionCustomerId, optionsRevision);
+  const passwordLookup = useUserOptions("password-reset", passwordSearch, passwordResetUserId, optionsRevision);
+  const promotionLookup = useUserOptions("admin-promotion", promotionSearch, promoteUserId, optionsRevision);
+  const customerOptions = customerLookup.items;
+  const companionCandidateOptions = companionLookup.items;
+  const passwordResetOptions = passwordLookup.items;
+  const promotableUserOptions = promotionLookup.items;
+  const listPath = userDirectoryPath(query, page);
+  const searchPending = normalizeSearchValue(search) !== query;
+  const pageData = directory.path === listPath && !searchPending ? directory.data : null;
+  const listReady = Boolean(pageData) && !directory.loading && !directory.error && !searchPending;
+  const filteredUsers = listReady ? pageData!.items : [];
+  const stats = lastStats.current;
+  const maxPage = pageData ? lastUserPage(pageData.total, pageData.limit) : page;
 
   // Staff accounts are never batch-selectable; the server refuses them too.
   const selectableIds = filteredUsers.filter((user) => user.role === "CUSTOMER" || user.role === "COMPANION").map((user) => user.id);
   async function batchStatus(next: "ACTIVE" | "BANNED") {
+    if (!listReady || selection.selected.some(id => !selectableIds.includes(id))) { selection.clear(); setError("列表已变化，请在当前页重新选择账号。"); return; }
     const label = next === "BANNED" ? "封禁" : "解封";
     if (!window.confirm(`批量${label} ${selection.selected.length} 个账号？`)) return;
     setBatchBusy(true); setError(""); setStatus("");
@@ -405,10 +392,10 @@ export default function UsersPage() {
       <div className="mb-4"><ExportButton kind="users" label="用户" /></div>
 
       <section className="mb-5 grid gap-4 md:grid-cols-4">
-        <Signal label="客户" value={String(stats.customers)} hint="可充值下单" tone="cyan" />
-        <Signal label="陪玩" value={String(stats.companions)} hint="可接单结算" tone="green" />
-        <Signal label="管理员" value={String(stats.admins)} hint="后台权限账号" tone="gold" />
-        <Signal label="封禁" value={String(stats.banned)} hint="不可登录或操作" tone="danger" />
+        <Signal label="客户" value={stats ? String(stats.customers) : "待核对"} hint="可充值下单" tone="cyan" />
+        <Signal label="陪玩" value={stats ? String(stats.companions) : "待核对"} hint="可接单结算" tone="green" />
+        <Signal label="管理员" value={stats ? String(stats.admins) : "待核对"} hint="后台权限账号" tone="gold" />
+        <Signal label="封禁" value={stats ? String(stats.banned) : "待核对"} hint="不可登录或操作" tone="danger" />
       </section>
 
       {error ? <Alert tone="danger">{error}</Alert> : null}
@@ -416,18 +403,21 @@ export default function UsersPage() {
 
       <section className="mb-6 grid gap-4 xl:grid-cols-2">
         <AdminPanel title="给现有账号开通陪玩身份" hint="适合老客户、管理员前期兼职陪玩。保留原角色、账号、钱包、绑定和历史记录，只新增待审核陪玩资料。">
+          <input value={companionSearch} onChange={event => setCompanionSearch(event.target.value)} className="input mb-3" maxLength={512} placeholder="搜索要开通陪玩的账号" />
           <div className="grid gap-3 md:grid-cols-2">
             <select
               value={companionCustomerId}
+              disabled={companionLookup.loading}
               onChange={(event) => {
                 const nextId = event.target.value;
                 setCompanionCustomerId(nextId);
-                const selected = users.find((item) => item.id === nextId);
+                const selected = companionCandidateOptions.find((item) => item.id === nextId);
                 if (selected && !companionNickname) setCompanionNickname(selected.displayName);
               }}
               className="input"
             >
               <option value="">选择要开通陪玩身份的账号</option>
+              <RetainedUserOption selectedId={companionCustomerId} lookup={companionLookup} />
               {companionCandidateOptions.map((user) => (
                 <option key={user.id} value={user.id}>{userOptionLabel(user)}</option>
               ))}
@@ -448,9 +438,10 @@ export default function UsersPage() {
             <input value={companionKookPricePerHour} onChange={(event) => setCompanionKookPricePerHour(event.target.value)} className="input" placeholder="KOOK 单价，可不填" inputMode="decimal" />
             <input value={companionDiscordPricePerHour} onChange={(event) => setCompanionDiscordPricePerHour(event.target.value)} className="input" placeholder="Discord 单价，可不填" inputMode="decimal" />
           </div>
+          <UserOptionsHint lookup={companionLookup} selectedId={companionCustomerId} />
           <GameMultiSelect selectedGames={companionGames} primaryGame={companionGame} onChange={setCompanionGames} onPrimaryGameChange={setCompanionGame} />
           <input value={companionNote} onChange={(event) => setCompanionNote(event.target.value)} className="input mt-3" placeholder="备注，例如老客户申请入驻，已完成试音考核" />
-          <ActionButton onClick={() => void convertCustomerToCompanion()}>开通待审核陪玩身份</ActionButton>
+          <ActionButton disabled={!companionLookup.selectedAvailable} onClick={() => void convertCustomerToCompanion()}>开通待审核陪玩身份</ActionButton>
         </AdminPanel>
 
         <AdminPanel title="搜索用户 / 人工调账" hint="客户余额手动增加或扣减都会写入钱包流水。">
@@ -463,11 +454,12 @@ export default function UsersPage() {
             {adjustmentIntent.phase === "confirmed" ? <button type="button" disabled={adjustmentIntent.busy} onClick={() => void newAdjustment()}>另记一笔调账</button>
               : <button type="button" disabled={adjustmentIntent.busy} onClick={() => void retryAdjustment()}>核对原调账</button>}
           </section> : null}
-          <input value={search} onChange={(event) => setSearch(event.target.value)} className="input" placeholder="搜索昵称、邮箱、ID、角色或状态" />
+          <input value={customerSearch} onChange={event => setCustomerSearch(event.target.value)} className="input" maxLength={512} placeholder="搜索昵称、邮箱、ID、角色或状态" />
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <select disabled={adjustmentLocked} value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)} className="input">
+            <select disabled={adjustmentLocked || customerLookup.loading} value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)} className="input">
               <option value="">选择要调账的客户</option>
               {adjustmentIntent.targetId && !customerOptions.some(user => user.id === adjustmentIntent.targetId) ? <option value={adjustmentIntent.targetId}>原客户：{adjustmentIntent.targetLabel || adjustmentIntent.targetId}</option> : null}
+              {!adjustmentIntent.targetId ? <RetainedUserOption selectedId={selectedCustomerId} lookup={customerLookup} /> : null}
               {customerOptions.map((user) => (
                 <option key={user.id} value={user.id}>{userOptionLabel(user)}</option>
               ))}
@@ -477,32 +469,29 @@ export default function UsersPage() {
               <option value="DEBIT">扣减余额 / 冲正</option>
             </select>
           </div>
-          {normalizedSearch ? (
-            <div className="mt-2 text-xs text-dfc-muted">
-              {customerOptions.length
-                ? `已按搜索匹配 ${customerOptions.length} 个账号，当前优先：${userOptionLabel(customerOptions[0])}`
-                : "没有匹配到可调账账号，请换昵称、邮箱、ID、KOOK/DC 名称再搜。"}
-            </div>
-          ) : null}
+          {adjustmentIntent.phase === "empty" ? <UserOptionsHint lookup={customerLookup} selectedId={selectedCustomerId} /> : <p className="mt-2 text-xs text-dfc-muted">原调账客户已保留，核对结果不受当前目录搜索影响。</p>}
           <input disabled={adjustmentLocked} value={creditAmount} onChange={(event) => setCreditAmount(event.target.value)} className="input mt-3" placeholder="金额，例如 300" inputMode="decimal" />
           <input disabled={adjustmentLocked} value={creditNote} onChange={(event) => setCreditNote(event.target.value)} className="input mt-3" placeholder="备注，例如微信转账已确认" />
-          <button type="button" disabled={adjustmentLocked || !selectedCustomerId} onClick={() => void creditCustomerBalance()} className={`mt-4 rounded-dfc-control border px-4 py-3 text-sm font-black ${adjustmentDirection === "CREDIT" ? "border-cyan-300/60 bg-cyan-300 text-slate-950" : "border-dfc-gold/60 bg-dfc-gold text-slate-950"}`}>
+          <button type="button" disabled={adjustmentLocked || !customerLookup.selectedAvailable} onClick={() => void creditCustomerBalance()} className={`mt-4 rounded-dfc-control border px-4 py-3 text-sm font-black ${adjustmentDirection === "CREDIT" ? "border-cyan-300/60 bg-cyan-300 text-slate-950" : "border-dfc-gold/60 bg-dfc-gold text-slate-950"}`}>
             {adjustmentDirection === "CREDIT" ? "给客户增加余额" : "扣减客户余额"}
           </button>
         </AdminPanel>
 
         <AdminPanel title="重置用户密码" hint="用于客户忘记密码或测试账号密码混乱。操作会写入后台日志。">
+          <input value={passwordSearch} onChange={event => setPasswordSearch(event.target.value)} className="input mb-3" maxLength={512} placeholder="搜索要重置密码的账号" />
           <div className="grid gap-3 md:grid-cols-2">
-            <select value={passwordResetUserId} onChange={(event) => setPasswordResetUserId(event.target.value)} className="input">
+            <select disabled={passwordLookup.loading} value={passwordResetUserId} onChange={(event) => setPasswordResetUserId(event.target.value)} className="input">
               <option value="">选择要重置密码的用户</option>
+              <RetainedUserOption selectedId={passwordResetUserId} lookup={passwordLookup} />
               {passwordResetOptions.map((user) => (
                 <option key={user.id} value={user.id}>{userOptionLabel(user)} / {user.role}</option>
               ))}
             </select>
             <input value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} className="input" placeholder="新密码，至少 8 位" type="password" autoComplete="new-password" />
           </div>
+          <UserOptionsHint lookup={passwordLookup} selectedId={passwordResetUserId} />
           <input value={passwordResetNote} onChange={(event) => setPasswordResetNote(event.target.value)} className="input mt-3" placeholder="备注，例如客户忘记密码" />
-          <ActionButton onClick={() => void resetUserPassword()}>重置密码</ActionButton>
+          <ActionButton disabled={!passwordLookup.selectedAvailable} onClick={() => void resetUserPassword()}>重置密码</ActionButton>
         </AdminPanel>
 
         <AdminPanel title="创建管理员账号" hint="仅 SUPER_ADMIN 可创建。新账号会进入管理后台权限体系。">
@@ -522,9 +511,11 @@ export default function UsersPage() {
         </AdminPanel>
 
         <AdminPanel title="更新已有用户后台角色" hint="保留原邮箱、密码、钱包、平台绑定和陪玩资料，只调整后台角色。选 CUSTOMER 可取消误设的管理员权限。">
+          <input value={promotionSearch} onChange={event => setPromotionSearch(event.target.value)} className="input mb-3" maxLength={512} placeholder="搜索要更新角色的账号" />
           <div className="grid gap-3 md:grid-cols-2">
-            <select value={promoteUserId} onChange={(event) => setPromoteUserId(event.target.value)} className="input">
+            <select disabled={promotionLookup.loading} value={promoteUserId} onChange={(event) => setPromoteUserId(event.target.value)} className="input">
               <option value="">选择已有用户</option>
+              <RetainedUserOption selectedId={promoteUserId} lookup={promotionLookup} />
               {promotableUserOptions.map((user) => (
                 <option key={user.id} value={user.id}>{userOptionLabel(user)} / {user.role}</option>
               ))}
@@ -542,8 +533,9 @@ export default function UsersPage() {
               <option value="SUPER_ADMIN">SUPER_ADMIN</option>
             </select>
           </div>
+          <UserOptionsHint lookup={promotionLookup} selectedId={promoteUserId} />
           <input value={promoteNote} onChange={(event) => setPromoteNote(event.target.value)} className="input mt-3" placeholder="备注，例如邮箱误注册为客户" />
-          <ActionButton onClick={() => void promoteExistingUserToAdmin()}>更新后台角色</ActionButton>
+          <ActionButton disabled={!promotionLookup.selectedAvailable} onClick={() => void promoteExistingUserToAdmin()}>更新后台角色</ActionButton>
         </AdminPanel>
       </section>
 
@@ -552,20 +544,21 @@ export default function UsersPage() {
           <div>
             <h2 className="text-base font-black text-white">用户列表</h2>
             <p className="mt-1 text-xs text-dfc-muted">
-              当前显示 {filteredUsers.length} / {visibleUsers.length} 个账号。列表区域固定高度滚动，避免用户多时页面过长。
+              当前页 {filteredUsers.length} 个账号，共 {pageData ? pageData.total : "待核对"} 个匹配账号；每页 50 个。
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 md:w-auto md:min-w-[420px] md:flex-row md:items-center">
             <input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => changeSearch(event.target.value)}
               className="input md:min-w-72"
+              maxLength={512}
               placeholder="搜索昵称、邮箱、ID、Discord / KOOK"
             />
             {search ? (
               <button
                 type="button"
-                onClick={() => setSearch("")}
+                onClick={() => changeSearch("")}
                 className="rounded-dfc-control border border-cyan-300/20 bg-[#050711] px-3 py-2 text-xs font-black text-dfc-subtext transition hover:border-cyan-300/50 hover:text-cyan-100"
               >
                 清空
@@ -580,21 +573,29 @@ export default function UsersPage() {
             </button>
           </div>
         </div>
-        {isUserTableOpen ? (
+        <div className="mb-3 flex flex-wrap items-center gap-3" aria-label="用户目录分页">
+          <button type="button" className="rounded-dfc-control border px-3 py-2 disabled:opacity-40" disabled={!listReady || page <= 1} onClick={() => changePage(page - 1)}>上一页</button>
+          <span className="text-sm">第 {page} / {pageData ? maxPage : "待核对"} 页</span>
+          <button type="button" className="rounded-dfc-control border px-3 py-2 disabled:opacity-40" disabled={!listReady || page >= maxPage} onClick={() => changePage(page + 1)}>下一页</button>
+          <button type="button" className="rounded-dfc-control border px-3 py-2 disabled:opacity-40" disabled={directory.loading || searchPending} onClick={() => void loadUsers()}>刷新列表</button>
+        </div>
+        {directory.error ? <div role="alert" className="mb-3 text-sm text-dfc-danger">{directory.error}</div> : null}
+        {listReady && !filteredUsers.length ? <p className="mb-3 text-sm">没有匹配的用户，请更换搜索条件。</p> : null}
+        {isUserTableOpen && listReady ? (
           <DataTable
-            columns={[<SelectBox key="all" label="全选当前列表的客户和陪玩" checked={selectableIds.length > 0 && selectableIds.every((id) => selection.has(id))} onChange={() => selection.toggleAll(selectableIds)} />, "ID", "资料", "角色", "状态", "钱包", "绑定", "操作"]}
+            columns={[<SelectBox key="all" label="全选当前页的客户和陪玩" checked={selectableIds.length > 0 && selectableIds.every((id) => selection.has(id))} onChange={() => selection.toggleAll(selectableIds)} />, "ID", "资料", "角色", "状态", "钱包", "绑定", "操作"]}
             rows={rows}
             maxHeightClassName="max-h-[620px]"
             stickyHeader
           />
         ) : (
           <div className="rounded-dfc border border-cyan-300/15 bg-[#050711]/75 px-4 py-6 text-sm text-dfc-subtext">
-            用户列表已收起。需要查看、封禁或搜索结果时点击“展开列表”。
+            {isUserTableOpen ? (directory.error ? "用户列表尚未确认，请重试加载。" : "正在加载用户列表…") : "用户列表已收起。需要查看、封禁或搜索结果时点击“展开列表”。"}
           </div>
         )}
         <BatchBar count={selection.selected.length} onClear={selection.clear}>
-          <BatchButton tone="danger" disabled={batchBusy} onClick={() => void batchStatus("BANNED")}>批量封禁</BatchButton>
-          <BatchButton tone="plain" disabled={batchBusy} onClick={() => void batchStatus("ACTIVE")}>批量解封</BatchButton>
+          <BatchButton tone="danger" disabled={batchBusy || !listReady} onClick={() => void batchStatus("BANNED")}>批量封禁</BatchButton>
+          <BatchButton tone="plain" disabled={batchBusy || !listReady} onClick={() => void batchStatus("ACTIVE")}>批量解封</BatchButton>
         </BatchBar>
       </section>
     </AdminShell>
@@ -720,84 +721,6 @@ function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
 }
 
-function rankUsersBySearch(users: AdminUser[], query: string) {
-  const tokens = query.split(/\s+/).filter(Boolean);
-  return users
-    .map((user) => ({ user, score: getUserSearchScore(user, query, tokens) }))
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || new Date(b.user.createdAt).getTime() - new Date(a.user.createdAt).getTime())
-    .map((item) => item.user);
-}
-
-function getUserSearchScore(user: AdminUser, query: string, tokens: string[]) {
-  const fields: Array<{ value?: string | null; weight: number }> = [
-    { value: user.displayName, weight: 140 },
-    { value: user.companionProfile?.nickname, weight: 130 },
-    { value: user.email, weight: 90 },
-    { value: user.id, weight: 80 },
-    { value: shortId(user.id), weight: 70 },
-    { value: user.role, weight: 45 },
-    { value: user.status, weight: 35 },
-    ...user.externalAccounts.flatMap((account) => [
-      { value: account.displayName, weight: 135 },
-      { value: account.externalUserId, weight: 100 },
-      { value: shortId(account.externalUserId), weight: 85 },
-      { value: account.platform, weight: 55 }
-    ])
-  ];
-
-  return fields.reduce((total, field) => total + scoreSearchField(field.value, query, tokens, field.weight), 0);
-}
-
-function scoreSearchField(value: string | null | undefined, query: string, tokens: string[], weight: number) {
-  const text = normalizeSearchValue(value ?? "");
-  if (!text) return 0;
-
-  let score = 0;
-  if (text === query) score += weight * 8;
-  else if (text.startsWith(query)) score += weight * 5;
-  else if (text.includes(query)) score += weight * 2;
-
-  const compactText = compactSearchValue(text);
-  const compactQuery = compactSearchValue(query);
-  if (compactQuery && compactText !== text) {
-    if (compactText === compactQuery) score += weight * 6;
-    else if (compactText.startsWith(compactQuery)) score += weight * 3;
-    else if (compactText.includes(compactQuery)) score += weight * 1.5;
-    else if (isSubsequence(compactQuery, compactText)) score += weight * 0.8;
-  }
-
-  for (const token of tokens) {
-    if (token === query) continue;
-    if (text === token) score += weight * 4;
-    else if (text.startsWith(token)) score += weight * 2;
-    else if (text.includes(token)) score += weight;
-
-    const compactToken = compactSearchValue(token);
-    if (compactToken && compactToken !== token) {
-      if (compactText === compactToken) score += weight * 2;
-      else if (compactText.startsWith(compactToken)) score += weight;
-      else if (compactText.includes(compactToken)) score += weight * 0.5;
-    }
-  }
-
-  return score;
-}
-
-function compactSearchValue(value: string) {
-  return value.replace(/[\s\-_/\\#：:@.]+/g, "");
-}
-
-function isSubsequence(query: string, text: string) {
-  if (!query || query.length > text.length) return false;
-  let index = 0;
-  for (const char of text) {
-    if (char === query[index]) index += 1;
-    if (index === query.length) return true;
-  }
-  return false;
-}
-
 function formatExternalAccount(account: AdminUser["externalAccounts"][number]) {
   if (!isValidExternalAccount(account)) {
     return `${account.platform}：异常占位ID ${account.externalUserId}`;
@@ -883,4 +806,49 @@ function toFriendlyError(message?: string) {
   if (message.includes("Database migration is not applied")) return "服务端数据库还没更新，请先执行数据库迁移";
   if (message.includes("Related account or wallet data is invalid")) return "客户钱包数据异常，请检查该客户账号";
   return message;
+}
+
+function useDebouncedUserSearch(value: string) {
+  const normalized = normalizeSearchValue(value);
+  const [query, setQuery] = useState(normalized);
+  useEffect(() => {
+    if (query === normalized) return;
+    const timer = setTimeout(() => setQuery(normalized), 250);
+    return () => clearTimeout(timer);
+  }, [normalized, query]);
+  return query;
+}
+
+function useUserOptions(purpose: UserOptionPurpose, search: string, selectedId: string, revision: number) {
+  const query = useDebouncedUserSearch(search);
+  const [state, setState] = useState<UserLoadState<UserOptions>>(emptyUserLoadState);
+  const selectedUser = useRef<AdminUser | null>(null);
+  const path = userOptionsPath(purpose, query, selectedId);
+  useEffect(() => {
+    const loader = createLatestUserLoader<UserOptions>({ fetcher: fetch, getToken: () => localStorage.getItem("dfc_admin_token"), onChange: setState });
+    void loader.load(path, value => decodeUserOptions(value, purpose, selectedId));
+    return () => loader.dispose();
+  }, [path, purpose, selectedId, revision]);
+  const current = state.path === path && normalizeSearchValue(search) === query;
+  const data = current ? state.data : null;
+  const found = state.data?.items.find(user => user.id === selectedId);
+  if (found) selectedUser.current = found;
+  else if (selectedUser.current?.id !== selectedId) selectedUser.current = null;
+  const loading = !current || state.loading;
+  return { items: data?.items ?? [], loading, error: current ? state.error : "", hasMore: Boolean(data?.hasMore),
+    selectedUser: selectedUser.current, selectedAvailable: Boolean(selectedId && data?.selectedId === selectedId && !loading && !state.error) };
+}
+
+function UserOptionsHint({ lookup, selectedId }: { lookup: ReturnType<typeof useUserOptions>; selectedId: string }) {
+  if (lookup.loading) return <p className="mt-2 text-xs text-dfc-muted">正在查找账号…</p>;
+  if (lookup.error) return <p role="alert" className="mt-2 text-xs text-dfc-danger">{lookup.error} 请更换关键词或刷新列表。</p>;
+  if (selectedId && !lookup.selectedAvailable) return <p className="mt-2 text-xs text-dfc-danger">原选择已不在可用候选中，请重新选择账号。</p>;
+  if (lookup.hasMore) return <p className="mt-2 text-xs text-dfc-muted">还有更多账号，请输入昵称、邮箱或 ID 缩小范围。</p>;
+  if (!lookup.items.length) return <p className="mt-2 text-xs text-dfc-muted">没有匹配到可用账号，请换关键词再搜。</p>;
+  return null;
+}
+
+function RetainedUserOption({ selectedId, lookup }: { selectedId: string; lookup: ReturnType<typeof useUserOptions> }) {
+  return selectedId && !lookup.items.some(user => user.id === selectedId)
+    ? <option value={selectedId} disabled>原选择：{lookup.selectedUser ? userOptionLabel(lookup.selectedUser) : selectedId}</option> : null;
 }

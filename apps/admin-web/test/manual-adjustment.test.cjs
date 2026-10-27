@@ -62,7 +62,8 @@ function environment() {
       if (f.duringAuth) f.duringAuth();
       return result;
     }
-    if (url === "/api/admin/users") return response(f.users);
+    if (url.startsWith("/api/admin/users/directory?")) { const u = new URL(url, "http://synthetic.invalid"); return response({ items: f.users.slice(0,50), total: f.users.length, page: Number(u.searchParams.get("page")), limit: 50, stats: { customers: f.users.length, companions: 0, admins: 0, banned: 0 } }); }
+    if (url.startsWith("/api/admin/users/options?")) { const u = new URL(url, "http://synthetic.invalid"), selectedId = u.searchParams.get("selectedId"); return response({ purpose: u.searchParams.get("purpose"), selectedId: f.users.some(x=>x.id===selectedId) ? selectedId : null, limit: 25, items: f.users, hasMore: false }); }
     assert.match(url, /^\/api\/admin\/users\/[^/]+\/balance-adjustments$/);
     assert.equal(init.method, "POST");
     const body = JSON.parse(init.body);
@@ -143,6 +144,7 @@ function page(f) {
       navigator: { locks: lockManager },
       window: { location: { origin: "http://synthetic.invalid" } },
       AbortController,
+      URLSearchParams,
       setTimeout,
       clearTimeout,
       require(id) {
@@ -150,6 +152,7 @@ function page(f) {
         if (id === "react/jsx-runtime") return jsx;
         if (id === "../components") return components;
         if (id === "../batch-tools") return load("apps/admin-web/app/batch-tools.tsx");
+        if (id === "./user-directory-client") return load("apps/admin-web/app/users/user-directory-client.ts");
         if (id === "@dfc/ui") return load("packages/ui/src/money-intent-client.ts");
         throw Error("Unexpected fixture import " + id);
       },
@@ -204,6 +207,7 @@ async function ready(f) {
   const p = page(f);
   await p.flush();
   p.select(0, "customer-A");
+  await p.flush();
   p.input("金额，例如 300", "100");
   p.input("备注，例如微信转账已确认", "原人工调账");
   return p;
@@ -506,7 +510,7 @@ test("manual committed receipt survives a subsequent list refresh failure withou
     baseFetch = f.fetch;
   let failList = false;
   f.fetch = (url, init) =>
-    url === "/api/admin/users" && failList ? response({ message: "SYNTHETIC_LIST_FAILED" }, 500) : baseFetch(url, init);
+    url.startsWith("/api/admin/users/directory?") && failList ? response({ message: "SYNTHETIC_LIST_FAILED" }, 500) : baseFetch(url, init);
   f.reply = (url, value) => {
     failList = true;
     return response(f.good(url, value));
